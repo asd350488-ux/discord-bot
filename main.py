@@ -218,6 +218,9 @@ async def birthday_check():
 @bot.event
 async def on_member_join(member):
 
+    import asyncio
+
+    # 📡 取得頻道
     c.execute("SELECT value FROM settings WHERE key='welcome_channel'")
     channel_data = c.fetchone()
 
@@ -228,12 +231,46 @@ async def on_member_join(member):
     if not channel:
         return
 
+    # 📝 取得你設定的歡迎文
+    c.execute("SELECT value FROM settings WHERE key='welcome_message'")
+    msg_data = c.fetchone()
+
+    if msg_data:
+        message = msg_data[0]
+    else:
+        message = "歡迎 {user} 加入伺服器 ✨"
+
     count = member.guild.member_count
 
+    # 🔄 替換變數
+    message = message.replace("{user}", member.mention)
+    message = message.replace("{count}", str(count))
+
+    # 🎬 動畫開始
+    msg = await channel.send("🌙 星門正在開啟...")
+
+    await asyncio.sleep(1.2)
+
+    await msg.edit(content="✨ 傳送完成，正在載入星月記錄...")
+
+    await asyncio.sleep(1.2)
+
+    # 🌙 高級卡片（用你的歡迎文）
     embed = discord.Embed(
-        title="🌙 歡迎來到極曜月葵",
-        description=f"{member.mention} ✦ 你是第 {count} 位星月旅人",
+        title="🌙 𝑵𝒆𝒘 𝑨𝒓𝒓𝒊𝒗𝒂𝒍",
+        description=message,
         color=discord.Color.from_rgb(186, 85, 211)
+    )
+
+    embed.set_author(
+        name=f"{member.display_name} ✦ 星月新生",
+        icon_url=member.display_avatar.url
+    )
+
+    embed.add_field(
+        name="📊 成員編號",
+        value=f"第 {count} 位",
+        inline=True
     )
 
     embed.set_thumbnail(url=member.display_avatar.url)
@@ -244,7 +281,9 @@ async def on_member_join(member):
 
     embed.set_footer(text="極曜月葵 ✦ 歡迎儀式")
 
-    await channel.send(embed=embed)
+    await asyncio.sleep(0.8)
+
+    await msg.edit(content=None, embed=embed)
 
 # 🌐 Render
 def run_web():
