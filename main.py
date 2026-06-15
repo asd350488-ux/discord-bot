@@ -353,17 +353,6 @@ except:
     pass
 
 # 📜 發錢紀錄表
-c.execute("""
-CREATE TABLE IF NOT EXISTS money_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    admin_id TEXT,
-    target_id TEXT,
-    amount INTEGER,
-    type TEXT,
-    time TEXT
-)
-""")
-conn.commit()
 @bot.tree.command(name="發錢紀錄")
 async def money_log_view(interaction: discord.Interaction):
 
@@ -398,39 +387,37 @@ async def money_log_view(interaction: discord.Interaction):
         await interaction.response.send_message("📭 沒有任何發錢紀錄")
         return
 
-embed = discord.Embed(
-    title="📜 發錢紀錄（最近10筆）",
-    color=discord.Color.blue()
-)
-
-type_map = {
-    "single": "👤 單人",
-    "role": "👥 身分組",
-    "all": "🌍 全體"
-}
-
-for i, (admin_id, target_id, amount, log_type, time) in enumerate(logs):
-    if i >= 10:
-        break
-
-    admin = interaction.guild.get_member(int(admin_id))
-    target = interaction.guild.get_member(int(target_id))
-
-    admin_name = admin.mention if admin else admin_id
-    target_name = target.mention if target else target_id
-
-    dt = datetime.fromisoformat(time)
-    time_str = dt.strftime("%Y-%m-%d %H:%M")
-
-    embed.add_field(
-        name=f"💰 {amount} 努努幣",
-        value=f"👤 發送者：{admin_name}\n🎯 對象：{target_name}\n📌 類型：{type_map.get(log_type, log_type)}\n🕒 時間：{time_str}",
-        inline=False
+    embed = discord.Embed(
+        title="📜 發錢紀錄（最近10筆）",
+        color=discord.Color.blue()
     )
 
-await interaction.response.send_message(embed=embed)
+    # 類型顯示
+    type_map = {
+        "single": "👤 單人",
+        "role": "👥 身分組",
+        "all": "🌍 全體"
+    }
 
-# 🚀 啟動
+    for admin_id, target_id, amount, log_type, time in logs:
+
+        admin = interaction.guild.get_member(int(admin_id))
+        target = interaction.guild.get_member(int(target_id))
+
+        admin_name = admin.mention if admin else admin_id
+        target_name = target.mention if target else target_id
+
+        # 🕒 美化時間
+        dt = datetime.fromisoformat(time)
+        time_str = dt.strftime("%Y-%m-%d %H:%M")
+
+        embed.add_field(
+            name=f"💰 {amount} 努努幣",
+            value=f"👤 發送者：{admin_name}\n🎯 對象：{target_name}\n📌 類型：{type_map.get(log_type, log_type)}\n🕒 時間：{time_str}",
+            inline=False
+        )
+
+    await interaction.response.send_message(embed=embed)# 🚀 啟動
 @bot.event
 async def on_ready():
     print(f"已登入：{bot.user}")
