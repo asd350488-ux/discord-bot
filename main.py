@@ -52,7 +52,7 @@ async def on_ready():
     birthday_check.start()
 
 # 🐰 簽到
-@bot.tree.command(name="簽到", description="每日簽到")
+@bot.tree.command(name="簽到")
 async def checkin(interaction: discord.Interaction):
 
     await interaction.response.defer()
@@ -81,27 +81,94 @@ async def checkin(interaction: discord.Interaction):
 
     conn.commit()
 
-    embed = discord.Embed(title="🌙 簽到成功", color=discord.Color.blurple())
-    embed.add_field(name="💰 金幣", value=money)
-    embed.add_field(name="🔥 連續", value=streak)
+    embed = discord.Embed(
+        title="🌙 𝑴𝒐𝒐𝒏 𝑪𝒉𝒆𝒄𝒌𝒊𝒏",
+        description="✨ 你再次踏入了星月之境",
+        color=discord.Color.from_rgb(186, 85, 211)
+    )
+
+    embed.set_author(
+        name=f"{interaction.user.display_name} ✦ 星月契約者",
+        icon_url=interaction.user.display_avatar.url
+    )
+
+    embed.add_field(name="💰 金幣", value=f"```{money}```", inline=True)
+    embed.add_field(name="🔥 連續簽到", value=f"```{streak} 天```", inline=True)
+    embed.add_field(name="📅 總簽到", value=f"```{total} 天```", inline=False)
+
+    embed.set_thumbnail(url=interaction.user.display_avatar.url)
+
+    embed.set_image(
+        url="https://media.discordapp.net/attachments/1504831006090465320/1515773543286313229/IMG_1765.jpg"
+    )
+
+    embed.set_footer(text="極曜月葵 ✦ 每日儀式")
+
     await interaction.followup.send(embed=embed)
 
 # 💰 錢包
-@bot.tree.command(name="錢包", description="查看你的金幣")
+@bot.tree.command(name="錢包")
 async def wallet(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
     user_id = str(interaction.user.id)
-    c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
+    c.execute("SELECT money, checkin_total, checkin_streak FROM users WHERE user_id=?", (user_id,))
     data = c.fetchone()
 
-    money = data[0] if data else 0
+    money, total, streak = data if data else (0, 0, 0)
 
-    await interaction.followup.send(f"💰 你有 {money} 金幣")
+    embed = discord.Embed(
+        title="💰 𝑳𝒖𝒏𝒂 𝑾𝒆𝒂𝒍𝒕𝒉",
+        description="你的命運與財富交織 ✨",
+        color=discord.Color.gold()
+    )
+
+    embed.set_author(
+        name=f"{interaction.user.display_name} ✦ 星之持有者",
+        icon_url=interaction.user.display_avatar.url
+    )
+
+    embed.add_field(name="💵 金幣", value=f"```{money}```", inline=True)
+    embed.add_field(name="📅 總簽到", value=f"```{total} 天```", inline=True)
+    embed.add_field(name="🔥 連續", value=f"```{streak} 天```", inline=True)
+
+    embed.set_thumbnail(url=interaction.user.display_avatar.url)
+
+    embed.set_footer(text="極曜月葵 ✦ 財富系統")
+
+    await interaction.followup.send(embed=embed)
+
+# 🏆 排行榜
+@bot.tree.command(name="排行榜")
+async def leaderboard(interaction: discord.Interaction):
+
+    await interaction.response.defer()
+
+    c.execute("SELECT user_id, money FROM users ORDER BY money DESC")
+    data = c.fetchall()
+    top10 = data[:10]
+
+    embed = discord.Embed(
+        title="🏆 𝑳𝒖𝒏𝒂 𝑻𝒉𝒓𝒐𝒏𝒆",
+        description="誰將登上王座 👑",
+        color=discord.Color.gold()
+    )
+
+    medals = ["🥇", "🥈", "🥉"]
+    text = ""
+
+    for i, (uid, money) in enumerate(top10):
+        user = await bot.fetch_user(int(uid))
+        medal = medals[i] if i < 3 else f"{i+1}."
+        text += f"{medal} ✦ {user.display_name} ｜ 💰 {money}\n"
+
+    embed.add_field(name="🌌 星月排名", value=text, inline=False)
+
+    await interaction.followup.send(embed=embed)
 
 # 🎂 設定生日
-@bot.tree.command(name="設定生日", description="MM-DD")
+@bot.tree.command(name="設定生日")
 async def set_birthday(interaction: discord.Interaction, date: str):
 
     await interaction.response.defer()
@@ -120,29 +187,36 @@ async def set_birthday(interaction: discord.Interaction, date: str):
 
     await interaction.followup.send(f"🎂 設定成功：{date}")
 
-# 🎉 每日生日檢查
+# 🎉 生日提醒
 @tasks.loop(minutes=1)
 async def birthday_check():
 
     global last_birthday_check
 
     now = datetime.now(tz)
-    today_str = now.strftime("%Y-%m-%d")
-
-    if last_birthday_check == today_str:
-        return
 
     if now.hour != 8 or now.minute != 0:
         return
 
-    last_birthday_check = today_str
-
     today = now.strftime("%m-%d")
+
     c.execute("SELECT user_id FROM users WHERE birthday=?", (today,))
     users = c.fetchall()
 
     if not users:
         return
+
+    for (uid,) in users:
+        user = await bot.fetch_user(int(uid))
+
+        try:
+            await user.send("🎂 生日快樂！✨")
+        except:
+            pass
+
+# 🌸 歡迎系統
+@bot.event
+async def on_member_join(member):
 
     c.execute("SELECT value FROM settings WHERE key='welcome_channel'")
     channel_data = c.fetchone()
@@ -151,26 +225,28 @@ async def birthday_check():
         return
 
     channel = bot.get_channel(int(channel_data[0]))
+    if not channel:
+        return
 
-    for (uid,) in users:
-        user = await bot.fetch_user(int(uid))
+    count = member.guild.member_count
 
-        # 💌 私訊
-        try:
-            await user.send("🎂 生日快樂！")
-        except:
-            pass
+    embed = discord.Embed(
+        title="🌙 歡迎來到極曜月葵",
+        description=f"{member.mention} ✦ 你是第 {count} 位星月旅人",
+        color=discord.Color.from_rgb(186, 85, 211)
+    )
 
-        # 🌙 公開卡片
-        embed = discord.Embed(
-            title="🌙 Birthday Blessing",
-            description=f"{user.mention} 今天生日！",
-            color=discord.Color.purple()
-        )
+    embed.set_thumbnail(url=member.display_avatar.url)
 
-        await channel.send(embed=embed)
+    embed.set_image(
+        url="https://media.discordapp.net/attachments/1504831006090465320/1515773543286313229/IMG_1765.jpg"
+    )
 
-# 🌐 Render 假網站
+    embed.set_footer(text="極曜月葵 ✦ 歡迎儀式")
+
+    await channel.send(embed=embed)
+
+# 🌐 Render
 def run_web():
     port = int(os.environ.get("PORT", 10000))
     with TCPServer(("", port), SimpleHTTPRequestHandler) as httpd:
