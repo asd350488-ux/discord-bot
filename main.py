@@ -530,14 +530,13 @@ async def birthday_check():
 
     last_birthday_check = today_str
 
-
-
 import threading
 from http.server import SimpleHTTPRequestHandler
 from socketserver import TCPServer
+import os
 
 def run_web():
-    port = 10000
+    port = int(os.environ.get("PORT", 10000))
     with TCPServer(("", port), SimpleHTTPRequestHandler) as httpd:
         httpd.serve_forever()
 
