@@ -164,6 +164,96 @@ class BuyButton(discord.ui.Button):
             f"🛍️ 購買成功！**{self.name}**\n<a:emoji40:1510362334026268713> -{self.price}"
         )
 
+class DuelConfirm(discord.ui.View):
+    def __init__(self, challenger, opponent, amount):
+        super().__init__(timeout=30)
+        self.challenger = challenger
+        self.opponent = opponent
+        self.amount = amount
+
+    # ✅ 同意
+    @discord.ui.button(label="✅ 同意", style=discord.ButtonStyle.green)
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if interaction.user != self.opponent:
+            await interaction.response.send_message("❌ 這不是你的對賭", ephemeral=True)
+            return
+
+        user1 = str(self.challenger.id)
+        user2 = str(self.opponent.id)
+
+        # 💰 再檢查一次
+        c.execute("SELECT money FROM users WHERE user_id=?", (user1,))
+        m1 = c.fetchone()
+
+        c.execute("SELECT money FROM users WHERE user_id=?", (user2,))
+        m2 = c.fetchone()
+
+        if m1[0] < self.amount or m2[0] < self.amount:
+            await interaction.response.send_message("❌ 有人錢不夠", ephemeral=True)
+            return
+
+        # 🎲 決勝
+        roll1 = random.randint(1, 100)
+        roll2 = random.randint(1, 100)
+
+        if roll1 > roll2:
+            winner = user1
+            loser = user2
+            winner_name = self.challenger.mention
+        else:
+            winner = user2
+            loser = user1
+            winner_name = self.opponent.mention
+
+        # 💰 結算
+        c.execute("UPDATE users SET money = money + ? WHERE user_id=?", (self.amount, winner))
+        c.execute("UPDATE users SET money = money - ? WHERE user_id=?", (self.amount, loser))
+        conn.commit()
+
+        embed = discord.Embed(title="⚔️ 對賭結果", color=discord.Color.red())
+        embed.add_field(name="🎲 挑戰者", value=f"```{roll1}```")
+        embed.add_field(name="🎲 對手", value=f"```{roll2}```")
+        embed.add_field(name="🏆 勝者", value=winner_name)
+        embed.add_field(
+            name="<a:emoji40:1510362334026268713> 金額",
+            value=f"```{self.amount}```"
+        )
+
+        await interaction.response.edit_message(embed=embed, view=None)
+
+    # ❌ 拒絕
+    @discord.ui.button(label="❌ 拒絕", style=discord.ButtonStyle.red)
+    async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if interaction.user != self.opponent:
+            await interaction.response.send_message("❌ 這不是你的對賭", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="❌ 對賭被拒絕",
+            description=f"{self.opponent.mention} 拒絕了對賭",
+            color=discord.Color.greyple()
+        )
+
+        await interaction.response.edit_message(embed=embed, view=None)
+
+    # ⏳ 超時
+    async def on_timeout(self):
+
+        # ⚠️ 注意：這裡不能用 interaction
+        # 直接修改原訊息
+        for item in self.children:
+            item.disabled = True
+
+        try:
+            await self.message.edit(
+                content="⏳ 對賭已超時（30秒無回應）",
+                view=self
+            )
+        except:
+            pass
+
 # 🚀 啟動
 @bot.event
 async def on_ready():
@@ -177,7 +267,7 @@ async def on_ready():
 async def checkin(interaction: discord.Interaction):
 
     # 🔒 限制頻道
-    if interaction.channel.id != 1510910602736963655:
+    if interaction.channel.id != 1516120502127694027:
         await interaction.response.send_message(
             "❌ 請到指定簽到頻道使用此指令",
             ephemeral=True
@@ -382,7 +472,7 @@ async def on_message(message):
             color=discord.Color.from_rgb(186, 85, 211)
         )
 
-        level_channel = bot.get_channel(1510907002208129024)
+        level_channel = bot.get_channel(1516120288373506068)
 
         if level_channel:
             await level_channel.send(embed=embed)
@@ -498,7 +588,7 @@ async def birthday_check():
         return
 
     # 🎂 生日頻道（直接綁定）
-    channel = bot.get_channel(1510911621105582170)
+    channel = bot.get_channel(1516119757383008479)
 
     # 🔐 管理員頻道
     c.execute("SELECT value FROM settings WHERE key='admin_channel'")
@@ -753,12 +843,156 @@ async def delete_birthday(interaction: discord.Interaction):
 
     await interaction.response.send_message("🗑️ 生日資料已刪除", ephemeral=True)
 
+# 遊樂場比大小
+
+@bot.tree.command(name="猜大小")
+async def gamble(interaction: discord.Interaction, 金額: int, 選擇: str):
+
+    # 🔒 限制頻道
+    if interaction.channel.id != 1516120600928714752:
+        await interaction.response.send_message(
+            "❌ 請到指定賭博頻道使用",
+            ephemeral=True
+        )
+        return
+
+    user_id = str(interaction.user.id)
+
+    if 選擇 not in ["大", "小"]:
+        await interaction.response.send_message("❌ 請選擇 大 或 小")
+        return
+
+    if 金額 <= 0:
+        await interaction.response.send_message("❌ 金額必須大於0")
+        return
+
+    # 💰 查錢
+    c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
+    data = c.fetchone()
+
+    if not data:
+        await interaction.response.send_message("❌ 你還沒有帳號資料")
+        return
+
+    money = data[0]
+
+    if 金額 > money:
+        await interaction.response.send_message("❌ 努努幣不足")
+        return
+
+    # 🎲 骰子
+    dice = random.randint(1, 12)
+    result = "大" if dice >= 7 else "小"
+
+    win = (選擇 == result)
+
+    # 🎰 倍率
+    multiplier = 1
+    event_text = "普通勝利"
+
+    roll = random.random()
+
+    if roll < 0.05:
+        multiplier = 3
+        event_text = "💎 超級暴擊 x3"
+    elif roll < 0.20:
+        multiplier = 2
+        event_text = "🔥 暴擊 x2"
+    elif roll < 0.50:
+        multiplier = 1.5
+        event_text = "✨ 小幸運 x1.5"
+
+    if win:
+        reward = int(金額 * multiplier)
+        money += reward
+        result_text = f"{event_text}\n🎉 贏得 {reward} <a:emoji40:1510362334026268713>"
+    else:
+        money -= 金額
+        result_text = f"💔 輸了 {金額} <a:emoji40:1510362334026268713>"
+
+    # 💾 更新
+    c.execute("UPDATE users SET money=? WHERE user_id=?", (money, user_id))
+    conn.commit()
+
+    embed = discord.Embed(title="🎲 猜大小", color=discord.Color.purple())
+    embed.add_field(name="🎲 點數", value=f"```{dice}```")
+    embed.add_field(name="📊 結果", value=f"```{result}```")
+    embed.add_field(name="💰 結算", value=f"```{result_text}```")
+    embed.add_field(
+    name="<a:emoji40:1510362334026268713> 努努幣",
+    value=f"```{money}```",
+    inline=False
+)
+
+    await interaction.response.send_message(embed=embed)
+
+# 比大小玩家對賭
+
+@bot.tree.command(name="對賭")
+async def duel(interaction: discord.Interaction, 對手: discord.Member, 金額: int):
+
+    # 🔒 限制頻道
+    if interaction.channel.id != 1510908353122009198:
+        await interaction.response.send_message(
+            "❌ 請到指定賭博頻道使用",
+            ephemeral=True
+        )
+        return
+
+    user1 = str(interaction.user.id)
+    user2 = str(對手.id)
+
+    if 對手.bot:
+        await interaction.response.send_message("❌ 不能對機器人賭博")
+        return
+
+    if user1 == user2:
+        await interaction.response.send_message("❌ 不能跟自己賭")
+        return
+
+    if 金額 <= 0:
+        await interaction.response.send_message("❌ 金額錯誤")
+        return
+
+    # 💰 檢查金額
+    c.execute("SELECT money FROM users WHERE user_id=?", (user1,))
+    m1 = c.fetchone()
+
+    c.execute("SELECT money FROM users WHERE user_id=?", (user2,))
+    m2 = c.fetchone()
+
+    if not m1 or not m2:
+        await interaction.response.send_message("❌ 有人還沒資料")
+        return
+
+    if m1[0] < 金額 or m2[0] < 金額:
+        await interaction.response.send_message("❌ 有人錢不夠")
+        return
+
+    view = DuelConfirm(interaction.user, 對手, 金額)
+
+    embed = discord.Embed(
+        title="⚔️ 對賭邀請",
+        description=f"{對手.mention} 是否接受對賭？\n<a:emoji40:1510362334026268713> 金額：{金額}",
+        color=discord.Color.orange()
+    )
+
+    msg = await interaction.response.send_message(embed=embed, view=view)
+    view.message = await interaction.original_response()
+
 # 💼 打工
 cooldowns = {}
 
 @bot.tree.command(name="打工", description="賺取遊戲幣")
 async def work(interaction: discord.Interaction):
 
+    # 🔒 限制頻道
+    if interaction.channel.id != 1516120501704065094:
+        await interaction.response.send_message(
+            "❌ 請到指定打工頻道使用",
+            ephemeral=True
+        )
+        return
     user_id = str(interaction.user.id)
     now = datetime.now()
 
@@ -817,6 +1051,13 @@ async def work(interaction: discord.Interaction):
 @bot.tree.command(name="商店")
 async def shop(interaction: discord.Interaction):
 
+    # 🔒 限制頻道
+    if interaction.channel.id != 1516120281507434577:
+        await interaction.response.send_message(
+            "❌ 請到指定商店頻道使用",
+            ephemeral=True
+        )
+        return
     c.execute("SELECT item_id, name, price, stock, description, image FROM shop")
     items = c.fetchall()
 
