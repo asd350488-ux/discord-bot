@@ -23,6 +23,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 c = conn.cursor()
 
+# 👤 使用者資料表
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
@@ -253,6 +254,181 @@ class DuelConfirm(discord.ui.View):
             )
         except:
             pass
+class MoneyConfirm(discord.ui.View):
+    def __init__(self, interaction, 金額, 成員, 身分組, 全體):
+        super().__init__(timeout=30)
+        self.interaction = interaction
+        self.amount = 金額
+        self.member = 成員
+        self.role = 身分組
+        self.all = 全體
+
+    @discord.ui.button(label="✅ 確認發送", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message("❌ 這不是你的操作", ephemeral=True)
+            return
+
+        count = 0
+
+        # 💰 單人
+        if self.member:
+            user_id = str(self.member.id)
+
+            c.execute("INSERT INTO users (user_id, money) VALUES (?, 0) ON CONFLICT(user_id) DO NOTHING", (user_id,))
+            c.execute("UPDATE users SET money = money + ? WHERE user_id=?", (self.amount, user_id))
+
+            # 📜 紀錄
+            c.execute("""
+            INSERT INTO money_log (admin_id, target_id, amount, type, time)
+            VALUES (?, ?, ?, ?, ?)
+            """, (interaction.user.id, user_id, self.amount, "single", datetime.now().isoformat()))
+
+            count = 1
+
+        # 💰 身分組
+        elif self.role:
+            for member in self.role.members:
+                if member.bot:
+                    continue
+
+                user_id = str(member.id)
+
+                c.execute("INSERT INTO users (user_id, money) VALUES (?, 0) ON CONFLICT(user_id) DO NOTHING", (user_id,))
+                c.execute("UPDATE users SET money = money + ? WHERE user_id=?", (self.amount, user_id))
+
+                c.execute("""
+                INSERT INTO money_log (admin_id, target_id, amount, type, time)
+                VALUES (?, ?, ?, ?, ?)
+                """, (interaction.user.id, user_id, self.amount, "role", datetime.now().isoformat()))
+
+                count += 1
+
+        # 💰 全體
+        elif self.all:
+            for member in interaction.guild.members:
+                if member.bot:
+                    continue
+
+                user_id = str(member.id)
+
+                c.execute("INSERT INTO users (user_id, money) VALUES (?, 0) ON CONFLICT(user_id) DO NOTHING", (user_id,))
+                c.execute("UPDATE users SET money = money + ? WHERE user_id=?", (self.amount, user_id))
+
+                c.execute("""
+                INSERT INTO money_log (admin_id, target_id, amount, type, time)
+                VALUES (?, ?, ?, ?, ?)
+                """, (interaction.user.id, user_id, self.amount, "all", datetime.now().isoformat()))
+
+                count += 1
+
+        conn.commit()
+
+        embed = discord.Embed(
+            title="💰 發錢完成",
+            description=f"已發送 {self.amount} 努努幣\n共 {count} 人",
+            color=discord.Color.green()
+        )
+
+        await interaction.response.edit_message(embed=embed, view=None)
+
+    @discord.ui.button(label="❌ 取消", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message("❌ 這不是你的操作", ephemeral=True)
+            return
+
+        await interaction.response.edit_message(
+            content="❌ 已取消發送",
+            embed=None,
+            view=None
+        )
+
+try:
+    c.execute("ALTER TABLE users ADD COLUMN last_work TEXT")
+    conn.commit()
+except:
+    pass
+
+# 📜 發錢紀錄表
+c.execute("""
+CREATE TABLE IF NOT EXISTS money_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id TEXT,
+    target_id TEXT,
+    amount INTEGER,
+    type TEXT,
+    time TEXT
+)
+""")
+conn.commit()
+@bot.tree.command(name="發錢紀錄")
+async def money_log_view(interaction: discord.Interaction):
+
+    # 🔒 限制頻道
+    if interaction.channel.id != 1510930723924611163:
+        await interaction.response.send_message(
+            "❌ 請到管理員頻道使用",
+            ephemeral=True
+        )
+        return
+
+    # 🔒 管理員權限
+    ALLOWED_ROLES = [1504824446769172602,1504833586807967914,1504863173168074823,1504863370552152124,1504864390388776992,1505616537296310492]
+
+    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ 你沒有權限",
+            ephemeral=True
+        )
+        return
+
+    # 📜 查最近10筆
+    c.execute("""
+    SELECT admin_id, target_id, amount, type, time
+    FROM money_log
+    ORDER BY id DESC
+    LIMIT 10
+    """)
+    logs = c.fetchall()
+
+    if not logs:
+        await interaction.response.send_message("📭 沒有任何發錢紀錄")
+        return
+
+embed = discord.Embed(
+    title="📜 發錢紀錄（最近10筆）",
+    color=discord.Color.blue()
+)
+
+type_map = {
+    "single": "👤 單人",
+    "role": "👥 身分組",
+    "all": "🌍 全體"
+}
+
+for i, (admin_id, target_id, amount, log_type, time) in enumerate(logs):
+    if i >= 10:
+        break
+
+    admin = interaction.guild.get_member(int(admin_id))
+    target = interaction.guild.get_member(int(target_id))
+
+    admin_name = admin.mention if admin else admin_id
+    target_name = target.mention if target else target_id
+
+    dt = datetime.fromisoformat(time)
+    time_str = dt.strftime("%Y-%m-%d %H:%M")
+
+    embed.add_field(
+        name=f"💰 {amount} 努努幣",
+        value=f"👤 發送者：{admin_name}\n🎯 對象：{target_name}\n📌 類型：{type_map.get(log_type, log_type)}\n🕒 時間：{time_str}",
+        inline=False
+    )
+
+await interaction.response.send_message(embed=embed)
 
 # 🚀 啟動
 @bot.event
@@ -981,7 +1157,6 @@ async def duel(interaction: discord.Interaction, 對手: discord.Member, 金額:
     view.message = await interaction.original_response()
 
 # 💼 打工
-cooldowns = {}
 
 @bot.tree.command(name="打工", description="賺取遊戲幣")
 async def work(interaction: discord.Interaction):
@@ -996,17 +1171,26 @@ async def work(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     now = datetime.now()
 
-    # ⏳ 冷卻（60秒）
-    if user_id in cooldowns:
-        remaining = (cooldowns[user_id] - now).total_seconds()
-        if remaining > 0:
+    # ⏳ 冷卻檢查（1小時）
+    c.execute("SELECT last_work FROM users WHERE user_id=?", (user_id,))
+    data = c.fetchone()
+
+    if data and data[0]:
+        last_time = datetime.fromisoformat(data[0])
+        now_time = datetime.now()
+
+        diff = (now_time - last_time).total_seconds()
+
+        if diff < 3600:
+            remaining = int(3600 - diff)
+            minutes = remaining // 60
+            seconds = remaining % 60
+
             await interaction.response.send_message(
-                f"⏳ 請等待 {int(remaining)} 秒後再打工",
+                f"⏳ 還要 {minutes} 分 {seconds} 秒才能再打工",
                 ephemeral=True
             )
             return
-
-    cooldowns[user_id] = now + timedelta(seconds=60)
 
     # 🎲 事件
     roll = random.random()
@@ -1019,7 +1203,7 @@ async def work(interaction: discord.Interaction):
         text = f"🌟 老闆心情很好\n<a:emoji40:1510362334026268713> +{money}"
     elif roll < 0.95:
         money = -random.randint(100, 300)
-        text = f"💥 你打翻東西被扣錢\n<a:emoji40:1510362334026268713> +{money}"
+        text = f"💥 你打翻東西被扣錢\n<a:emoji40:1510362334026268713> {money}"
     else:
         money = random.randint(1000, 2000)
         text = f"💎 發現隱藏獎勵！\n暴擊 +<a:emoji40:1510362334026268713> +{money}"
@@ -1036,14 +1220,19 @@ async def work(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="💼 打工結果",
-        description=text,
+        description=f"```{text}```",
         color=discord.Color.green()
     )
 
     embed.add_field(
-    name="<a:emoji40:1510362334026268713> 努努幣",
-    value=f"```{new_money}```"
-)
+        name="<a:emoji40:1510362334026268713> 努努幣",
+        value=f"```{new_money}```"
+    )
+
+    # 🕒 更新打工時間（要在這裡）
+    now_time = datetime.now().isoformat()
+    c.execute("UPDATE users SET last_work=? WHERE user_id=?", (now_time, user_id))
+    conn.commit()
 
     await interaction.response.send_message(embed=embed)
 
@@ -1211,6 +1400,57 @@ async def give_item(interaction: discord.Interaction, member: discord.Member, it
     await interaction.response.send_message(
         f"🎁 成功送出 {item_name} ×{amount} 給 {member.mention}"
     )
+
+# ⚙️ 增加遊戲幣
+
+@bot.tree.command(name="發錢")
+async def give_money(
+    interaction: discord.Interaction,
+    金額: int,
+    成員: discord.Member = None,
+    身分組: discord.Role = None,
+    全體: bool = False
+):
+
+    await interaction.response.defer()
+
+    # 🔒 限制頻道
+    if interaction.channel.id != 1510930723924611163:
+        await interaction.followup.send("❌ 請到管理員頻道使用", ephemeral=True)
+        return
+
+    # 🔒 管理員權限
+    ALLOWED_ROLES = [1504824446769172602,1504833586807967914,1504863173168074823,1504863370552152124,1504864390388776992,1505616537296310492]
+
+    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+        await interaction.followup.send("❌ 你沒有權限", ephemeral=True)
+        return
+
+    if 金額 <= 0:
+        await interaction.followup.send("❌ 金額錯誤")
+        return
+
+    # ❗ 防止多選
+    selected = sum([成員 is not None, 身分組 is not None, 全體])
+    if selected > 1:
+        await interaction.followup.send("❌ 請只選擇一種發送方式", ephemeral=True)
+        return
+
+    # ❗ 沒選
+    if not 成員 and not 身分組 and not 全體:
+        await interaction.followup.send("❌ 請選擇發送對象", ephemeral=True)
+        return
+
+    # ✅ 確認按鈕
+    view = MoneyConfirm(interaction, 金額, 成員, 身分組, 全體)
+
+    embed = discord.Embed(
+        title="⚠️ 發錢確認",
+        description=f"是否確定發送 {金額} 努努幣？",
+        color=discord.Color.orange()
+    )
+
+    await interaction.followup.send(embed=embed, view=view)
 
 # ⚙️ 設定歡迎訊息
 @bot.tree.command(name="設定歡迎訊息")
