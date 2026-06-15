@@ -7,6 +7,7 @@ import pytz
 
 # 🌏 台灣時間
 tz = pytz.timezone("Asia/Taipei")
+last_birthday_check = None
 
 # 🔧 intents
 intents = discord.Intents.default()
@@ -27,10 +28,15 @@ CREATE TABLE IF NOT EXISTS users (
     money INTEGER DEFAULT 0,
     checkin_total INTEGER DEFAULT 0,
     checkin_streak INTEGER DEFAULT 0,
-    last_checkin TEXT
+    last_checkin TEXT,
+    birthday TEXT
 )
 """)
-
+try:
+    c.execute("ALTER TABLE users ADD COLUMN birthday TEXT")
+    conn.commit()
+except:
+    pass
 # ⚙️ 設定資料表
 c.execute("""
 CREATE TABLE IF NOT EXISTS settings (
@@ -45,8 +51,9 @@ conn.commit()
 @bot.event
 async def on_ready():
     print(f"已登入：{bot.user}")
-    await bot.tree.sync()
+    await_bot.tree.sync()
 
+birthday_check.start()
 # 🐰 簽到
 @bot.tree.command(name="簽到", description="每日簽到（00:00重置）")
 async def checkin(interaction: discord.Interaction):
@@ -188,6 +195,150 @@ async def wallet(interaction: discord.Interaction, member: discord.Member = None
     except Exception as e:
         print("錯誤：", e)
         await interaction.followup.send("❌ 發生錯誤，請聯絡管理員")
+
+#  生日
+
+@bot.tree.command(name="設定生日", description="設定你的生日（格式：MM-DD）")
+async def set_birthday(interaction: discord.Interaction, date: str):
+
+    await interaction.response.defer()
+
+    try:
+        user_id = str(interaction.user.id)
+
+        # 檢查格式
+        try:
+            datetime.strptime(date, "%m-%d")
+        except:
+            await interaction.followup.send("❌ 格式錯誤！請用 MM-DD（例如 05-20）")
+            return
+
+        c.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
+        if not c.fetchone():
+            c.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
+
+        c.execute("UPDATE users SET birthday=? WHERE user_id=?", (date, user_id))
+        conn.commit()
+
+        embed = discord.Embed(
+            title="🎂 生日設定成功",
+            description=f"你的生日已設定為 **{date}**",
+            color=discord.Color.pink()
+        )
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print("錯誤：", e)
+        await interaction.followup.send("❌ 發生錯誤")
+
+
+@bot.tree.command(name="我的生日", description="查看你的生日")
+async def my_birthday(interaction: discord.Interaction):
+
+    await interaction.response.defer()
+
+    try:
+        user_id = str(interaction.user.id)
+
+        c.execute("SELECT birthday FROM users WHERE user_id=?", (user_id,))
+        data = c.fetchone()
+
+        if data and data[0]:
+            await interaction.followup.send(f"🎂 你的生日是：**{data[0]}**")
+        else:
+            await interaction.followup.send("❌ 你還沒設定生日！用 /設定生日")
+
+    except Exception as e:
+        print("錯誤：", e)
+        await interaction.followup.send("❌ 發生錯誤")
+@tasks.loop(minutes=1)
+async def birthday_check():
+
+    now = datetime.now(tz)
+
+    # 🎯 只在 08:00 觸發
+    if now.hour != 8 or now.minute != 0:
+        return
+
+    today = now.strftime("%m-%d")
+
+    # 找今天生日的人
+    c.execute("SELECT user_id FROM users WHERE birthday=?", (today,))
+    users = c.fetchall()
+
+    if not users:
+        return
+
+    # 🔍 取得頻道
+    c.execute("SELECT value FROM settings WHERE key='welcome_channel'")
+    channel_data = c.fetchone()
+
+    if not channel_data:
+        return
+
+    channel = bot.get_channel(int(channel_data[0]))
+    if not channel:
+        return
+
+    for (user_id,) in users:
+        user = await bot.fetch_user(int(user_id))
+# 💌 私訊祝福
+try:
+    dm_embed = discord.Embed(
+        title="🎂 生日快樂",
+        description="今天是屬於你的日子 ✨\n願所有溫柔都降臨在你身上 🌙",
+        color=discord.Color.pink()
+    )
+
+    dm_embed.set_thumbnail(url=user.display_avatar.url)
+    dm_embed.set_footer(text="極曜月葵 ✦ 祝你生日快樂")
+
+    await user.send(embed=dm_embed)
+
+except:
+    pass  # 如果對方關私訊就略過
+
+
+       embed = discord.Embed(
+    title="🌙 𝑩𝒊𝒓𝒕𝒉𝒅𝒂𝒚 𝑩𝒍𝒆𝒔𝒔𝒊𝒏𝒈",
+    description=f"✨ 今天是 {user.mention} 的誕生日 ✨\n\n願星光與月影都為你停留 🌙",
+    color=discord.Color.from_rgb(186, 85, 211)
+)
+
+embed.set_author(
+    name=f"{user.display_name} ✦ 星月之子",
+    icon_url=user.display_avatar.url
+)
+
+embed.set_thumbnail(url=user.display_avatar.url)
+
+embed.add_field(
+    name="🎂 今日主角",
+    value=user.mention,
+    inline=True
+)
+
+embed.add_field(
+    name="🌸 特別日",
+    value="生日祝福進行中",
+    inline=True
+)
+
+embed.add_field(
+    name="🎁 願望",
+    value="願你被溫柔以待 ✨",
+    inline=False
+)
+
+# 🌌 背景圖（可以換你自己的）
+embed.set_image(
+    url="https://media.discordapp.net/attachments/1504831006090465320/1515773543286313229/IMG_1765.jpg"
+)
+
+embed.set_footer(text="極曜月葵 ✦ 生日祝福系統")
+
+# 💰 富豪排行榜
 
 @bot.tree.command(name="排行榜", description="查看富豪排行榜")
 async def leaderboard(interaction: discord.Interaction):
@@ -343,7 +494,7 @@ async def on_member_join(member):
         inline=False
     )
 
-    # 🌌 圖片（你剛剛那張可以放這）
+    # 🌌 圖片
     embed.set_thumbnail(url=member.display_avatar.url)
 
     embed.set_image(
@@ -357,5 +508,39 @@ async def on_member_join(member):
 
     await channel.send(embed=embed)
 
+
+from discord.ext import tasks
 import os
+
+@tasks.loop(minutes=1)
+async def birthday_check():
+
+    global last_birthday_check
+
+    now = datetime.now(tz)
+
+    # ❗避免同一天重複
+    today_str = now.strftime("%Y-%m-%d")
+
+    if last_birthday_check == today_str:
+        return
+
+    if now.hour != 8 or now.minute != 0:
+        return
+
+    last_birthday_check = today_str
+
+
+
+import threading
+from http.server import SimpleHTTPRequestHandler
+from socketserver import TCPServer
+
+def run_web():
+    port = 10000
+    with TCPServer(("", port), SimpleHTTPRequestHandler) as httpd:
+        httpd.serve_forever()
+
+threading.Thread(target=run_web).start()
+
 bot.run(os.getenv("TOKEN"))
