@@ -299,7 +299,6 @@ try:
 except:
     pass  # 如果對方關私訊就略過
 
-
        embed = discord.Embed(
     title="🌙 𝑩𝒊𝒓𝒕𝒉𝒅𝒂𝒚 𝑩𝒍𝒆𝒔𝒔𝒊𝒏𝒈",
     description=f"✨ 今天是 {user.mention} 的誕生日 ✨\n\n願星光與月影都為你停留 🌙",
