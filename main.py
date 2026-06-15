@@ -167,6 +167,24 @@ async def leaderboard(interaction: discord.Interaction):
 
     await interaction.followup.send(embed=embed)
 
+# ⚙️ 設定歡迎頻道
+@bot.tree.command(name="設定歡迎頻道", description="設定歡迎訊息頻道")
+async def set_welcome_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+
+    c.execute("REPLACE INTO settings (key, value) VALUES ('welcome_channel', ?)", (str(channel.id),))
+    conn.commit()
+
+    await interaction.response.send_message(f"✅ 已設定歡迎頻道：{channel.mention}")
+
+# ⚙️ 設定歡迎訊息
+@bot.tree.command(name="設定歡迎訊息", description="設定歡迎內容")
+async def set_welcome_message(interaction: discord.Interaction, message: str):
+
+    c.execute("REPLACE INTO settings (key, value) VALUES ('welcome_message', ?)", (message,))
+    conn.commit()
+
+    await interaction.response.send_message("✅ 歡迎訊息已更新")
+
 # 🎂 設定生日
 @bot.tree.command(name="設定生日")
 async def set_birthday(interaction: discord.Interaction, date: str):
