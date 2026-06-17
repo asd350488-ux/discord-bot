@@ -85,13 +85,21 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 c = conn.cursor()
 
-try:
-    c.execute(
-        "ALTER TABLE users ADD COLUMN last_adventure TEXT"
-    )
-    conn.commit()
-except:
-    pass
+c.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    money INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1,
+    exp INTEGER DEFAULT 0,
+    checkin_total INTEGER DEFAULT 0,
+    checkin_streak INTEGER DEFAULT 0,
+    last_checkin TEXT,
+    birthday TEXT,
+    birth_year INTEGER,
+    last_work TEXT,
+    last_adventure TEXT
+)
+""")
 
 class DuelView(discord.ui.View):
 
