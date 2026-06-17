@@ -1161,9 +1161,6 @@ async def birthday_check():
             await asyncio.sleep(0.8)
             await msg.edit(content=None, embed=embed)
 
-        except:
-            pass
-
     # 🔔 明天提醒
     tomorrow = (now + timedelta(days=1)).strftime("%m-%d")
 
