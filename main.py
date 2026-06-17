@@ -365,6 +365,13 @@ CREATE TABLE IF NOT EXISTS daily_event (
 )
 """)
 
+c.execute("""
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+)
+""")
+
 conn.commit()
 
 class BuyButton(discord.ui.Button):
