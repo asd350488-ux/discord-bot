@@ -2694,12 +2694,6 @@ async def adventure(
         embed=embed
     )
 
-# 💣 黑市投資
-@bot.tree.command(name="黑市投資")
-async def black_market(
-    interaction: discord.Interaction,
-    amount: int
-):
 
     if interaction.channel.id != BLACKMARKET_CHANNEL:
 
