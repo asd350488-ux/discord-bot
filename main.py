@@ -62,6 +62,7 @@ MOOD_CHANNEL         = 1516422869104595036  # 🎯 猜心情
 LAB_CHANNEL          = 1516422777995923487  # 🧪 實驗
 LIFEBET_CHANNEL      = 1516422713109909664  # 🎰 賭命
 ROB_CHANNEL          = 1516429756428718100  # 🗡 搶劫
+GANG_CHANNEL = 1516429756428718100
 # 💰 努努幣
 NUNU_EMOJI = "<:nunu:1516703946012496025>"
 
@@ -84,6 +85,24 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # 💾 DB
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 c = conn.cursor()
+
+# 🗡 黑幫系統
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS wanted (
+    user_id TEXT PRIMARY KEY,
+    level INTEGER DEFAULT 0
+)
+""")
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS jail (
+    user_id TEXT PRIMARY KEY,
+    release_time INTEGER
+)
+""")
+
+conn.commit()
 
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
@@ -299,6 +318,26 @@ class DuelView(discord.ui.View):
             view=None
         )
 
+class RobView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(
+        label="🗡 再搶一次",
+        style=discord.ButtonStyle.danger
+    )
+    async def rob_again(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        await interaction.response.send_message(
+            "🌙 請重新使用 /搶劫",
+            ephemeral=True
+        )
+
 class ShopView(discord.ui.View):
     def __init__(self, items, page=0):
         super().__init__(timeout=60)
@@ -310,6 +349,51 @@ class ShopView(discord.ui.View):
         start = self.page * self.per_page
         end = start + self.per_page
         return self.items[start:end]
+
+async def get_wanted_level(user_id):
+
+    c.execute(
+        "SELECT level FROM wanted WHERE user_id=?",
+        (user_id,)
+    )
+
+    data = c.fetchone()
+
+    return data[0] if data else 0
+
+
+async def add_wanted(user_id):
+
+    c.execute(
+        "SELECT level FROM wanted WHERE user_id=?",
+        (user_id,)
+    )
+
+    data = c.fetchone()
+
+    if data:
+
+        c.execute(
+            """
+            UPDATE wanted
+            SET level = level + 1
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
+
+    else:
+
+        c.execute(
+            """
+            INSERT INTO wanted
+            (user_id, level)
+            VALUES (?, 1)
+            """,
+            (user_id,)
+        )
+
+    conn.commit()
 
     async def update(self, interaction):
 
@@ -366,22 +450,6 @@ CREATE TABLE IF NOT EXISTS money_log (
 """)
 
 c.execute("""
-CREATE TABLE IF NOT EXISTS wanted (
-    user_id TEXT PRIMARY KEY,
-    level INTEGER DEFAULT 0
-)
-""")
-
-c.execute("""
-CREATE TABLE IF NOT EXISTS jail (
-    user_id TEXT PRIMARY KEY,
-    release_time INTEGER
-)
-""")
-
-conn.commit()
-
-c.execute("""
 CREATE TABLE IF NOT EXISTS daily_event (
     date TEXT PRIMARY KEY,
     game TEXT,
@@ -397,270 +465,6 @@ CREATE TABLE IF NOT EXISTS settings (
 """)
 
 conn.commit()
-
-@bot.tree.command(name="搶劫")
-@app_commands.describe(
-    amount="想搶的金額"
-)
-async def rob(
-    interaction: discord.Interaction,
-    amount: int
-):
-
-    if interaction.channel.id != ROB_CHANNEL:
-
-        embed = discord.Embed(
-            title="🗡 黑市搶劫",
-            description=f"請前往 <#{ROB_CHANNEL}> 使用",
-            color=discord.Color.red()
-        )
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
-        return
-
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 金額必須大於 0",
-            ephemeral=True
-        )
-        return
-
-    user_id = str(interaction.user.id)
-
-    # 🔒 坐牢檢查
-    c.execute(
-        """
-        SELECT release_time
-        FROM jail
-        WHERE user_id=?
-        """,
-        (user_id,)
-    )
-
-    jail_data = c.fetchone()
-
-    if jail_data:
-
-        if int(time.time()) < jail_data[0]:
-
-            remain = jail_data[0] - int(time.time())
-
-            await interaction.response.send_message(
-                f"🔒 你正在坐牢中\n剩餘 {remain//60} 分鐘",
-                ephemeral=True
-            )
-            return
-
-        else:
-
-            c.execute(
-                """
-                DELETE FROM jail
-                WHERE user_id=?
-                """,
-                (user_id,)
-            )
-
-            conn.commit()
-
-    c.execute(
-        """
-        SELECT money
-        FROM users
-        WHERE user_id=?
-        """,
-        (user_id,)
-    )
-
-    data = c.fetchone()
-
-    if not data:
-
-        await interaction.response.send_message(
-            "❌ 找不到帳戶",
-            ephemeral=True
-        )
-        return
-
-    money = data[0]
-
-    if money < amount:
-
-        await interaction.response.send_message(
-            "❌ 努努幣不足",
-            ephemeral=True
-        )
-        return
-
-    # 🎬 動畫
-
-    await interaction.response.send_message(
-        "🗡 潛入黑市據點..."
-    )
-
-    msg = await interaction.original_response()
-
-    await asyncio.sleep(1.2)
-
-    await msg.edit(
-        content="🔍 尋找金庫..."
-    )
-
-    await asyncio.sleep(1.2)
-
-    await msg.edit(
-        content="💰 正在搬運戰利品..."
-    )
-
-    await asyncio.sleep(1.2)
-
-    wanted = await get_wanted_level(user_id)
-
-    success_rate = max(
-        0.20,
-        0.60 - (wanted * 0.05)
-    )
-
-    roll = random.random()
-
-    # ✅ 成功
-    if roll < success_rate:
-
-        jackpot = random.randint(1, 100)
-
-        if jackpot <= 5:
-
-            gain = random.randint(
-                amount * 5,
-                amount * 10
-            )
-
-            result = "🏆 黑市金庫"
-
-        else:
-
-            gain = random.randint(
-                amount,
-                amount * 2
-            )
-
-            result = "💰 搶劫成功"
-
-        money += gain
-
-        c.execute(
-            """
-            UPDATE users
-            SET money=?
-            WHERE user_id=?
-            """,
-            (
-                money,
-                user_id
-            )
-        )
-
-        await add_wanted(user_id)
-
-    else:
-
-        fine = int(amount * 1.5)
-
-        money -= fine
-
-        if money < 0:
-            money = 0
-
-        c.execute(
-            """
-            UPDATE users
-            SET money=?
-            WHERE user_id=?
-            """,
-            (
-                money,
-                user_id
-            )
-        )
-
-        release_time = (
-            int(time.time())
-            + 600
-        )
-
-        c.execute(
-            """
-            INSERT OR REPLACE INTO jail
-            VALUES (?, ?)
-            """,
-            (
-                user_id,
-                release_time
-            )
-        )
-
-        result = "👮 被逮捕"
-        gain = -fine
-
-    conn.commit()
-
-    embed = discord.Embed(
-        title="🗡 黑市搶劫結果",
-        color=discord.Color.red()
-    )
-
-    embed.set_author(
-        name=interaction.user.display_name,
-        icon_url=interaction.user.display_avatar.url
-    )
-
-    embed.add_field(
-        name="🚨 通緝等級",
-        value=f"`{await get_wanted_level(user_id)}`",
-        inline=False
-    )
-
-    embed.add_field(
-        name="📜 結果",
-        value=f"```{result}```",
-        inline=False
-    )
-
-    if gain >= 0:
-
-        embed.add_field(
-            name="🎉 本次獲得",
-            value=f"{NUNU_EMOJI} `{gain:,}`",
-            inline=False
-        )
-
-    else:
-
-        embed.add_field(
-            name="💸 罰款",
-            value=f"{NUNU_EMOJI} `{abs(gain):,}`",
-            inline=False
-        )
-
-    embed.add_field(
-        name="🏦 錢包餘額",
-        value=f"{NUNU_EMOJI} `{money:,}`",
-        inline=False
-    )
-
-    embed.set_footer(
-        text="極曜月葵 ✦ 黑市搶劫"
-    )
-
-    await msg.edit(
-        content=None,
-        embed=embed,
-        view=RobView()
-    )
 
 class BuyButton(discord.ui.Button):
     def __init__(self, item_id, price, name):
@@ -2694,659 +2498,6 @@ async def adventure(
         embed=embed
     )
 
-
-    if interaction.channel.id != BLACKMARKET_CHANNEL:
-
-        embed = discord.Embed(
-            title="💣 黑市投資",
-            description=f"請前往 <#{BLACKMARKET_CHANNEL}> 使用投資",
-            color=discord.Color.dark_red()
-        )
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
-        return
-
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 投資金額必須大於 0",
-            ephemeral=True
-        )
-        return
-
-    user_id = str(interaction.user.id)
-
-    c.execute(
-        "SELECT money FROM users WHERE user_id=?",
-        (user_id,)
-    )
-
-    data = c.fetchone()
-
-    if not data:
-
-        await interaction.response.send_message(
-            "❌ 找不到帳戶資料",
-            ephemeral=True
-        )
-        return
-
-    money = data[0]
-
-    if money < amount:
-
-        await interaction.response.send_message(
-            "❌ 努努幣不足",
-            ephemeral=True
-        )
-        return
-
-    roll = random.randint(1, 100)
-
-    if roll <= 5:
-
-        title = "🚀 財團收購"
-        reward = amount * 10
-
-    elif roll <= 20:
-
-        title = "💎 內線消息"
-        reward = amount * 3
-
-    elif roll <= 50:
-
-        title = "📈 小賺一筆"
-        reward = int(amount * 1.5)
-
-    elif roll <= 80:
-
-        title = "📉 市場震盪"
-        reward = amount
-
-    elif roll <= 95:
-
-        title = "💀 詐騙跑路"
-        reward = 0
-
-    else:
-
-        title = "☠️ 黑市崩盤"
-        reward = -amount
-
-    money = money - amount + reward
-
-    if money < 0:
-        money = 0
-
-    c.execute(
-        """
-        UPDATE users
-        SET money=?
-        WHERE user_id=?
-        """,
-        (
-            money,
-            user_id
-        )
-    )
-
-    conn.commit()
-
-    net = reward - amount
-
-    embed = discord.Embed(
-        title="💣 星月黑市",
-        color=discord.Color.dark_red()
-    )
-
-    embed.set_author(
-        name=interaction.user.display_name,
-        icon_url=interaction.user.display_avatar.url
-    )
-
-    embed.add_field(
-        name="📊 投資結果",
-        value=f"```{title}```",
-        inline=False
-    )
-
-    if net >= 0:
-
-        embed.add_field(
-            name="🎉 淨收益",
-            value=f"{NUNU_EMOJI} `+{net:,}`",
-            inline=False
-        )
-
-    else:
-
-        embed.add_field(
-            name="💸 淨損失",
-            value=f"{NUNU_EMOJI} `-{abs(net):,}`",
-            inline=False
-        )
-
-    embed.add_field(
-        name="💰 錢包餘額",
-        value=f"{NUNU_EMOJI} `{money:,}`",
-        inline=False
-    )
-
-    embed.set_footer(
-        text="極曜月葵 ✦ 黑市交易所"
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
-
-# 🎯 猜心情
-@bot.tree.command(name="猜心情")
-async def mood_game(
-    interaction: discord.Interaction,
-    mood: str,
-    amount: int
-):
-
-    if interaction.channel.id != MOOD_CHANNEL:
-
-        embed = discord.Embed(
-            title="🎯 月神心情屋",
-            description=f"請前往 <#{MOOD_CHANNEL}> 使用猜心情",
-            color=discord.Color.magenta()
-        )
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
-        return
-
-    moods = [
-        "開心",
-        "生氣",
-        "想睡",
-        "難過",
-        "發瘋"
-    ]
-
-    if mood not in moods:
-
-        await interaction.response.send_message(
-            "❌ 可選：開心、生氣、想睡、難過、發瘋",
-            ephemeral=True
-        )
-        return
-
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 金額必須大於0",
-            ephemeral=True
-        )
-        return
-
-    user_id = str(interaction.user.id)
-
-    c.execute(
-        "SELECT money FROM users WHERE user_id=?",
-        (user_id,)
-    )
-
-    data = c.fetchone()
-
-    if not data:
-
-        await interaction.response.send_message(
-            "❌ 找不到帳戶資料",
-            ephemeral=True
-        )
-        return
-
-    money = data[0]
-
-    if money < amount:
-
-        await interaction.response.send_message(
-            "❌ 努努幣不足",
-            ephemeral=True
-        )
-        return
-
-    real_mood = random.choice(moods)
-
-    special = random.randint(1,100)
-
-    # 🎉 猜中
-    if mood == real_mood:
-
-        result = "🎉 猜中了"
-        reward = amount * 3
-
-    else:
-
-        if special <= 5:
-
-            result = "🌙 月神偏愛"
-            reward = amount
-
-        elif special >= 96:
-
-            result = "💀 月神暴怒"
-            reward = -amount
-
-        else:
-
-            result = "❌ 猜錯了"
-            reward = 0
-
-    money = money - amount + reward
-
-    if money < 0:
-        money = 0
-
-    c.execute(
-        """
-        UPDATE users
-        SET money=?
-        WHERE user_id=?
-        """,
-        (
-            money,
-            user_id
-        )
-    )
-
-    conn.commit()
-
-    net = reward - amount
-
-    embed = discord.Embed(
-        title="🎯 月神心情屋",
-        color=discord.Color.fuchsia()
-    )
-
-    embed.set_author(
-        name=interaction.user.display_name,
-        icon_url=interaction.user.display_avatar.url
-    )
-
-    embed.add_field(
-        name="💭 你的猜測",
-        value=f"```{mood}```",
-        inline=True
-    )
-
-    embed.add_field(
-        name="🌙 真實心情",
-        value=f"```{real_mood}```",
-        inline=True
-    )
-
-    embed.add_field(
-        name="✨ 結果",
-        value=f"```{result}```",
-        inline=False
-    )
-
-    if net >= 0:
-
-        embed.add_field(
-            name="🎉 淨收益",
-            value=f"{NUNU_EMOJI} `+{net:,}`",
-            inline=False
-        )
-
-    else:
-
-        embed.add_field(
-            name="💸 淨損失",
-            value=f"{NUNU_EMOJI} `-{abs(net):,}`",
-            inline=False
-        )
-
-    embed.add_field(
-        name="💰 錢包餘額",
-        value=f"{NUNU_EMOJI} `{money:,}`",
-        inline=False
-    )
-
-    embed.set_footer(
-        text="極曜月葵 ✦ 月神心情屋"
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
-
-# 🧪 實驗
-@bot.tree.command(name="實驗")
-async def experiment(
-    interaction: discord.Interaction,
-    amount: int
-):
-
-    if interaction.channel.id != LAB_CHANNEL:
-
-        embed = discord.Embed(
-            title="🧪 禁忌實驗室",
-            description=f"請前往 <#{LAB_CHANNEL}> 使用實驗",
-            color=discord.Color.teal()
-        )
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
-        return
-
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 金額必須大於 0",
-            ephemeral=True
-        )
-        return
-
-    user_id = str(interaction.user.id)
-
-    c.execute(
-        "SELECT money FROM users WHERE user_id=?",
-        (user_id,)
-    )
-
-    data = c.fetchone()
-
-    if not data:
-
-        await interaction.response.send_message(
-            "❌ 找不到帳戶資料",
-            ephemeral=True
-        )
-        return
-
-    money = data[0]
-
-    if money < amount:
-
-        await interaction.response.send_message(
-            "❌ 努努幣不足",
-            ephemeral=True
-        )
-        return
-
-    roll = random.randint(1, 100)
-
-    if roll == 1:
-
-        title = "🌌 神之造物"
-        reward = amount * 20
-        new_money = money - amount + reward
-
-    elif roll <= 5:
-
-        title = "⚡ 超級成功"
-        reward = amount * 10
-        new_money = money - amount + reward
-
-    elif roll <= 20:
-
-        title = "🧬 成功"
-        reward = amount * 5
-        new_money = money - amount + reward
-
-    elif roll <= 50:
-
-        title = "✨ 穩定反應"
-        reward = amount * 2
-        new_money = money - amount + reward
-
-    elif roll <= 80:
-
-        title = "💨 實驗失敗"
-        reward = 0
-        new_money = money - amount
-
-    elif roll <= 95:
-
-        title = "☠️ 實驗爆炸"
-        reward = -amount
-        new_money = money - (amount * 2)
-
-    else:
-
-        title = "💀 虛空湮滅"
-        reward = 0
-        new_money = 0
-
-    if new_money < 0:
-        new_money = 0
-
-    c.execute(
-        """
-        UPDATE users
-        SET money=?
-        WHERE user_id=?
-        """,
-        (
-            new_money,
-            user_id
-        )
-    )
-
-    conn.commit()
-
-    embed = discord.Embed(
-        title="🧪 禁忌實驗室",
-        color=discord.Color.teal()
-    )
-
-    embed.set_author(
-        name=interaction.user.display_name,
-        icon_url=interaction.user.display_avatar.url
-    )
-
-    embed.add_field(
-        name="⚗️ 實驗結果",
-        value=f"```{title}```",
-        inline=False
-    )
-
-    if title == "💀 虛空湮滅":
-
-        embed.add_field(
-            name="🌑 結果",
-            value="你的所有努努幣被虛空吞噬了...",
-            inline=False
-        )
-
-    elif new_money >= money:
-
-        embed.add_field(
-            name="🎉 收益",
-            value=f"{NUNU_EMOJI} `+{new_money - money:,}`",
-            inline=False
-        )
-
-    else:
-
-        embed.add_field(
-            name="💸 損失",
-            value=f"{NUNU_EMOJI} `-{money - new_money:,}`",
-            inline=False
-        )
-
-    embed.add_field(
-        name="💰 錢包餘額",
-        value=f"{NUNU_EMOJI} `{new_money:,}`",
-        inline=False
-    )
-
-    embed.set_footer(
-        text="極曜月葵 ✦ 禁忌實驗室"
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
-
-# 🎰 賭命
-@bot.tree.command(name="賭命")
-async def gamble_life(
-    interaction: discord.Interaction,
-    amount: int
-):
-
-    if interaction.channel.id != LIFE_CHANNEL:
-
-        embed = discord.Embed(
-            title="🎰 命運審判所",
-            description=f"請前往 <#{LIFE_CHANNEL}> 使用賭命",
-            color=discord.Color.dark_purple()
-        )
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
-        return
-
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 金額必須大於0",
-            ephemeral=True
-        )
-        return
-
-    user_id = str(interaction.user.id)
-
-    c.execute(
-        "SELECT money FROM users WHERE user_id=?",
-        (user_id,)
-    )
-
-    data = c.fetchone()
-
-    if not data:
-
-        await interaction.response.send_message(
-            "❌ 找不到帳戶資料",
-            ephemeral=True
-        )
-        return
-
-    money = data[0]
-
-    if money < amount:
-
-        await interaction.response.send_message(
-            "❌ 努努幣不足",
-            ephemeral=True
-        )
-        return
-
-    fate = random.randint(1, 100)
-
-    # 🌙 活下來
-    if fate <= 50:
-
-        title = "🌙 命運眷顧"
-        new_money = money + amount
-
-        result_text = (
-            f"{NUNU_EMOJI} `+{amount:,}`"
-        )
-
-    else:
-
-        special = random.randint(1,100)
-
-        # 🌌 月神憐憫
-        if special == 1:
-
-            title = "🌌 月神憐憫"
-            new_money = money
-
-            result_text = (
-                "奇蹟發生了，本金返還"
-            )
-
-        # ☠️ 虛空吞噬
-        elif special == 100:
-
-            title = "☠️ 虛空吞噬"
-            new_money = money - (amount * 2)
-
-            if new_money < 0:
-                new_money = 0
-
-            result_text = (
-                f"{NUNU_EMOJI} `-{amount*2:,}`"
-            )
-
-        else:
-
-            title = "💀 命運終結"
-            new_money = money - amount
-
-            result_text = (
-                f"{NUNU_EMOJI} `-{amount:,}`"
-            )
-
-    c.execute(
-        """
-        UPDATE users
-        SET money=?
-        WHERE user_id=?
-        """,
-        (
-            new_money,
-            user_id
-        )
-    )
-
-    conn.commit()
-
-    embed = discord.Embed(
-        title="🎰 命運審判所",
-        color=discord.Color.dark_purple()
-    )
-
-    embed.set_author(
-        name=interaction.user.display_name,
-        icon_url=interaction.user.display_avatar.url
-    )
-
-    embed.add_field(
-        name="⚖️ 命運結果",
-        value=f"```{title}```",
-        inline=False
-    )
-
-    embed.add_field(
-        name="📜 結算",
-        value=result_text,
-        inline=False
-    )
-
-    embed.add_field(
-        name="💰 錢包餘額",
-        value=f"{NUNU_EMOJI} `{new_money:,}`",
-        inline=False
-    )
-
-    embed.set_footer(
-        text="極曜月葵 ✦ 命運審判所"
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
-
 # 💳 購買
 @bot.tree.command(name="購買")
 async def buy(interaction: discord.Interaction, item_id: int):
@@ -3980,6 +3131,222 @@ async def black_market(
         embed=embed
     )
 
+# 🎯 猜心情
+@bot.tree.command(name="猜心情")
+@app_commands.describe(
+    mood="開心、生氣、想睡、難過、發瘋",
+    amount="下注金額"
+)
+async def mood_game(
+    interaction: discord.Interaction,
+    mood: str,
+    amount: int
+):
+
+    # 🔒 頻道限制
+    if interaction.channel.id != MOOD_CHANNEL:
+
+        embed = discord.Embed(
+            title="🎯 月神心情屋",
+            description=(
+                "🌙 心情占卜區限定\n\n"
+                f"請前往 <#{MOOD_CHANNEL}>"
+            ),
+            color=discord.Color.fuchsia()
+        )
+
+        embed.add_field(
+            name="🎭 可猜測心情",
+            value="開心｜生氣｜想睡｜難過｜發瘋",
+            inline=False
+        )
+
+        embed.set_footer(
+            text="極曜月葵 ✦ 月神心情屋"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+        return
+
+    moods = [
+        "開心",
+        "生氣",
+        "想睡",
+        "難過",
+        "發瘋"
+    ]
+
+    if mood not in moods:
+
+        await interaction.response.send_message(
+            "❌ 可選：開心、生氣、想睡、難過、發瘋",
+            ephemeral=True
+        )
+        return
+
+    if amount <= 0:
+
+        await interaction.response.send_message(
+            "❌ 金額必須大於 0",
+            ephemeral=True
+        )
+        return
+
+    user_id = str(interaction.user.id)
+
+    c.execute(
+        "SELECT money FROM users WHERE user_id=?",
+        (user_id,)
+    )
+
+    data = c.fetchone()
+
+    if not data:
+
+        await interaction.response.send_message(
+            "❌ 找不到帳戶資料",
+            ephemeral=True
+        )
+        return
+
+    money = data[0]
+
+    if money < amount:
+
+        await interaction.response.send_message(
+            "❌ 努努幣不足",
+            ephemeral=True
+        )
+        return
+
+    # 🎬 動畫
+    await interaction.response.send_message(
+        "🌙 正在偷看月神心情..."
+    )
+
+    msg = await interaction.original_response()
+
+    await asyncio.sleep(1.2)
+
+    await msg.edit(
+        content="✨ 正在翻閱今日心情..."
+    )
+
+    await asyncio.sleep(1.2)
+
+    await msg.edit(
+        content="🎭 正在確認答案..."
+    )
+
+    await asyncio.sleep(1.2)
+
+    real_mood = random.choice(moods)
+
+    special = random.randint(1, 100)
+
+    if mood == real_mood:
+
+        result = "🎉 猜中了"
+        change = amount * 3
+
+    else:
+
+        if special <= 5:
+
+            result = "🌙 月神偏愛"
+            change = 0
+
+        elif special >= 96:
+
+            result = "💀 月神暴怒"
+            change = -(amount * 2)
+
+        else:
+
+            result = "❌ 猜錯了"
+            change = -amount
+
+    money += change
+
+    if money < 0:
+        money = 0
+
+    c.execute(
+        """
+        UPDATE users
+        SET money=?
+        WHERE user_id=?
+        """,
+        (
+            money,
+            user_id
+        )
+    )
+
+    conn.commit()
+
+    embed = discord.Embed(
+        title="🎯 月神心情屋",
+        color=discord.Color.fuchsia()
+    )
+
+    embed.set_author(
+        name=interaction.user.display_name,
+        icon_url=interaction.user.display_avatar.url
+    )
+
+    embed.add_field(
+        name="🎭 你的猜測",
+        value=f"```{mood}```",
+        inline=True
+    )
+
+    embed.add_field(
+        name="🌙 真實心情",
+        value=f"```{real_mood}```",
+        inline=True
+    )
+
+    embed.add_field(
+        name="✨ 結果",
+        value=f"```{result}```",
+        inline=False
+    )
+
+    if change >= 0:
+
+        embed.add_field(
+            name="🎉 本次獲得",
+            value=f"{NUNU_EMOJI} `{change:,}`",
+            inline=False
+        )
+
+    else:
+
+        embed.add_field(
+            name="💸 本次損失",
+            value=f"{NUNU_EMOJI} `{abs(change):,}`",
+            inline=False
+        )
+
+    embed.add_field(
+        name="🏦 錢包餘額",
+        value=f"{NUNU_EMOJI} `{money:,}`",
+        inline=False
+    )
+
+    embed.set_footer(
+        text="極曜月葵 ✦ 月神心情屋"
+    )
+
+    await msg.edit(
+        content=None,
+        embed=embed
+    )
+
 # 🧪 實驗
 @bot.tree.command(name="實驗")
 @app_commands.describe(
@@ -4347,17 +3714,76 @@ async def gamble_life(
         embed=embed
     )
 
-@bot.tree.command(name="越獄")
-async def escape(
-    interaction: discord.Interaction
+@bot.tree.command(name="搶劫")
+@app_commands.describe(
+    amount="想搶的金額"
+)
+async def rob(
+    interaction: discord.Interaction,
+    amount: int
 ):
+
+    if interaction.channel.id != GANG_CHANNEL:
+
+        await interaction.response.send_message(
+            f"❌ 請前往 <#{GANG_CHANNEL}> 使用",
+            ephemeral=True
+        )
+        return
+
+    if amount <= 0:
+
+        await interaction.response.send_message(
+            "❌ 金額必須大於 0",
+            ephemeral=True
+        )
+        return
 
     user_id = str(interaction.user.id)
 
+    # 🔒 坐牢檢查
     c.execute(
         """
         SELECT release_time
         FROM jail
+        WHERE user_id=?
+        """,
+        (user_id,)
+    )
+
+    jail_data = c.fetchone()
+
+    if jail_data:
+
+        if int(time.time()) < jail_data[0]:
+
+            remain = (
+                jail_data[0]
+                - int(time.time())
+            )
+
+            await interaction.response.send_message(
+                f"🔒 你正在坐牢中\n剩餘 {remain//60} 分鐘",
+                ephemeral=True
+            )
+            return
+
+        else:
+
+            c.execute(
+                """
+                DELETE FROM jail
+                WHERE user_id=?
+                """,
+                (user_id,)
+            )
+
+            conn.commit()
+
+    c.execute(
+        """
+        SELECT money
+        FROM users
         WHERE user_id=?
         """,
         (user_id,)
@@ -4368,144 +3794,177 @@ async def escape(
     if not data:
 
         await interaction.response.send_message(
-            "❌ 你沒有被關",
+            "❌ 找不到帳戶",
             ephemeral=True
         )
         return
 
-    if random.randint(1, 100) <= 50:
+    money = data[0]
+
+    if money < amount:
+
+        await interaction.response.send_message(
+            "❌ 努努幣不足",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        "🗡 潛入黑市據點..."
+    )
+
+    msg = await interaction.original_response()
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="🔍 尋找金庫..."
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="💰 正在搬運戰利品..."
+    )
+
+    await asyncio.sleep(1)
+
+    wanted = await get_wanted_level(
+        user_id
+    )
+
+    success_rate = max(
+        0.20,
+        0.60 - (wanted * 0.05)
+    )
+
+    roll = random.random()
+
+    if roll < success_rate:
+
+        jackpot = random.randint(
+            1,
+            100
+        )
+
+        if jackpot <= 5:
+
+            gain = random.randint(
+                amount * 5,
+                amount * 10
+            )
+
+            result = "💎 黑市金庫"
+
+        else:
+
+            gain = random.randint(
+                amount,
+                amount * 2
+            )
+
+            result = "💰 搶劫成功"
+
+        money += gain
 
         c.execute(
             """
-            DELETE FROM jail
+            UPDATE users
+            SET money=?
             WHERE user_id=?
             """,
-            (user_id,)
+            (
+                money,
+                user_id
+            )
         )
 
-        conn.commit()
-
-        result = "🔓 越獄成功"
+        await add_wanted(
+            user_id
+        )
 
     else:
 
-        result = "💥 越獄失敗"
-
-    embed = discord.Embed(
-        title="🔓 越獄結果",
-        description=result,
-        color=discord.Color.orange()
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
-# 🚔 自首
-@bot.tree.command(name="自首")
-async def surrender(
-    interaction: discord.Interaction
-):
-
-    user_id = str(interaction.user.id)
-
-    c.execute(
-        "SELECT level FROM wanted WHERE user_id=?",
-        (user_id,)
-    )
-
-    data = c.fetchone()
-
-    if not data or data[0] <= 0:
-
-        await interaction.response.send_message(
-            "✅ 你目前沒有通緝紀錄",
-            ephemeral=True
+        fine = int(
+            amount * 1.5
         )
-        return
 
-    wanted = data[0]
+        money -= fine
 
-    c.execute(
-        "SELECT money FROM users WHERE user_id=?",
-        (user_id,)
-    )
+        if money < 0:
+            money = 0
 
-    money_data = c.fetchone()
-
-    if not money_data:
-
-        await interaction.response.send_message(
-            "❌ 找不到帳戶資料",
-            ephemeral=True
+        c.execute(
+            """
+            UPDATE users
+            SET money=?
+            WHERE user_id=?
+            """,
+            (
+                money,
+                user_id
+            )
         )
-        return
 
-    money = money_data[0]
-
-    fine = 5000
-
-    if money < fine:
-
-        await interaction.response.send_message(
-            f"❌ 自首需要繳納 {fine:,} 努努幣",
-            ephemeral=True
+        c.execute(
+            """
+            INSERT OR REPLACE INTO jail
+            VALUES (?, ?)
+            """,
+            (
+                user_id,
+                int(time.time()) + 600
+            )
         )
-        return
 
-    new_wanted = max(
-        0,
-        wanted - 3
-    )
-
-    c.execute(
-        """
-        UPDATE users
-        SET money = money - ?
-        WHERE user_id=?
-        """,
-        (
-            fine,
-            user_id
-        )
-    )
-
-    c.execute(
-        """
-        INSERT OR REPLACE INTO wanted
-        (user_id, level)
-        VALUES (?, ?)
-        """,
-        (
-            user_id,
-            new_wanted
-        )
-    )
+        result = "👮 被逮捕"
+        gain = -fine
 
     conn.commit()
 
     embed = discord.Embed(
-        title="🚔 自首成功",
-        color=discord.Color.blue()
+        title="🗡 黑市搶劫結果",
+        color=discord.Color.red()
     )
 
     embed.add_field(
-        name="💸 罰款",
-        value=f"{NUNU_EMOJI} `{fine:,}`",
+        name="📜 結果",
+        value=result,
         inline=False
     )
 
     embed.add_field(
-        name="🚨 通緝變化",
-        value=f"`{wanted}` ➜ `{new_wanted}`",
+        name="🚨 通緝",
+        value=f"{await get_wanted_level(user_id)}",
         inline=False
     )
 
-    embed.set_footer(
-        text="極曜月葵 ✦ 警察局"
+    embed.add_field(
+        name="🏦 餘額",
+        value=f"{NUNU_EMOJI} `{money:,}`",
+        inline=False
     )
 
-    await interaction.response.send_message(
-        embed=embed
+    if gain >= 0:
+
+        embed.add_field(
+            name="🎉 本次獲得",
+            value=f"{NUNU_EMOJI} `{gain:,}`",
+            inline=False
+        )
+
+    else:
+
+        embed.add_field(
+            name="💸 罰款",
+            value=f"{NUNU_EMOJI} `{abs(gain):,}`",
+            inline=False
+        )
+
+    await msg.edit(
+        content=None,
+        embed=embed,
+        view=RobView()
     )
 
 # ⚙️ 設定歡迎訊息
