@@ -83,7 +83,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 💾 DB
-conn = sqlite3.connect("bot.db", check_same_thread=False)
+conn = sqlite3.connect("/var/data/bot.db", check_same_thread=False)
 c = conn.cursor()
 
 # 🗡 黑幫系統
@@ -3713,6 +3713,20 @@ async def gamble_life(
         content=None,
         embed=embed
     )
+
+@bot.tree.command(name="搶劫")
+async def rob(
+    interaction: discord.Interaction,
+    amount: int
+):
+
+    print("===== 搶劫開始 =====")
+
+    await interaction.response.send_message(
+        f"測試成功：{amount}"
+    )
+
+    return
 
 @bot.tree.command(name="搶劫")
 @app_commands.describe(
