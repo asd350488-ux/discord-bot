@@ -319,25 +319,20 @@ class DuelView(discord.ui.View):
             view=None
         )
 
-class RobView(discord.ui.View):
+@discord.ui.button(
+    label="🗡 再搶一次",
+    style=discord.ButtonStyle.danger
+)
+async def rob_again(
+    self,
+    interaction: discord.Interaction,
+    button: discord.ui.Button
+):
 
-    def __init__(self):
-        super().__init__(timeout=60)
-
-    @discord.ui.button(
-        label="🗡 再搶一次",
-        style=discord.ButtonStyle.danger
+    await rob(
+        interaction,
+        self.amount
     )
-    async def rob_again(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        await interaction.response.send_message(
-            "🌙 請重新使用 /搶劫",
-            ephemeral=True
-        )
 
 class ShopView(discord.ui.View):
     def __init__(self, items, page=0):
@@ -3965,7 +3960,84 @@ async def rob(
     await msg.edit(
         content=None,
         embed=embed,
-        view=RobView()
+    )
+
+# =========================
+# 📋 我的通緝
+# =========================
+
+@bot.tree.command(name="我的通緝")
+async def my_wanted(
+    interaction: discord.Interaction
+):
+
+    if interaction.channel.id != GANG_CHANNEL:
+
+        await interaction.response.send_message(
+            f"❌ 請前往 <#{GANG_CHANNEL}> 使用",
+            ephemeral=True
+        )
+        return
+
+    user_id = str(interaction.user.id)
+
+    wanted_level = await get_wanted_level(
+        user_id
+    )
+
+    success_rate = max(
+        20,
+        int(
+            (0.60 - (wanted_level * 0.05))
+            * 100
+        )
+    )
+
+    if wanted_level == 0:
+
+        status = "😇 目前沒有被通緝"
+
+    elif wanted_level <= 3:
+
+        status = "👀 警方正在注意你"
+
+    elif wanted_level <= 6:
+
+        status = "🚓 警方正在追查你"
+
+    elif wanted_level <= 10:
+
+        status = "🚨 警方正在全城追捕你"
+
+    else:
+
+        status = "☠️ 你已成為頭號通緝犯"
+
+    embed = discord.Embed(
+        title="📋 我的通緝資料",
+        color=discord.Color.red()
+    )
+
+    embed.add_field(
+        name="🚨 通緝等級",
+        value=f"`{wanted_level}`",
+        inline=False
+    )
+
+    embed.add_field(
+        name="📜 狀態",
+        value=status,
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎯 下次搶劫成功率",
+        value=f"`{success_rate}%`",
+        inline=False
+    )
+
+    await interaction.response.send_message(
+        embed=embed
     )
 
 # ⚙️ 設定歡迎訊息
