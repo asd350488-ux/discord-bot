@@ -2920,6 +2920,27 @@ async def give_money(
         inline=False
     )
 
+    if 成員:
+        embed.add_field(
+            name="👤 發送對象",
+            value=f"`{成員.display_name}`",
+            inline=False
+        )
+
+    elif 身分組:
+        embed.add_field(
+            name="🎭 發送對象",
+            value=f"`{身分組.name}`",
+            inline=False
+        )
+
+    elif 全體:
+        embed.add_field(
+            name="🌍 發送對象",
+            value="`全體成員`",
+            inline=False
+        )
+
     embed.add_field(
         name="👥 發送人數",
         value=f"`{count}` 人",
@@ -2929,7 +2950,6 @@ async def give_money(
     await interaction.followup.send(
         embed=embed
     )
-
 # 💣 黑市投資
 @bot.tree.command(name="黑市投資")
 @app_commands.describe(
