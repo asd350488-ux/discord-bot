@@ -568,75 +568,6 @@ class BuyButton(discord.ui.Button):
             f"🛍️ 購買成功！**{self.name}**\n<a:emoji40:1510362334026268713> -{self.price}"
         )
 
-# 📜 發錢紀錄表
-@bot.tree.command(name="發錢紀錄")
-@app_commands.default_permissions(
-    administrator=True
-)
-async def money_log_view(interaction: discord.Interaction):
-
-    # 🔒 限制頻道
-    if interaction.channel.id != 1510930723924611163:
-        await interaction.response.send_message(
-            "❌ 請到管理員頻道使用",
-            ephemeral=True
-        )
-        return
-
-    # 🔒 管理員權限
-    ALLOWED_ROLES = [1504824446769172602,1504833586807967914,1504863173168074823,1504863370552152124,1504864390388776992,1505616537296310492]
-
-    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
-        await interaction.response.send_message(
-            "❌ 你沒有權限",
-            ephemeral=True
-        )
-        return
-
-    # 📜 查最近10筆
-    c.execute("""
-    SELECT admin_id, target_id, amount, type, time
-    FROM money_log
-    ORDER BY id DESC
-    LIMIT 10
-    """)
-    logs = c.fetchall()
-
-    if not logs:
-        await interaction.response.send_message("📭 沒有任何發錢紀錄")
-        return
-
-    embed = discord.Embed(
-        title="📜 發錢紀錄（最近10筆）",
-        color=discord.Color.blue()
-    )
-
-    # 類型顯示
-    type_map = {
-        "single": "👤 單人",
-        "role": "👥 身分組",
-        "all": "🌍 全體"
-    }
-
-    for admin_id, target_id, amount, log_type, time in logs:
-
-        admin = interaction.guild.get_member(int(admin_id))
-        target = interaction.guild.get_member(int(target_id))
-
-        admin_name = admin.mention if admin else admin_id
-        target_name = target.mention if target else target_id
-
-        # 🕒 美化時間
-        dt = datetime.fromisoformat(time)
-        time_str = dt.strftime("%Y-%m-%d %H:%M")
-
-        embed.add_field(
-            name=f"💰 {amount} 努努幣",
-            value=f"👤 發送者：{admin_name}\n🎯 對象：{target_name}\n📌 類型：{type_map.get(log_type, log_type)}\n🕒 時間：{time_str}",
-            inline=False
-        )
-
-    await interaction.response.send_message(embed=embed)
 # 🚀 啟動
 @bot.event
 async def on_ready():
@@ -1171,11 +1102,16 @@ async def on_message(message):
 
 # ⚙️ 管理員設定等級
 @bot.tree.command(name="設定等級")
-@app_commands.default_permissions(
-    administrator=True
-)
 @app_commands.default_permissions(administrator=True)
-async def set_level(interaction: discord.Interaction, member: discord.Member, level: int):
+@app_commands.rename(
+    member="成員",
+    level="等級"
+)
+async def set_level(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    level: int
+):
 
     c.execute("UPDATE users SET level=?, exp=0 WHERE user_id=?", (level, str(member.id)))
     conn.commit()
@@ -1185,7 +1121,13 @@ async def set_level(interaction: discord.Interaction, member: discord.Member, le
 # ⚙️ 頻道設定
 @bot.tree.command(name="設定生日頻道")
 @app_commands.default_permissions(administrator=True)
-async def set_birthday_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+@app_commands.rename(
+    channel="頻道"
+)
+async def set_birthday_channel(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
 
     c.execute("REPLACE INTO settings VALUES ('birthday_channel', ?)", (str(channel.id),))
     conn.commit()
@@ -1194,14 +1136,26 @@ async def set_birthday_channel(interaction: discord.Interaction, channel: discor
 
 @bot.tree.command(name="設定歡迎頻道")
 @app_commands.default_permissions(administrator=True)
-async def set_welcome_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+@app_commands.rename(
+    channel="頻道"
+)
+async def set_welcome_channel(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
     c.execute("REPLACE INTO settings VALUES ('welcome_channel', ?)", (str(channel.id),))
     conn.commit()
     await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
 
 @bot.tree.command(name="設定管理員頻道")
 @app_commands.default_permissions(administrator=True)
-async def set_admin_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+@app_commands.rename(
+    channel="頻道"
+)
+async def set_admin_channel(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
     c.execute("REPLACE INTO settings VALUES ('admin_channel', ?)", (str(channel.id),))
     conn.commit()
     await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
@@ -1962,9 +1916,17 @@ async def guess_big_small(
     )
 # ⚔️ 對賭
 @bot.tree.command(name="對賭")
+@app_commands.rename(
+    target="玩家",
+    amount="金額"
+)
+@app_commands.describe(
+    target="要挑戰的玩家",
+    amount="下注金額"
+)
 async def duel(
     interaction: discord.Interaction,
-    member: discord.Member,
+    target: discord.Member,
     amount: int
 ):
 
@@ -2063,6 +2025,12 @@ async def duel(
 
 # 🎰 老虎機
 @bot.tree.command(name="老虎機")
+@app_commands.rename(
+    amount="金額"
+)
+@app_commands.describe(
+    amount="請輸入下注金額"
+)
 async def slot_machine(
     interaction: discord.Interaction,
     amount: int
@@ -2273,6 +2241,12 @@ async def slot_machine(
 
 # 🎁 驚喜箱
 @bot.tree.command(name="驚喜箱")
+@app_commands.rename(
+    amount="金額"
+)
+@app_commands.describe(
+    amount="請輸入開箱金額"
+)
 async def surprise_box(
     interaction: discord.Interaction,
     amount: int
@@ -3052,13 +3026,23 @@ async def give_item(
     await interaction.response.send_message(
         embed=embed
     )
-# ⚙️ 增加遊戲幣
+# ⚙️ 增加努努幣
 
-@bot.tree.command(name="努努幣")
-@app_commands.default_permissions(
-    administrator=True
+@bot.tree.command(name="發努努幣")
+@app_commands.default_permissions(administrator=True)
+@app_commands.rename(
+    member="成員",
+    amount="金額"
+)
+@app_commands.describe(
+    member="要發送努努幣的成員",
+    amount="發送金額"
 )
 async def give_money(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    amount: int
+):async def give_money(
     interaction: discord.Interaction,
     金額: int,
     成員: discord.Member = None,
@@ -3977,10 +3961,13 @@ async def gamble_life(
         content=None,
         embed=embed
     )
-
+# 🗡 搶劫
 @bot.tree.command(name="搶劫")
+@app_commands.rename(
+    amount="金額"
+)
 @app_commands.describe(
-    amount="想搶的金額"
+    amount="要投入的搶劫資金"
 )
 async def rob(
     interaction: discord.Interaction,
