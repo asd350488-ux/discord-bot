@@ -3715,20 +3715,6 @@ async def gamble_life(
     )
 
 @bot.tree.command(name="搶劫")
-async def rob(
-    interaction: discord.Interaction,
-    amount: int
-):
-
-    print("===== 搶劫開始 =====")
-
-    await interaction.response.send_message(
-        f"測試成功：{amount}"
-    )
-
-    return
-
-@bot.tree.command(name="搶劫")
 @app_commands.describe(
     amount="想搶的金額"
 )
