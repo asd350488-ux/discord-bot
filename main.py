@@ -3031,20 +3031,23 @@ async def give_item(
 @bot.tree.command(name="發努努幣")
 @app_commands.default_permissions(administrator=True)
 @app_commands.rename(
+    amount="金額",
     member="成員",
-    amount="金額"
+    role="身分組",
+    everyone="全體"
 )
 @app_commands.describe(
-    member="要發送努努幣的成員",
-    amount="發送金額"
+    amount="發送金額",
+    member="指定成員",
+    role="指定身分組",
+    everyone="是否發送給全體"
 )
-
 async def give_money(
     interaction: discord.Interaction,
-    金額: int,
-    成員: discord.Member = None,
-    身分組: discord.Role = None,
-    全體: bool = False
+    amount: int,
+    member: discord.Member = None,
+    role: discord.Role = None,
+    everyone: bool = False
 ):
 
     await interaction.response.defer()
