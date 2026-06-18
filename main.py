@@ -191,14 +191,20 @@ class DuelView(discord.ui.View):
         if challenger_money < self.amount:
 
             await interaction.response.send_message(
-                "❌ 挑戰者餘額不足"
+                f"❌ {self.challenger.display_name} 的努努幣不足\n"
+                f"需要：{self.amount:,}\n"
+                f"目前：{challenger_money:,}",
+                ephemeral=True
             )
             return
 
         if target_money < self.amount:
 
             await interaction.response.send_message(
-                "❌ 你的餘額不足"
+                f"❌ {self.target.display_name} 的努努幣不足\n"
+                f"需要：{self.amount:,}\n"
+                f"目前：{target_money:,}",
+                ephemeral=True
             )
             return
 
@@ -564,6 +570,9 @@ class BuyButton(discord.ui.Button):
 
 # 📜 發錢紀錄表
 @bot.tree.command(name="發錢紀錄")
+@app_commands.default_permissions(
+    administrator=True
+)
 async def money_log_view(interaction: discord.Interaction):
 
     # 🔒 限制頻道
@@ -1162,7 +1171,10 @@ async def on_message(message):
 
 # ⚙️ 管理員設定等級
 @bot.tree.command(name="設定等級")
-@app_commands.checks.has_permissions(administrator=True)
+@app_commands.default_permissions(
+    administrator=True
+)
+@app_commands.default_permissions(administrator=True)
 async def set_level(interaction: discord.Interaction, member: discord.Member, level: int):
 
     c.execute("UPDATE users SET level=?, exp=0 WHERE user_id=?", (level, str(member.id)))
@@ -1172,6 +1184,7 @@ async def set_level(interaction: discord.Interaction, member: discord.Member, le
 
 # ⚙️ 頻道設定
 @bot.tree.command(name="設定生日頻道")
+@app_commands.default_permissions(administrator=True)
 async def set_birthday_channel(interaction: discord.Interaction, channel: discord.TextChannel):
 
     c.execute("REPLACE INTO settings VALUES ('birthday_channel', ?)", (str(channel.id),))
@@ -1180,12 +1193,14 @@ async def set_birthday_channel(interaction: discord.Interaction, channel: discor
     await interaction.response.send_message(f"✅ 生日通知頻道已設定為 {channel.mention}")
 
 @bot.tree.command(name="設定歡迎頻道")
+@app_commands.default_permissions(administrator=True)
 async def set_welcome_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     c.execute("REPLACE INTO settings VALUES ('welcome_channel', ?)", (str(channel.id),))
     conn.commit()
     await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
 
 @bot.tree.command(name="設定管理員頻道")
+@app_commands.default_permissions(administrator=True)
 async def set_admin_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     c.execute("REPLACE INTO settings VALUES ('admin_channel', ?)", (str(channel.id),))
     conn.commit()
@@ -1896,6 +1911,11 @@ async def guess_big_small(
     embed.set_footer(
         text="極曜月葵 ✦ 星月賭場"
     )
+    await interaction.response.send_message(
+        "🎲 擲骰準備中..."
+    )
+
+    msg = await interaction.original_response()
 
     await asyncio.sleep(1)
 
@@ -1936,11 +1956,10 @@ async def guess_big_small(
         embed=embed
     )
 
-    await interaction.response.send_message(
-        "🎲 擲骰準備中..."
+    await msg.edit(
+        content=None,
+        embed=embed
     )
-
-    msg = await interaction.original_response()
 # ⚔️ 對賭
 @bot.tree.command(name="對賭")
 async def duel(
@@ -2259,11 +2278,11 @@ async def surprise_box(
     amount: int
 ):
 
-    if interaction.channel.id != BOX_CHANNEL:
+    if interaction.channel.id != SURPRISE_CHANNEL:
 
         embed = discord.Embed(
             title="🎁 星月驚喜箱",
-            description=f"請前往 <#{BOX_CHANNEL}> 使用驚喜箱",
+            description=f"請前往 <#{SURPRISE_CHANNEL}> 使用驚喜箱",
             color=discord.Color.orange()
         )
 
@@ -2403,8 +2422,72 @@ async def surprise_box(
     embed.set_footer(
         text="極曜月葵 ✦ 星月驚喜箱"
     )
-
     await interaction.response.send_message(
+        "🎁 正在尋找神秘寶箱..."
+    )
+
+    msg = await interaction.original_response()
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="📦 發現寶箱..."
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="🔓 正在開啟中..."
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="✨ 檢查獎勵中..."
+    )
+
+    await asyncio.sleep(1)
+
+    if roll == 1:
+
+        await msg.edit(
+            content="🌌 星神降臨..."
+        )
+
+    elif roll <= 5:
+
+        await msg.edit(
+            content="👑 月神寶藏出現..."
+        )
+
+    elif roll <= 20:
+
+        await msg.edit(
+            content="💎 稀有寶箱發光中..."
+        )
+
+    elif roll <= 60:
+
+        await msg.edit(
+            content="🎉 發現意外驚喜..."
+        )
+
+    elif roll <= 85:
+
+        await msg.edit(
+            content="📦 普通補給箱"
+        )
+
+    else:
+
+        await msg.edit(
+            content="💀 裡面好像空空的..."
+        )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content=None,
         embed=embed
     )
 
@@ -2605,6 +2688,12 @@ async def adventure(
     embed.set_footer(
         text="極曜月葵 ✦ 星月探險"
     )
+    await interaction.response.send_message(
+        "🧭 正在離開月葵城..."
+    )
+
+    msg = await interaction.original_response()
+
     await asyncio.sleep(1)
 
     await msg.edit(
@@ -2649,12 +2738,6 @@ async def adventure(
         content=None,
         embed=embed
     )
-
-    await interaction.response.send_message(
-        "🧭 正在離開月葵城..."
-    )
-
-    msg = await interaction.original_response()
 
 # 💳 購買
 @bot.tree.command(name="購買")
@@ -2972,6 +3055,9 @@ async def give_item(
 # ⚙️ 增加遊戲幣
 
 @bot.tree.command(name="努努幣")
+@app_commands.default_permissions(
+    administrator=True
+)
 async def give_money(
     interaction: discord.Interaction,
     金額: int,
@@ -4224,6 +4310,9 @@ async def my_wanted(
 
 # ⚙️ 設定歡迎訊息
 @bot.tree.command(name="設定歡迎訊息")
+@app_commands.default_permissions(
+    administrator=True
+)
 async def set_welcome_message(interaction: discord.Interaction, message: str):
 
     c.execute("REPLACE INTO settings VALUES ('welcome_message', ?)", (message,))
