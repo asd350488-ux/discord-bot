@@ -3038,11 +3038,8 @@ async def give_item(
     member="要發送努努幣的成員",
     amount="發送金額"
 )
+
 async def give_money(
-    interaction: discord.Interaction,
-    member: discord.Member,
-    amount: int
-):async def give_money(
     interaction: discord.Interaction,
     金額: int,
     成員: discord.Member = None,
