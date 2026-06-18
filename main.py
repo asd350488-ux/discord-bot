@@ -203,6 +203,25 @@ class DuelView(discord.ui.View):
             return
 
         # 🎲 勝負
+        await interaction.response.edit_message(
+            content="⚔️ 決鬥準備中...",
+            view=None
+        )
+
+        await asyncio.sleep(1)
+
+        await interaction.edit_original_response(
+            content="🎲 擲骰中..."
+        )
+
+        await asyncio.sleep(1)
+
+        await interaction.edit_original_response(
+            content="💥 勝負判定中..."
+        )
+
+        await asyncio.sleep(1)
+
         winner = random.choice(
             [
                 self.challenger,
@@ -312,6 +331,36 @@ class DuelView(discord.ui.View):
             name="💀 敗者",
             value=loser.mention,
             inline=False
+        )
+
+        await interaction.edit_original_response(
+            content=None,
+            embed=embed,
+            view=None
+        )
+
+    @discord.ui.button(
+        label="❌ 拒絕對賭",
+        style=discord.ButtonStyle.secondary
+    )
+    async def reject(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        if interaction.user.id != self.target.id:
+
+            await interaction.response.send_message(
+                "❌ 這不是你的對賭",
+                ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title="❌ 對賭取消",
+            description=f"{self.target.display_name} 拒絕了這場對賭",
+            color=discord.Color.greyple()
         )
 
         await interaction.response.edit_message(
@@ -1848,10 +1897,50 @@ async def guess_big_small(
         text="極曜月葵 ✦ 星月賭場"
     )
 
-    await interaction.response.send_message(
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="🎲 骰子滾動中..."
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="🎲 🎲 ..."
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="👀 正在判定大小..."
+    )
+
+    await asyncio.sleep(1)
+
+    if result == "大":
+
+        await msg.edit(
+            content=f"🎲 骰子停在 {dice} 點（大）"
+        )
+
+    else:
+
+        await msg.edit(
+            content=f"🎲 骰子停在 {dice} 點（小）"
+        )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content=None,
         embed=embed
     )
 
+    await interaction.response.send_message(
+        "🎲 擲骰準備中..."
+    )
+
+    msg = await interaction.original_response()
 # ⚔️ 對賭
 @bot.tree.command(name="對賭")
 async def duel(
@@ -2133,6 +2222,33 @@ async def slot_machine(
     )
 
     await interaction.response.send_message(
+        "🎰 啟動老虎機..."
+    )
+
+    msg = await interaction.original_response()
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="🎰 🍒 ❔ ❔"
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="🎰 🍒 🌙 ❔"
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content=f"🎰 {result_text}"
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content=None,
         embed=embed
     )
 
@@ -2489,10 +2605,56 @@ async def adventure(
     embed.set_footer(
         text="極曜月葵 ✦ 星月探險"
     )
+    await asyncio.sleep(1)
 
-    await interaction.response.send_message(
+    await msg.edit(
+        content="🌲 穿越迷霧森林..."
+    )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content="👀 搜尋遺跡蹤跡..."
+    )
+
+    await asyncio.sleep(1)
+
+    if roll <= 5:
+
+        await msg.edit(
+            content="🌌 神級氣息降臨..."
+        )
+
+    elif roll <= 15:
+
+        await msg.edit(
+            content="👑 發現世界Boss..."
+        )
+
+    elif roll <= 35:
+
+        await msg.edit(
+            content="⚔️ 遭遇危險事件..."
+        )
+
+    else:
+
+        await msg.edit(
+            content="🎁 發現神秘寶箱..."
+        )
+
+    await asyncio.sleep(1)
+
+    await msg.edit(
+        content=None,
         embed=embed
     )
+
+    await interaction.response.send_message(
+        "🧭 正在離開月葵城..."
+    )
+
+    msg = await interaction.original_response()
 
 # 💳 購買
 @bot.tree.command(name="購買")
