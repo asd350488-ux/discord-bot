@@ -1186,7 +1186,7 @@ async def profile(interaction: discord.Interaction):
 
     output.seek(0)
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
         file=discord.File(
             output,
             filename="profile.png"
