@@ -3634,7 +3634,7 @@ async def mood_game(
     amount: int
 ):
 
-🔒 頻道限制
+    # 🔒 頻道限制
     if interaction.channel.id != MOOD_CHANNEL:
 
         embed = discord.Embed(
