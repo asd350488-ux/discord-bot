@@ -1217,20 +1217,11 @@ async def profile(interaction: discord.Interaction):
     )
 
     # 經驗值比例
+    percent = exp / max(next_exp, 1)
+
     percent_text = int(percent * 100)
 
     # 背景條
-    draw.rounded_rectangle(
-        (
-            210,
-            250,
-            210 + int(510 * percent),
-            285
-        ),
-        radius=15,
-        fill=(180, 100, 255)
-    )
-    # 經驗條
     draw.rounded_rectangle(
         (
             210,
@@ -1240,6 +1231,18 @@ async def profile(interaction: discord.Interaction):
         ),
         radius=15,
         fill=(60, 60, 60)
+    )
+
+    # 經驗條
+    draw.rounded_rectangle(
+        (
+            210,
+            250,
+            210 + int(510 * percent),
+            285
+        ),
+        radius=15,
+        fill=(180, 100, 255)
     )
 
     # XP文字
