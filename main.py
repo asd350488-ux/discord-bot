@@ -1014,8 +1014,12 @@ async def level(interaction: discord.Interaction):
     )
     return
 
+# 📈 個人資料
+
 @bot.tree.command(name="個人資料")
 async def profile(interaction: discord.Interaction):
+
+    await interaction.response.defer()
 
     # 🔒 頻道限制
     if interaction.channel.id != INFO_CHANNEL:
@@ -1033,13 +1037,7 @@ async def profile(interaction: discord.Interaction):
             )
         )
 
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
-        return
-
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=embed,
             ephemeral=True
         )
