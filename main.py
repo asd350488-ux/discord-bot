@@ -1070,8 +1070,13 @@ async def profile(interaction: discord.Interaction):
 
     rank = c.fetchone()[0] + 1
 
-    # 讀背景圖
-    bg = Image.open("images/rank_bg.jpg").convert("RGBA")
+    bg = Image.open(
+        "images/rank_bg.jpg"
+    ).convert("RGBA")
+
+    bg = bg.resize(
+        (800, 450)
+    )
 
     # 下載頭像
     async with aiohttp.ClientSession() as session:
@@ -1086,19 +1091,19 @@ async def profile(interaction: discord.Interaction):
         io.BytesIO(avatar_bytes)
     ).convert("RGBA")
 
-    avatar = avatar.resize((220, 220))
+    avatar = avatar.resize((150, 150))
 
     # 圓形頭像
     mask = Image.new(
         "L",
-        (220, 220),
+        (150, 150),
         0
     )
 
     draw_mask = ImageDraw.Draw(mask)
 
     draw_mask.ellipse(
-        (0, 0, 220, 220),
+        (0, 0, 150, 150),
         fill=255
     )
 
@@ -1106,7 +1111,7 @@ async def profile(interaction: discord.Interaction):
 
     bg.paste(
         avatar,
-        (40, 90),
+        (30, 110),
         avatar
     )
 
@@ -1115,22 +1120,22 @@ async def profile(interaction: discord.Interaction):
     # 字型
     font_name = ImageFont.truetype(
         "fonts/NotoSansTC-Regular.ttf",
-        45
+        28
     )
 
     font_level = ImageFont.truetype(
         "fonts/NotoSansTC-Regular.ttf",
-        60
+        42
     )
 
     font_small = ImageFont.truetype(
         "fonts/NotoSansTC-Regular.ttf",
-        30
+        22
     )
 
     # 名稱
     draw.text(
-        (300, 120),
+        (210, 90),
         interaction.user.display_name,
         fill="white",
         font=font_name
@@ -1138,7 +1143,7 @@ async def profile(interaction: discord.Interaction):
 
     # 等級
     draw.text(
-        (300, 200),
+        (210, 145),
         f"Lv.{level}",
         fill="#FFD700",
         font=font_level
@@ -1146,32 +1151,35 @@ async def profile(interaction: discord.Interaction):
 
     # 排名
     draw.text(
-        (950, 150),
+        (620, 90),
         f"#{rank}",
         fill="#FFD700",
         font=font_level
     )
 
-    # EXP條
-    percent = exp / next_exp
+    # 經驗值比例
+    percent = exp / max(next_exp, 1)
 
+    # 背景條
     draw.rectangle(
-        (300, 320, 1050, 360),
+        (210, 250, 720, 285),
         fill=(60, 60, 60)
     )
 
+    # 經驗條
     draw.rectangle(
         (
-            300,
-            320,
-            300 + int(750 * percent),
-            360
+            210,
+            250,
+            210 + int(510 * percent),
+            285
         ),
         fill=(180, 100, 255)
     )
 
+    # XP文字
     draw.text(
-        (300, 380),
+        (210, 305),
         f"{exp:,} / {next_exp:,} XP",
         fill="white",
         font=font_small
