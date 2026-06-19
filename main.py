@@ -12,6 +12,9 @@ from socketserver import TCPServer
 import random
 import asyncio
 import time
+from PIL import Image, ImageDraw, ImageFont
+import aiohttp
+import io
 
 tz = pytz.timezone("Asia/Taipei")
 # 🌙 極曜月葵系統設定
@@ -1340,7 +1343,22 @@ async def on_member_join(member):
     await msg.edit(content=None, embed=embed)
 
 @bot.tree.command(name="生日登記", description="設定你的生日")
-async def set_birthday(interaction: discord.Interaction, month: int, day: int, year: int = None):
+@app_commands.rename(
+    month="月份",
+    day="日期",
+    year="出生年"
+)
+@app_commands.describe(
+    month="生日月份",
+    day="生日日期",
+    year="選填"
+)
+async def set_birthday(
+    interaction: discord.Interaction,
+    month: int,
+    day: int,
+    year: int = None
+):
 
     user_id = str(interaction.user.id)
 
@@ -1348,8 +1366,8 @@ async def set_birthday(interaction: discord.Interaction, month: int, day: int, y
     birthday = f"{month:02d}-{day:02d}"
 
     c.execute("""
-    UPDATE users 
-    SET birthday=?, birth_year=? 
+    UPDATE users
+    SET birthday=?, birth_year=?
     WHERE user_id=?
     """, (birthday, year, user_id))
 
@@ -1678,16 +1696,25 @@ async def shop(interaction: discord.Interaction):
 
 # 🎲 猜大小
 @bot.tree.command(name="猜大小")
+@app_commands.rename(
+    choice="選擇",
+    amount="金額"
+)
 @app_commands.describe(
-    choice="大 或 小",
+    choice="選擇大小",
     amount="下注金額"
+)
+@app_commands.choices(
+    choice=[
+        app_commands.Choice(name="🔺 大", value="大"),
+        app_commands.Choice(name="🔻 小", value="小")
+    ]
 )
 async def guess_big_small(
     interaction: discord.Interaction,
     choice: str,
     amount: int
 ):
-
     if interaction.channel.id != BIGSMALL_CHANNEL:
 
         embed = discord.Embed(
@@ -2715,7 +2742,16 @@ async def adventure(
 
 # 💳 購買
 @bot.tree.command(name="購買")
-async def buy(interaction: discord.Interaction, item_id: int):
+@app_commands.rename(
+    item_id="商品編號"
+)
+@app_commands.describe(
+    item_id="商店商品編號"
+)
+async def buy(
+    interaction: discord.Interaction,
+    item_id: int
+):
 
     # 🔒 頻道限制
     if interaction.channel.id != SHOP_CHANNEL:
@@ -2890,6 +2926,16 @@ async def inventory_cmd(interaction: discord.Interaction):
 
 # 🎁 贈送道具
 @bot.tree.command(name="贈送道具")
+@app_commands.rename(
+    member="成員",
+    item_name="道具名稱",
+    amount="數量"
+)
+@app_commands.describe(
+    member="接收道具的玩家",
+    item_name="要贈送的道具",
+    amount="贈送數量"
+)
 async def give_item(
     interaction: discord.Interaction,
     member: discord.Member,
@@ -3184,6 +3230,9 @@ async def give_money(
     )
 # 💣 黑市投資
 @bot.tree.command(name="黑市投資")
+@app_commands.rename(
+    amount="金額"
+)
 @app_commands.describe(
     amount="投資金額"
 )
@@ -3380,10 +3429,24 @@ async def black_market(
     )
 
 # 🎯 猜心情
+
 @bot.tree.command(name="猜心情")
+@app_commands.rename(
+    mood="心情",
+    amount="金額"
+)
 @app_commands.describe(
-    mood="開心、生氣、想睡、難過、發瘋",
+    mood="選擇心情",
     amount="下注金額"
+)
+@app_commands.choices(
+    mood=[
+        app_commands.Choice(name="😊 開心", value="開心"),
+        app_commands.Choice(name="😡 生氣", value="生氣"),
+        app_commands.Choice(name="😴 想睡", value="想睡"),
+        app_commands.Choice(name="😢 難過", value="難過"),
+        app_commands.Choice(name="🤪 發瘋", value="發瘋")
+    ]
 )
 async def mood_game(
     interaction: discord.Interaction,
@@ -3391,7 +3454,7 @@ async def mood_game(
     amount: int
 ):
 
-    # 🔒 頻道限制
+🔒 頻道限制
     if interaction.channel.id != MOOD_CHANNEL:
 
         embed = discord.Embed(
@@ -3597,6 +3660,9 @@ async def mood_game(
 
 # 🧪 實驗
 @bot.tree.command(name="實驗")
+@app_commands.rename(
+    amount="金額"
+)
 @app_commands.describe(
     amount="投入金額"
 )
@@ -3792,6 +3858,9 @@ async def experiment(
 
 # 🎰 賭命
 @bot.tree.command(name="賭命")
+@app_commands.rename(
+    amount="金額"
+)
 @app_commands.describe(
     amount="下注金額"
 )
@@ -4300,12 +4369,26 @@ async def my_wanted(
 @app_commands.default_permissions(
     administrator=True
 )
-async def set_welcome_message(interaction: discord.Interaction, message: str):
+@app_commands.rename(
+    message="訊息內容"
+)
+@app_commands.describe(
+    message="新會員加入時顯示的歡迎訊息"
+)
+async def set_welcome_message(
+    interaction: discord.Interaction,
+    message: str
+):
 
-    c.execute("REPLACE INTO settings VALUES ('welcome_message', ?)", (message,))
+    c.execute(
+        "REPLACE INTO settings VALUES ('welcome_message', ?)",
+        (message,)
+    )
     conn.commit()
 
-    await interaction.response.send_message("✅ 歡迎訊息已更新")
+    await interaction.response.send_message(
+        "✅ 歡迎訊息已更新"
+    )
 
 # 🌐 保活
 def run_web():
