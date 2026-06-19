@@ -1115,6 +1115,45 @@ async def profile(interaction: discord.Interaction):
         avatar
     )
 
+    # 金色頭像框
+    draw_avatar = ImageDraw.Draw(bg)
+
+    draw_avatar.ellipse(
+        (
+            25,
+            105,
+            185,
+            265
+        ),
+        outline="#FFD700",
+        width=5
+    )
+
+    # 半透明資訊底板
+    glass = Image.new(
+        "RGBA",
+        bg.size,
+        (0, 0, 0, 0)
+    )
+
+    glass_draw = ImageDraw.Draw(glass)
+
+    glass_draw.rounded_rectangle(
+        (
+            15,
+            60,
+            760,
+            350
+        ),
+        radius=25,
+        fill=(20, 20, 20, 150)
+    )
+
+    bg = Image.alpha_composite(
+        bg,
+        glass
+    )
+
     draw = ImageDraw.Draw(bg)
 
     # 字型
@@ -1149,42 +1188,67 @@ async def profile(interaction: discord.Interaction):
         font=font_level
     )
 
-    # 排名
+    # 排名徽章底板
+    draw.rounded_rectangle(
+        (
+            600,
+            80,
+            760,
+            170
+        ),
+        radius=20,
+        fill=(40, 40, 40, 180)
+    )
+
+    # 排名標題
     draw.text(
-        (620, 90),
-        f"#{rank}",
+        (625, 90),
+        "排名",
         fill="#FFD700",
+        font=font_small
+    )
+
+    # 排名數字
+    draw.text(
+        (625, 115),
+        f"#{rank}",
+        fill="white",
         font=font_level
     )
 
     # 經驗值比例
-    percent = exp / max(next_exp, 1)
+    percent_text = int(percent * 100)
 
     # 背景條
-    draw.rectangle(
-        (210, 250, 720, 285),
-        fill=(60, 60, 60)
-    )
-
-    # 經驗條
-    draw.rectangle(
+    draw.rounded_rectangle(
         (
             210,
             250,
             210 + int(510 * percent),
             285
         ),
+        radius=15,
         fill=(180, 100, 255)
+    )
+    # 經驗條
+    draw.rounded_rectangle(
+        (
+            210,
+            250,
+            720,
+            285
+        ),
+        radius=15,
+        fill=(60, 60, 60)
     )
 
     # XP文字
     draw.text(
         (210, 305),
-        f"{exp:,} / {next_exp:,} XP",
+        f"{exp:,} / {next_exp:,} XP ({percent_text}%)",
         fill="white",
         font=font_small
     )
-
     output = io.BytesIO()
 
     bg.save(
