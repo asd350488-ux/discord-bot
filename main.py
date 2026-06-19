@@ -30,6 +30,9 @@ LOTTERY_CHANNEL = 1516119932230828134
 # 📊 查詢
 INFO_CHANNEL = 1516493039571308646
 
+# 🌙 等級提升通知
+LEVEL_UP_CHANNEL = 1516120288373506068
+
 # 🛒 商店 / 錢包
 SHOP_CHANNEL = 1516120281507434577
 
@@ -1011,6 +1014,187 @@ async def level(interaction: discord.Interaction):
     )
     return
 
+@bot.tree.command(name="個人資料")
+async def profile(interaction: discord.Interaction):
+
+    # 🔒 頻道限制
+    if interaction.channel.id != INFO_CHANNEL:
+
+        embed = discord.Embed(
+            title="🌙 星月指令限制",
+            description=(
+                "📊 個人資料僅能於指定區域使用\n\n"
+                f"請前往 <#{INFO_CHANNEL}>"
+            ),
+            color=discord.Color.from_rgb(
+                186,
+                85,
+                211
+            )
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+        return
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+        return
+
+    user_id = str(interaction.user.id)
+
+    c.execute("""
+        SELECT level, exp
+        FROM users
+        WHERE user_id=?
+    """, (user_id,))
+
+    result = c.fetchone()
+
+    if not result:
+        level = 1
+        exp = 0
+    else:
+        level, exp = result
+
+    next_exp = level * 100
+
+    c.execute("""
+        SELECT COUNT(*)
+        FROM users
+        WHERE level > ?
+           OR (level = ? AND exp > ?)
+    """, (level, level, exp))
+
+    rank = c.fetchone()[0] + 1
+
+    # 讀背景圖
+    bg = Image.open("images/rank_bg.jpg").convert("RGBA")
+
+    # 下載頭像
+    async with aiohttp.ClientSession() as session:
+
+        async with session.get(
+            interaction.user.display_avatar.url
+        ) as resp:
+
+            avatar_bytes = await resp.read()
+
+    avatar = Image.open(
+        io.BytesIO(avatar_bytes)
+    ).convert("RGBA")
+
+    avatar = avatar.resize((220, 220))
+
+    # 圓形頭像
+    mask = Image.new(
+        "L",
+        (220, 220),
+        0
+    )
+
+    draw_mask = ImageDraw.Draw(mask)
+
+    draw_mask.ellipse(
+        (0, 0, 220, 220),
+        fill=255
+    )
+
+    avatar.putalpha(mask)
+
+    bg.paste(
+        avatar,
+        (40, 90),
+        avatar
+    )
+
+    draw = ImageDraw.Draw(bg)
+
+    # 字型
+    font_name = ImageFont.truetype(
+        "fonts/NotoSansTC-Regular.ttf",
+        45
+    )
+
+    font_level = ImageFont.truetype(
+        "fonts/NotoSansTC-Regular.ttf",
+        60
+    )
+
+    font_small = ImageFont.truetype(
+        "fonts/NotoSansTC-Regular.ttf",
+        30
+    )
+
+    # 名稱
+    draw.text(
+        (300, 120),
+        interaction.user.display_name,
+        fill="white",
+        font=font_name
+    )
+
+    # 等級
+    draw.text(
+        (300, 200),
+        f"Lv.{level}",
+        fill="#FFD700",
+        font=font_level
+    )
+
+    # 排名
+    draw.text(
+        (950, 150),
+        f"#{rank}",
+        fill="#FFD700",
+        font=font_level
+    )
+
+    # EXP條
+    percent = exp / next_exp
+
+    draw.rectangle(
+        (300, 320, 1050, 360),
+        fill=(60, 60, 60)
+    )
+
+    draw.rectangle(
+        (
+            300,
+            320,
+            300 + int(750 * percent),
+            360
+        ),
+        fill=(180, 100, 255)
+    )
+
+    draw.text(
+        (300, 380),
+        f"{exp:,} / {next_exp:,} XP",
+        fill="white",
+        font=font_small
+    )
+
+    output = io.BytesIO()
+
+    bg.save(
+        output,
+        format="PNG"
+    )
+
+    output.seek(0)
+
+    await interaction.response.send_message(
+        file=discord.File(
+            output,
+            filename="profile.png"
+        )
+    )
+
 # 🎮 聊天經驗系統
 @bot.event
 async def on_message(message):
@@ -1074,7 +1258,7 @@ async def on_message(message):
     if level_up:
 
         channel = bot.get_channel(
-    1516120288373506068
+    LEVEL_UP_CHANNEL
 )
 
         embed = discord.Embed(
@@ -1088,10 +1272,6 @@ async def on_message(message):
                 85,
                 211
             )
-        )
-
-        embed.set_thumbnail(
-            url=message.author.display_avatar.url
         )
 
         embed.set_footer(
