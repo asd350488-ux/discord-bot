@@ -53,10 +53,8 @@ WELCOME_CHANNEL = 1504805225351876628
 BIRTHDAY_ANNOUNCE_CHANNEL = 1504815515795853432
 LEVEL_UP_CHANNEL = 1516120288373506068
 
-# 🛒 系統頻道
-SHOP_CHANNEL = 1516120281507434577
-WORK_CHANNEL = 1516120501704065094
-INFO_CHANNEL = 1516493039571308646
+# 💜 老公價格
+HUSBAND_PRICE = 1000000
 
 # 🎰 賭場頻道
 BIGSMALL_CHANNEL     = 1516421134613086370  # 🎲 猜大小
@@ -92,6 +90,23 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # 💾 DB
 conn = sqlite3.connect("/var/data/bot.db", check_same_thread=False)
 c = conn.cursor()
+
+# 💜 老公資料表
+c.execute("""
+CREATE TABLE IF NOT EXISTS husbands (
+    husband_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE
+)
+""")
+
+# 💜 玩家收藏老公
+c.execute("""
+CREATE TABLE IF NOT EXISTS user_husbands (
+    user_id TEXT,
+    husband_id INTEGER,
+    PRIMARY KEY(user_id, husband_id)
+)
+""")
 
 # 🗡 黑幫系統
 
@@ -521,6 +536,54 @@ CREATE TABLE IF NOT EXISTS settings (
 )
 """)
 
+husband_list = [
+    "黎晝",
+    "溫執紃",
+    "諾耶·卡米爾",
+    "瑟安",
+    "穆梓赫",
+    "穆禹昂",
+    "韓沉",
+    "路西恩",
+    "賽拉斯",
+    "維克托",
+    "奧爾登",
+    "伊萊亞斯",
+    "穆宇曄",
+    "穆宇辰",
+    "司御蓮",
+    "月真靜",
+    "夜鷹瀨",
+    "月城靜真",
+    "黑瀨鷹夜",
+    "御影蓮司",
+    "若無",
+    "黎沐昊",
+    "杜洛",
+    "杜楓",
+    "鍾緹歐",
+    "何硯希",
+    "穆彥珩",
+    "穆薩爾",
+    "梁凱",
+    "戚孟洋",
+    "邢子言",
+    "彌愷揚",
+    "祁安",
+    "祁羯",
+    "樂央",
+    "藍書禾",
+    "席靖宥",
+    "閔孝杰"
+]
+
+for husband in husband_list:
+
+    c.execute("""
+        INSERT OR IGNORE INTO husbands (name)
+        VALUES (?)
+    """, (husband,))
+
 conn.commit()
 
 class BuyButton(discord.ui.Button):
@@ -762,7 +825,7 @@ async def wallet(interaction: discord.Interaction):
     return
     
 # 🏆 排行榜
-@bot.tree.command(name="排行榜")
+@bot.tree.command(name="富豪排行榜")
 async def leaderboard(interaction: discord.Interaction):
 
     # 🔒 頻道限制
@@ -1889,7 +1952,6 @@ async def work(interaction: discord.Interaction):
         embed=embed
     )
 
-
 # 🛒 商店
 @bot.tree.command(name="商店")
 async def shop(interaction: discord.Interaction):
@@ -1945,6 +2007,210 @@ async def shop(interaction: discord.Interaction):
     await interaction.response.send_message(
         embed=embed,
         view=view
+    )
+
+# 💜 老公商店
+@bot.tree.command(name="老公商店")
+async def husband_shop(
+    interaction: discord.Interaction
+):
+
+    # 🔒 頻道限制
+    if interaction.channel.id != SHOP_CHANNEL:
+
+        embed = discord.Embed(
+            title="💜 星月婚姻介紹所",
+            description=(
+                "✨ 老公商店僅能於指定區域使用\n\n"
+                f"請前往 <#{SHOP_CHANNEL}>"
+            ),
+            color=discord.Color.from_rgb(
+                255,
+                105,
+                180
+            )
+        )
+
+        embed.add_field(
+            name="💍 功能",
+            value="老公商店｜購買老公",
+            inline=False
+        )
+
+        embed.set_footer(
+            text="極曜月葵 ✦ 命定之人"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+        return
+
+    c.execute("""
+        SELECT name
+        FROM husbands
+        ORDER BY husband_id
+    """)
+
+    husbands = c.fetchall()
+
+    if not husbands:
+
+        await interaction.response.send_message(
+            "💔 目前沒有可購買的老公"
+        )
+        return
+
+    husband_text = ""
+
+    for i, husband in enumerate(
+        husbands,
+        start=1
+    ):
+
+        husband_text += (
+            f"{i}. {husband[0]}\n"
+        )
+
+    embed = discord.Embed(
+        title="💜 星月婚姻介紹所",
+        description=(
+            "歡迎挑選你的命定老公 ✨\n\n"
+            f"{husband_text}"
+        ),
+        color=discord.Color.from_rgb(
+            255,
+            105,
+            180
+        )
+    )
+
+    embed.set_footer(
+        text="輸入 /購買老公 名稱"
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
+
+# 💜 購買老公
+@bot.tree.command(name="購買老公")
+async def buy_husband(
+    interaction: discord.Interaction,
+    名稱: str
+):
+
+    user_id = str(interaction.user.id)
+
+    # 查老公是否存在
+    c.execute("""
+        SELECT husband_id
+        FROM husbands
+        WHERE name=?
+    """, (名稱,))
+
+    husband = c.fetchone()
+
+    if not husband:
+
+        await interaction.response.send_message(
+            "❌ 查無此老公",
+            ephemeral=True
+        )
+        return
+
+    husband_id = husband[0]
+
+    # 是否已擁有
+    c.execute("""
+        SELECT *
+        FROM user_husbands
+        WHERE user_id=?
+        AND husband_id=?
+    """, (
+        user_id,
+        husband_id
+    ))
+
+    if c.fetchone():
+
+        await interaction.response.send_message(
+            f"💜 你已經擁有 {名稱}",
+            ephemeral=True
+        )
+        return
+
+    # 查錢
+    c.execute("""
+        SELECT money
+        FROM users
+        WHERE user_id=?
+    """, (user_id,))
+
+    data = c.fetchone()
+
+    money = data[0] if data else 0
+
+    if money < HUSBAND_PRICE:
+
+        await interaction.response.send_message(
+            (
+                f"❌ 努努幣不足\n\n"
+                f"需要：{HUSBAND_PRICE:,}\n"
+                f"目前：{money:,}"
+            ),
+            ephemeral=True
+        )
+        return
+
+    # 扣款
+    c.execute("""
+        UPDATE users
+        SET money = money - ?
+        WHERE user_id=?
+    """, (
+        HUSBAND_PRICE,
+        user_id
+    ))
+
+    # 收藏
+    c.execute("""
+        INSERT INTO user_husbands
+        (user_id, husband_id)
+        VALUES (?, ?)
+    """, (
+        user_id,
+        husband_id
+    ))
+
+    conn.commit()
+
+    embed = discord.Embed(
+        title="💜 收藏成功",
+        description=(
+            f"恭喜獲得\n\n"
+            f"✨ {名稱} ✨"
+        ),
+        color=discord.Color.from_rgb(
+            255,
+            105,
+            180
+        )
+    )
+
+    embed.add_field(
+        name="💰 消耗",
+        value=f"{HUSBAND_PRICE:,} 努努幣",
+        inline=False
+    )
+
+    embed.set_footer(
+        text="極曜月葵 ✦ 命定之人"
+    )
+
+    await interaction.response.send_message(
+        embed=embed
     )
 
 # 🎲 猜大小
