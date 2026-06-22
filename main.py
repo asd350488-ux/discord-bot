@@ -2101,6 +2101,38 @@ async def buy_husband(
     名稱: str
 ):
 
+    # 🔒 頻道限制
+    if interaction.channel.id != SHOP_CHANNEL:
+
+        embed = discord.Embed(
+            title="💜 星月婚姻介紹所",
+            description=(
+                "✨ 購買老公僅能於指定區域使用\n\n"
+                f"請前往 <#{SHOP_CHANNEL}>"
+            ),
+            color=discord.Color.from_rgb(
+                255,
+                105,
+                180
+            )
+        )
+
+        embed.add_field(
+            name="💍 功能",
+            value="老公商店｜購買老公｜我的老公",
+            inline=False
+        )
+
+        embed.set_footer(
+            text="極曜月葵 ✦ 命定之人"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+        return
+
     user_id = str(interaction.user.id)
 
     # 查老公是否存在
@@ -2207,6 +2239,85 @@ async def buy_husband(
 
     embed.set_footer(
         text="極曜月葵 ✦ 命定之人"
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
+
+# 💜 我的老公
+@bot.tree.command(name="我的老公")
+async def my_husbands(
+    interaction: discord.Interaction
+):
+    # 🔒 頻道限制
+    if interaction.channel.id != SHOP_CHANNEL:
+
+        embed = discord.Embed(
+            title="💜 我的老公",
+            description=(
+                "✨ 此功能僅能於指定區域使用\n\n"
+                f"請前往 <#{SHOP_CHANNEL}>"
+            ),
+            color=discord.Color.from_rgb(
+                255,
+                105,
+                180
+            )
+        )
+
+        embed.add_field(
+            name="💍 功能",
+            value="老公商店｜購買老公｜我的老公",
+            inline=False
+        )
+
+        embed.set_footer(
+            text="極曜月葵 ✦ 命定之人"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+        return
+
+    user_id = str(interaction.user.id)
+
+    c.execute("""
+        SELECT h.name
+        FROM user_husbands uh
+        JOIN husbands h
+        ON uh.husband_id = h.husband_id
+        WHERE uh.user_id=?
+        ORDER BY h.husband_id
+    """, (user_id,))
+
+    husbands = c.fetchall()
+
+    if not husbands:
+
+        await interaction.response.send_message(
+            "💔 你目前還沒有收藏任何老公"
+        )
+        return
+
+    husband_text = "\n".join(
+        [f"💜 {h[0]}" for h in husbands]
+    )
+
+    embed = discord.Embed(
+        title="💜 我的老公",
+        description=husband_text,
+        color=discord.Color.from_rgb(
+            255,
+            105,
+            180
+        )
+    )
+
+    embed.set_footer(
+        text=f"共收藏 {len(husbands)} 位老公"
     )
 
     await interaction.response.send_message(
