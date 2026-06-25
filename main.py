@@ -879,37 +879,46 @@ async def checkin(interaction: discord.Interaction):
         color=discord.Color.from_rgb(186, 85, 211)
     )
 
-# 🎁 今日獎勵
-if rarity == "event":
+    # 🎁 今日獎勵
+    if rarity == "event":
 
-    theme = EVENT_THEMES[event["event"]]
+        theme = EVENT_THEMES[event["event"]]
 
-    reward_box = (
-        f"{theme['emoji']}══════════════{theme['emoji']}\n\n"
-        f"{blessing}\n\n"
-        f"# {NUNU_EMOJI} +{reward:,}\n\n"
-        f"{theme['emoji']}══════════════{theme['emoji']}"
-    )
+        reward_box = (
+            f"{theme['emoji']}══════════════{theme['emoji']}\n\n"
+            f"## {theme['name']}\n\n"
+            f"{blessing}\n\n"
+            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            f"{theme['emoji']}══════════════{theme['emoji']}"
+        )
 
-    footer_text = theme["footer"]
+        footer_text = theme["footer"]
 
-    embed.color = discord.Color(theme["color"])
+        embed.color = discord.Color(theme["color"])
 
-elif rarity == "myth":
+    elif rarity == "myth":
 
-    reward_box = (
-        "👑🌙══════════════🌙👑\n\n"
-        f"{blessing}\n\n"
-        "🌙 **月神降臨！**\n\n"
-        f"# {NUNU_EMOJI} +{reward:,}\n\n"
-        "👑🌙══════════════🌙👑"
-    )
+        reward_box = (
+            "👑🌙══════════════🌙👑\n\n"
+            f"{blessing}\n\n"
+            "🌙 **月神降臨！**\n\n"
+            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            "👑🌙══════════════🌙👑"
+        )
 
-    footer_text = "✦ 月神親自賜予了你祝福 ✦"
+        footer_text = "✦ 月神親自賜予了你祝福 ✦"
 
-elif rarity == "epic":
+    elif rarity == "epic":
 
-    ...
+        reward_box = (
+            "✨🌙══════════════🌙✨\n\n"
+            f"{blessing}\n\n"
+            "✨ **稀有獎勵！**\n\n"
+            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            "✨🌙══════════════🌙✨"
+        )
+
+        footer_text = "✦ 星與月共同為你送上祝福 ✦"
 
     elif rarity == "rare":
 
@@ -957,6 +966,7 @@ elif rarity == "epic":
     )
 
     await interaction.followup.send(embed=embed)
+
 # 💰 錢包
 @bot.tree.command(name="錢包")
 async def wallet(interaction: discord.Interaction):
