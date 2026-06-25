@@ -753,7 +753,7 @@ async def checkin(interaction: discord.Interaction):
 
     if crit:
         blessing = random.choice(CRIT_BLESSINGS)
-        else:
+    else:
         blessing = random.choice(CHECKIN_BLESSINGS)
 
     if data:
@@ -818,28 +818,28 @@ async def checkin(interaction: discord.Interaction):
     )
 
     # 🎁 今日獎勵
-    if crit:
+if crit:
 
-        reward_box = (
-            "✨══════════════✨\n\n"
-            f"{blessing}\n\n"
-            f"# {NUNU_EMOJI} +{reward:,}\n\n"
-            "✨══════════════✨"
-        )
+    reward_box = (
+        "🌟✨══════════════✨🌟\n\n"
+        f"{blessing}\n\n"
+        "🎉 **暴擊獎勵！**\n\n"
+        f"# {NUNU_EMOJI} +{reward:,}\n\n"
+        "🌟✨══════════════✨🌟"
+    )
 
-        footer_text = "✦ 今天的運氣特別好 ✦"
+    footer_text = "✦ 今天的運氣特別好 ✦"
 
-    else:
+else:
 
-        reward_box = (
-            "🌟✨══════════════✨🌟\n\n"
-            f"{blessing}\n\n"
-            "🎉 **暴擊獎勵！**\n\n"
-            f"# {NUNU_EMOJI} +{reward:,}\n\n"
-            "🌟✨══════════════✨🌟"
-        )
+    reward_box = (
+        "✨══════════════✨\n\n"
+        f"{blessing}\n\n"
+        f"# {NUNU_EMOJI} +{reward:,}\n\n"
+        "✨══════════════✨"
+    )
 
-        footer_text = "✦ 願星月永遠照耀著你 ✦"
+    footer_text = "✦ 願星月永遠照耀著你 ✦"
 
     embed.add_field(
         name="🎁 今日獎勵",
