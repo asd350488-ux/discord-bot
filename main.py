@@ -73,11 +73,48 @@ LAB_CHANNEL          = 1516422777995923487  # 🧪 實驗
 LIFEBET_CHANNEL      = 1516422713109909664  # 🎰 賭命
 ROB_CHANNEL          = 1516429756428718100  # 🗡 搶劫
 GANG_CHANNEL = 1516429756428718100
+
 # 💰 努努幣
 NUNU_EMOJI = "<:nunu:1516703946012496025>"
 
+# 🌙 一般簽到祝福
+CHECKIN_BLESSINGS = [
+    "🌙 月神的祝福降臨",
+    "🌸 月光輕灑，願幸運伴隨著你",
+    "🌌 星辰正為你閃耀",
+    "✨ 今夜的月色格外溫柔",
+    "🌠 星月之境歡迎你的到來",
+    "🌙 月神再次向你微笑",
+    "💜 願星光照亮你的旅程",
+    "🌙 月色如詩，願美好伴隨著你",
+    "✨ 星辰正在默默守護著你",
+    "🌸 願今天也是充滿希望的一天"
+]
+
+# 🌟 暴擊祝福
+CRIT_BLESSINGS = [
+    "🌙 月神的恩賜降臨",
+    "🌟 星月共鳴，祝福翻倍！",
+    "✨ 月神親自賜福於你！",
+    "🌕 滿月之夜，幸運降臨！",
+    "💫 星辰閃耀，奇蹟發生了！",
+    "👑 月神向你投下了祝福之光！",
+    "🌠 今夜的幸運屬於你！",
+    "✨ 星光匯聚，奇蹟降臨！"
+]
+
 # 👑 管理員身分組
 ALLOWED_ROLES = [
+    1504824446769172602,
+    1504833586807967914,
+    1504863173168074823,
+    1504863370552152124,
+    1504864390388776992,
+    1505616537296310492
+]
+
+# 👑 不列入排行榜
+RANK_EXCLUDED_ROLES = [
     1504824446769172602,
     1504833586807967914,
     1504863173168074823,
@@ -668,13 +705,19 @@ async def checkin(interaction: discord.Interaction):
     now = datetime.now(tz)
     today = now.date()
 
-    c.execute("SELECT last_checkin, checkin_total, checkin_streak, money FROM users WHERE user_id=?", (user_id,))
+    c.execute(
+        "SELECT last_checkin, checkin_total, checkin_streak, money FROM users WHERE user_id=?",
+        (user_id,)
+    )
     data = c.fetchone()
 
-    # ❗ 已簽到
+    # ❗ 今日已簽到
     if data and data[0] == str(today):
 
-        tomorrow = datetime.combine(today + timedelta(days=1), datetime.min.time())
+        tomorrow = datetime.combine(
+            today + timedelta(days=1),
+            datetime.min.time()
+        )
         tomorrow = tz.localize(tomorrow)
 
         remaining = tomorrow - now
@@ -684,18 +727,22 @@ async def checkin(interaction: discord.Interaction):
         minutes = (total_seconds % 3600) // 60
 
         embed = discord.Embed(
-            title="⏳ 今日已簽到",
-            description="你今天已經領過獎勵了",
-            color=discord.Color.from_rgb(255, 105, 180)
+            title="🌙 𝑴𝒐𝒐𝒏 𝑪𝒉𝒆𝒄𝒌𝒊𝒏",
+            color=discord.Color.from_rgb(186, 85, 211)
         )
 
-        embed.add_field(
-            name="⏰ 下次簽到",
-            value=f"```{hours} 小時 {minutes} 分鐘```",
-            inline=False
+        embed.description = (
+            "⏳ **今日已完成簽到**\n\n"
+            "══════════════════════\n\n"
+            "🌙 月神正在等待下一次相遇\n\n"
+            f"⏰ **距離下次簽到**\n"
+            f"```{hours} 小時 {minutes} 分鐘```\n"
+            "══════════════════════"
         )
 
-        embed.set_footer(text="極曜月葵 ✦ 時間流轉中")
+        embed.set_footer(
+            text="✦ 明天再來接受月神的祝福吧 ✦"
+        )
 
         await interaction.followup.send(embed=embed)
         return
@@ -704,41 +751,117 @@ async def checkin(interaction: discord.Interaction):
     reward = 500 if random.random() < 0.2 else 100
     crit = reward == 500
 
+    if crit:
+        blessing = random.choice(CRIT_BLESSINGS)
+         else:
+        blessing = random.choice(CHECKIN_BLESSINGS)
+
     if data:
+
         total = data[1] + 1
-        streak = data[2] + 1 if data[0] == str(today - timedelta(days=1)) else 1
+
+        if data[0] == str(today - timedelta(days=1)):
+            streak = data[2] + 1
+        else:
+            streak = 1
+
         money = data[3] + reward
 
-        c.execute("UPDATE users SET last_checkin=?, checkin_total=?, checkin_streak=?, money=? WHERE user_id=?",
-                  (str(today), total, streak, money, user_id))
+        c.execute(
+            """
+            UPDATE users
+            SET last_checkin=?,
+                checkin_total=?,
+                checkin_streak=?,
+                money=?
+            WHERE user_id=?
+            """,
+            (
+                str(today),
+                total,
+                streak,
+                money,
+                user_id
+            )
+        )
+
     else:
-        total, streak, money = 1, 1, reward
-        c.execute("INSERT INTO users (user_id, money, checkin_total, checkin_streak, last_checkin) VALUES (?, ?, ?, ?, ?)",
-                  (user_id, money, total, streak, str(today)))
+
+        total = 1
+        streak = 1
+        money = reward
+
+        c.execute(
+            """
+            INSERT INTO users
+            (user_id, money, checkin_total, checkin_streak, last_checkin)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                money,
+                total,
+                streak,
+                str(today)
+            )
+        )
 
     conn.commit()
-
-    # 🌙 UI
+    # 🌙 Moon Checkin UI
     embed = discord.Embed(
         title="🌙 𝑴𝒐𝒐𝒏 𝑪𝒉𝒆𝒄𝒌𝒊𝒏",
-        description="✨ 你再次踏入了星月之境",
+        description=(
+            "✨ **星月的祝福再次降臨**\n"
+            "歡迎再次踏入 **星月之境**。"
+        ),
         color=discord.Color.from_rgb(186, 85, 211)
     )
 
-    embed.set_author(
-        name=interaction.user.display_name,
-        icon_url=interaction.user.display_avatar.url
-    )
+    # 🎁 今日獎勵
+    if crit:
 
-    reward_text = f"✨ 暴擊！+{reward}" if crit else f"+{reward}"
+        reward_box = (
+            "✨══════════════✨\n\n"
+            f"{blessing}\n\n"
+            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            "✨══════════════✨"
+        )
+
+        footer_text = "✦ 今天的運氣特別好 ✦"
+
+    else:
+
+        reward_box = (
+            "🌟✨══════════════✨🌟\n\n"
+            f"{blessing}\n\n"
+            "🎉 **暴擊獎勵！**\n\n"
+            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            "🌟✨══════════════✨🌟"
+        )
+
+        footer_text = "✦ 願星月永遠照耀著你 ✦"
 
     embed.add_field(
-        name="<a:emoji40:1510362334026268713> 努努幣",
-        value=f"```{money}```\n{reward_text}"
+        name="🎁 今日獎勵",
+        value=reward_box,
+        inline=False
     )
 
-    embed.add_field(name="🔥 連續簽到", value=f"```{streak} 天```")
-    embed.add_field(name="📅 總簽到", value=f"```{total} 天```")
+    embed.add_field(
+        name="🔥 連續簽到",
+        value=f"```{streak} 天```",
+        inline=True
+    )
+
+    embed.add_field(
+        name="📅 累積簽到",
+        value=f"```{total} 天```",
+        inline=True
+    )
+
+    embed.set_footer(
+        text=footer_text
+    )
 
     await interaction.followup.send(embed=embed)
 
@@ -829,7 +952,7 @@ async def wallet(interaction: discord.Interaction):
     )
     return
     
-# 🏆 排行榜
+# 🏆 富豪排行榜
 @bot.tree.command(name="富豪排行榜")
 async def leaderboard(interaction: discord.Interaction):
 
@@ -908,8 +1031,8 @@ async def leaderboard(interaction: discord.Interaction):
     )
     return
 
-# 🌟 等級排行榜
-@bot.tree.command(name="等級排行榜")
+# 🌟 聊天等級排行榜
+@bot.tree.command(name="聊天等級排行榜")
 async def level_leaderboard(interaction: discord.Interaction):
 
     # 🔒 頻道限制
@@ -3715,7 +3838,7 @@ async def give_item(
     amount="金額",
     member="成員",
     role="身分組",
-    everyone="全體"
+    everyone="發送全體"
 )
 @app_commands.describe(
     amount="發送金額",
@@ -3735,22 +3858,39 @@ async def give_money(
 
     # 🔒 限制頻道
     if interaction.channel.id != 1510930723924611163:
-        await interaction.followup.send("❌ 請到管理員頻道使用", ephemeral=True)
+        await interaction.followup.send(
+            "❌ 請到管理員頻道使用",
+            ephemeral=True
+        )
         return
 
     # 🔒 管理員權限
-    ALLOWED_ROLES = [1504824446769172602,1504833586807967914,1504863173168074823,1504863370552152124,1504864390388776992,1505616537296310492]
+    ALLOWED_ROLES = [
+        1504824446769172602,
+        1504833586807967914,
+        1504863173168074823,
+        1504863370552152124,
+        1504864390388776992,
+        1505616537296310492
+    ]
 
-    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
-        await interaction.followup.send("❌ 你沒有權限", ephemeral=True)
+    if not any(r.id in ALLOWED_ROLES for r in interaction.user.roles):
+        await interaction.followup.send(
+            "❌ 你沒有權限",
+            ephemeral=True
+        )
         return
 
-    if 金額 <= 0:
-        await interaction.followup.send("❌ 金額錯誤")
+    # 🔒 金額檢查
+    if amount <= 0:
+        await interaction.followup.send(
+            "❌ 金額必須大於 0",
+            ephemeral=True
+        )
         return
 
-    # ❗ 沒選
-    if not 成員 and not 身分組 and not 全體:
+    # 🔒 至少選一個對象
+    if not member and not role and not everyone:
         await interaction.followup.send(
             "❌ 請選擇發送對象",
             ephemeral=True
@@ -3760,9 +3900,9 @@ async def give_money(
     count = 0
 
     # 👤 單人
-    if 成員:
+    if member:
 
-        user_id = str(成員.id)
+        user_id = str(member.id)
 
         c.execute(
             "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
@@ -3771,20 +3911,20 @@ async def give_money(
 
         c.execute(
             "UPDATE users SET money = money + ? WHERE user_id=?",
-            (金額, user_id)
+            (amount, user_id)
         )
 
         count = 1
 
     # 👥 身分組
-    elif 身分組:
+    elif role:
 
-        for member in 身分組.members:
+        for m in role.members:
 
-            if member.bot:
+            if m.bot:
                 continue
 
-            user_id = str(member.id)
+            user_id = str(m.id)
 
             c.execute(
                 "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
@@ -3793,20 +3933,20 @@ async def give_money(
 
             c.execute(
                 "UPDATE users SET money = money + ? WHERE user_id=?",
-                (金額, user_id)
+                (amount, user_id)
             )
 
             count += 1
 
     # 🌍 全體
-    elif 全體:
+    elif everyone:
 
-        for member in interaction.guild.members:
+        for m in interaction.guild.members:
 
-            if member.bot:
+            if m.bot:
                 continue
 
-            user_id = str(member.id)
+            user_id = str(m.id)
 
             c.execute(
                 "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
@@ -3815,7 +3955,7 @@ async def give_money(
 
             c.execute(
                 "UPDATE users SET money = money + ? WHERE user_id=?",
-                (金額, user_id)
+                (amount, user_id)
             )
 
             count += 1
@@ -3829,25 +3969,25 @@ async def give_money(
 
     embed.add_field(
         name="💵 發送金額",
-        value=f"{NUNU_EMOJI} `{金額:,}`",
+        value=f"{NUNU_EMOJI} `{amount:,}`",
         inline=False
     )
 
-    if 成員:
+    if member:
         embed.add_field(
             name="👤 發送對象",
-            value=f"`{成員.display_name}`",
+            value=member.mention,
             inline=False
         )
 
-    elif 身分組:
+    elif role:
         embed.add_field(
             name="🎭 發送對象",
-            value=f"`{身分組.name}`",
+            value=role.mention,
             inline=False
         )
 
-    elif 全體:
+    elif everyone:
         embed.add_field(
             name="🌍 發送對象",
             value="`全體成員`",
@@ -3863,6 +4003,7 @@ async def give_money(
     await interaction.followup.send(
         embed=embed
     )
+
 # 💣 黑市投資
 @bot.tree.command(name="黑市投資")
 @app_commands.rename(
