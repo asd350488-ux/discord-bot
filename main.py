@@ -753,7 +753,7 @@ async def checkin(interaction: discord.Interaction):
 
     if crit:
         blessing = random.choice(CRIT_BLESSINGS)
-         else:
+        else:
         blessing = random.choice(CHECKIN_BLESSINGS)
 
     if data:
