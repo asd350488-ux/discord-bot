@@ -15,6 +15,7 @@ import time
 from PIL import Image, ImageDraw, ImageFont
 import aiohttp
 import io
+from events import CHECKIN_EVENTS, EVENT_THEMES
 
 tz = pytz.timezone("Asia/Taipei")
 # 🌙 極曜月葵系統設定
@@ -48,16 +49,6 @@ WELCOME_CHANNEL = 1504805225351876628
 # 📢 活動公告
 EVENT_CHANNEL = 1504815515795853432
 
-# 📢 公告頻道
-WELCOME_CHANNEL = 1504805225351876628
-BIRTHDAY_ANNOUNCE_CHANNEL = 1504815515795853432
-LEVEL_UP_CHANNEL = 1516120288373506068
-
-# 🛒 系統頻道
-SHOP_CHANNEL = 1516120281507434577
-WORK_CHANNEL = 1516120501704065094
-INFO_CHANNEL = 1516493039571308646
-
 # 💜 老公價格
 HUSBAND_PRICE = 1000000
 
@@ -74,9 +65,6 @@ LIFEBET_CHANNEL      = 1516422713109909664  # 🎰 賭命
 ROB_CHANNEL          = 1516429756428718100  # 🗡 搶劫
 GANG_CHANNEL = 1516429756428718100
 
-# 💰 努努幣
-NUNU_EMOJI = "<:nunu:1516703946012496025>"
-
 # 🌙 一般簽到祝福
 CHECKIN_BLESSINGS = [
     "🌙 月神的祝福降臨",
@@ -91,16 +79,25 @@ CHECKIN_BLESSINGS = [
     "🌸 願今天也是充滿希望的一天"
 ]
 
-# 🌟 暴擊祝福
-CRIT_BLESSINGS = [
-    "🌙 月神的恩賜降臨",
-    "🌟 星月共鳴，祝福翻倍！",
-    "✨ 月神親自賜福於你！",
-    "🌕 滿月之夜，幸運降臨！",
-    "💫 星辰閃耀，奇蹟發生了！",
-    "👑 月神向你投下了祝福之光！",
-    "🌠 今夜的幸運屬於你！",
-    "✨ 星光匯聚，奇蹟降臨！"
+RARE_BLESSINGS = [
+    "🌟 今晚的星空為你閃耀。",
+    "🍀 幸運悄悄降臨。",
+    "✨ 星光指引著你的旅程。",
+    "🌠 願今晚收穫滿滿。"
+]
+
+EPIC_BLESSINGS = [
+    "✨ 星與月共同為你送上祝福。",
+    "🌙 月華照耀，願好運常伴。",
+    "💜 稀有的祝福降臨。",
+    "🌌 星辰為你綻放光芒。"
+]
+
+MYTH_BLESSINGS = [
+    "👑 月神親自降下祝福。",
+    "🌕 滿月之夜，神蹟降臨。",
+    "✨ 傳說中的月光選中了你。",
+    "🌙 今夜，你就是最幸運的人。"
 ]
 
 # 👑 管理員身分組
@@ -437,21 +434,6 @@ class DuelView(discord.ui.View):
             view=None
         )
 
-@discord.ui.button(
-    label="🗡 再搶一次",
-    style=discord.ButtonStyle.danger
-)
-async def rob_again(
-    self,
-    interaction: discord.Interaction,
-    button: discord.ui.Button
-):
-
-    await rob(
-        interaction,
-        self.amount
-    )
-
 class ShopView(discord.ui.View):
     def __init__(self, items, page=0):
         super().__init__(timeout=60)
@@ -463,6 +445,60 @@ class ShopView(discord.ui.View):
         start = self.page * self.per_page
         end = start + self.per_page
         return self.items[start:end]
+
+    async def update(self, interaction):
+
+        self.clear_items()
+
+        embed = discord.Embed(
+            title="🛒 商店",
+            color=discord.Color.gold()
+        )
+
+        page_items = self.get_page_items()
+
+        for item_id, name, price, stock, desc, img in page_items:
+
+            embed.add_field(
+                name=f"🆔 {item_id}｜{name}",
+                value=f"{desc}\n<a:emoji40:1510362334026268713> {price}｜庫存:{stock}",
+                inline=False
+            )
+
+            self.add_item(BuyButton(item_id, price, name))
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=self
+        )
+
+    @discord.ui.button(
+        label="⬅ 上一頁",
+        style=discord.ButtonStyle.gray
+    )
+    async def prev(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        if self.page > 0:
+            self.page -= 1
+
+        await self.update(interaction)
+
+    @discord.ui.button(
+        label="➡ 下一頁",
+        style=discord.ButtonStyle.gray
+    )
+    async def next(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        if (self.page + 1) * self.per_page < len(self.items):
+            self.page += 1
+
+        await self.update(interaction)
 
 async def get_wanted_level(user_id):
 
@@ -747,14 +783,39 @@ async def checkin(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed)
         return
 
-    # 🎰 獎勵
-    reward = 500 if random.random() < 0.2 else 100
-    crit = reward == 500
+    # 🌸 節日活動
+    today_str = str(today)
+    event = CHECKIN_EVENTS.get(today_str)
 
-    if crit:
-        blessing = random.choice(CRIT_BLESSINGS)
+    if event:
+
+        reward = event["reward"]
+        rarity = "event"
+        blessing = event["message"]
+
     else:
-        blessing = random.choice(CHECKIN_BLESSINGS)
+
+        roll = random.randint(1, 100)
+
+        if roll == 1:
+            reward = 5000
+            rarity = "myth"
+            blessing = random.choice(MYTH_BLESSINGS)
+
+        elif roll <= 5:
+            reward = 2000
+            rarity = "epic"
+            blessing = random.choice(EPIC_BLESSINGS)
+
+        elif roll <= 20:
+            reward = 500
+            rarity = "rare"
+            blessing = random.choice(RARE_BLESSINGS)
+
+        else:
+            reward = 100
+            rarity = "normal"
+            blessing = random.choice(CHECKIN_BLESSINGS)
 
     if data:
 
@@ -807,6 +868,7 @@ async def checkin(interaction: discord.Interaction):
         )
 
     conn.commit()
+
     # 🌙 Moon Checkin UI
     embed = discord.Embed(
         title="🌙 𝑴𝒐𝒐𝒏 𝑪𝒉𝒆𝒄𝒌𝒊𝒏",
@@ -817,29 +879,60 @@ async def checkin(interaction: discord.Interaction):
         color=discord.Color.from_rgb(186, 85, 211)
     )
 
-    # 🎁 今日獎勵
-if crit:
+# 🎁 今日獎勵
+if rarity == "event":
+
+    theme = EVENT_THEMES[event["event"]]
 
     reward_box = (
-        "🌟✨══════════════✨🌟\n\n"
+        f"{theme['emoji']}══════════════{theme['emoji']}\n\n"
         f"{blessing}\n\n"
-        "🎉 **暴擊獎勵！**\n\n"
         f"# {NUNU_EMOJI} +{reward:,}\n\n"
-        "🌟✨══════════════✨🌟"
+        f"{theme['emoji']}══════════════{theme['emoji']}"
     )
 
-    footer_text = "✦ 今天的運氣特別好 ✦"
+    footer_text = theme["footer"]
 
-else:
+    embed.color = discord.Color(theme["color"])
+
+elif rarity == "myth":
 
     reward_box = (
-        "✨══════════════✨\n\n"
+        "👑🌙══════════════🌙👑\n\n"
         f"{blessing}\n\n"
+        "🌙 **月神降臨！**\n\n"
         f"# {NUNU_EMOJI} +{reward:,}\n\n"
-        "✨══════════════✨"
+        "👑🌙══════════════🌙👑"
     )
 
-    footer_text = "✦ 願星月永遠照耀著你 ✦"
+    footer_text = "✦ 月神親自賜予了你祝福 ✦"
+
+elif rarity == "epic":
+
+    ...
+
+    elif rarity == "rare":
+
+        reward_box = (
+            "🌟✨══════════════✨🌟\n\n"
+            f"{blessing}\n\n"
+            "🍀 **幸運降臨！**\n\n"
+            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            "🌟✨══════════════✨🌟"
+        )
+
+        footer_text = "✦ 今晚的星空格外閃耀 ✦"
+
+    else:
+
+        reward_box = (
+            "✨══════════════✨\n\n"
+            f"{blessing}\n\n"
+            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            "✨══════════════✨"
+        )
+
+        footer_text = "✦ 願星月永遠照耀著你 ✦"
 
     embed.add_field(
         name="🎁 今日獎勵",
@@ -864,7 +957,6 @@ else:
     )
 
     await interaction.followup.send(embed=embed)
-
 # 💰 錢包
 @bot.tree.command(name="錢包")
 async def wallet(interaction: discord.Interaction):
@@ -1221,11 +1313,7 @@ async def profile(interaction: discord.Interaction):
                 "📊 個人資料僅能於指定區域使用\n\n"
                 f"請前往 <#{INFO_CHANNEL}>"
             ),
-            color=discord.Color.from_rgb(
-                186,
-                85,
-                211
-            )
+            color=discord.Color.from_rgb(186,85,211)
         )
 
         await interaction.followup.send(
@@ -1531,11 +1619,7 @@ async def on_message(message):
                 f"{message.author.mention}\n\n"
                 f"✨ 已提升至 Lv.{level}"
             ),
-            color=discord.Color.from_rgb(
-                186,
-                85,
-                211
-            )
+            color=discord.Color.from_rgb(186,85,211)
         )
 
         embed.set_footer(
@@ -1608,7 +1692,7 @@ async def set_admin_channel(
     await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
 
 # 🎂 生日系統（最終穩定版）
-@tasks.loop(minutes=1)
+@tasks.loop(time=time(hour=8, minute=0, tzinfo=tz))
 async def birthday_check():
 
     now = datetime.now(tz)
@@ -2152,11 +2236,7 @@ async def husband_shop(
                 "✨ 老公商店僅能於指定區域使用\n\n"
                 f"請前往 <#{SHOP_CHANNEL}>"
             ),
-            color=discord.Color.from_rgb(
-                255,
-                105,
-                180
-            )
+            color=discord.Color.from_rgb(255,105,180)
         )
 
         embed.add_field(
@@ -2207,11 +2287,7 @@ async def husband_shop(
             "歡迎挑選你的命定老公 ✨\n\n"
             f"{husband_text}"
         ),
-        color=discord.Color.from_rgb(
-            255,
-            105,
-            180
-        )
+        color=discord.Color.from_rgb(255,105,180)
     )
 
     embed.set_footer(
@@ -2238,11 +2314,7 @@ async def buy_husband(
                 "✨ 購買老公僅能於指定區域使用\n\n"
                 f"請前往 <#{SHOP_CHANNEL}>"
             ),
-            color=discord.Color.from_rgb(
-                255,
-                105,
-                180
-            )
+            color=discord.Color.from_rgb(255,105,180)
         )
 
         embed.add_field(
@@ -2352,11 +2424,7 @@ async def buy_husband(
             f"恭喜獲得\n\n"
             f"✨ {名稱} ✨"
         ),
-        color=discord.Color.from_rgb(
-            255,
-            105,
-            180
-        )
+        color=discord.Color.from_rgb(255,105,180)
     )
 
     embed.add_field(
@@ -2387,11 +2455,7 @@ async def my_husbands(
                 "✨ 此功能僅能於指定區域使用\n\n"
                 f"請前往 <#{SHOP_CHANNEL}>"
             ),
-            color=discord.Color.from_rgb(
-                255,
-                105,
-                180
-            )
+            color=discord.Color.from_rgb(255,105,180)
         )
 
         embed.add_field(
@@ -2437,11 +2501,7 @@ async def my_husbands(
     embed = discord.Embed(
         title="💜 我的老公",
         description=husband_text,
-        color=discord.Color.from_rgb(
-            255,
-            105,
-            180
-        )
+        color=discord.Color.from_rgb(255,105,180)
     )
 
     embed.set_footer(
@@ -2595,11 +2655,7 @@ async def guess_big_small(
 
     embed = discord.Embed(
         title="🎲 星月賭場・猜大小",
-        color=discord.Color.from_rgb(
-            186,
-            85,
-            211
-        )
+        color=discord.Color.from_rgb(186,85,211)
     )
 
     embed.set_author(
@@ -2695,10 +2751,6 @@ async def guess_big_small(
         embed=embed
     )
 
-    await msg.edit(
-        content=None,
-        embed=embed
-    )
 # ⚔️ 對賭
 @bot.tree.command(name="對賭")
 @app_commands.rename(
@@ -2723,14 +2775,14 @@ async def duel(
         )
         return
 
-    if member.bot:
+    if target.bot:
 
         await interaction.response.send_message(
             "❌ 不能挑戰機器人"
         )
         return
 
-    if member.id == interaction.user.id:
+    if target.id == interaction.user.id:
 
         await interaction.response.send_message(
             "❌ 不能挑戰自己"
@@ -2758,7 +2810,7 @@ async def duel(
 
     embed.add_field(
         name="被挑戰者",
-        value=member.mention,
+        value=target.mention,
         inline=False
     )
 
@@ -2776,7 +2828,7 @@ async def duel(
         embed=embed,
         view=DuelView(
             interaction.user,
-            member,
+            target,
             amount
         )
     )
@@ -2794,7 +2846,7 @@ async def duel(
 
     embed.add_field(
         name="被挑戰者",
-        value=member.mention,
+        value=target.mention,
         inline=False
     )
 
