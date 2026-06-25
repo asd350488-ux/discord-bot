@@ -16,6 +16,9 @@ from PIL import Image, ImageDraw, ImageFont
 import aiohttp
 import io
 from events import CHECKIN_EVENTS, EVENT_THEMES
+import discord
+import sqlite3
+
 
 tz = pytz.timezone("Asia/Taipei")
 # 🌙 極曜月葵系統設定
@@ -65,41 +68,6 @@ LIFEBET_CHANNEL      = 1516422713109909664  # 🎰 賭命
 ROB_CHANNEL          = 1516429756428718100  # 🗡 搶劫
 GANG_CHANNEL = 1516429756428718100
 
-# 🌙 一般簽到祝福
-CHECKIN_BLESSINGS = [
-    "🌙 月神的祝福降臨",
-    "🌸 月光輕灑，願幸運伴隨著你",
-    "🌌 星辰正為你閃耀",
-    "✨ 今夜的月色格外溫柔",
-    "🌠 星月之境歡迎你的到來",
-    "🌙 月神再次向你微笑",
-    "💜 願星光照亮你的旅程",
-    "🌙 月色如詩，願美好伴隨著你",
-    "✨ 星辰正在默默守護著你",
-    "🌸 願今天也是充滿希望的一天"
-]
-
-RARE_BLESSINGS = [
-    "🌟 今晚的星空為你閃耀。",
-    "🍀 幸運悄悄降臨。",
-    "✨ 星光指引著你的旅程。",
-    "🌠 願今晚收穫滿滿。"
-]
-
-EPIC_BLESSINGS = [
-    "✨ 星與月共同為你送上祝福。",
-    "🌙 月華照耀，願好運常伴。",
-    "💜 稀有的祝福降臨。",
-    "🌌 星辰為你綻放光芒。"
-]
-
-MYTH_BLESSINGS = [
-    "👑 月神親自降下祝福。",
-    "🌕 滿月之夜，神蹟降臨。",
-    "✨ 傳說中的月光選中了你。",
-    "🌙 今夜，你就是最幸運的人。"
-]
-
 # 👑 管理員身分組
 ALLOWED_ROLES = [
     1504824446769172602,
@@ -109,6 +77,13 @@ ALLOWED_ROLES = [
     1504864390388776992,
     1505616537296310492
 ]
+
+from blessings import (
+    CHECKIN_BLESSINGS,
+    RARE_BLESSINGS,
+    EPIC_BLESSINGS,
+    MYTH_BLESSINGS
+)
 
 # 👑 不列入排行榜
 RANK_EXCLUDED_ROLES = [
@@ -127,8 +102,9 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 💾 DB
-conn = sqlite3.connect("/var/data/bot.db", check_same_thread=False)
-c = conn.cursor()
+from database import conn, c
+
+from views.shop import ShopView, BuyButton
 
 # 💜 老公資料表
 c.execute("""
@@ -434,152 +410,6 @@ class DuelView(discord.ui.View):
             view=None
         )
 
-class ShopView(discord.ui.View):
-    def __init__(self, items, page=0):
-        super().__init__(timeout=60)
-        self.items = items
-        self.page = page
-        self.per_page = 3
-
-    def get_page_items(self):
-        start = self.page * self.per_page
-        end = start + self.per_page
-        return self.items[start:end]
-
-    async def update(self, interaction):
-
-        self.clear_items()
-
-        embed = discord.Embed(
-            title="🛒 商店",
-            color=discord.Color.gold()
-        )
-
-        page_items = self.get_page_items()
-
-        for item_id, name, price, stock, desc, img in page_items:
-
-            embed.add_field(
-                name=f"🆔 {item_id}｜{name}",
-                value=f"{desc}\n<a:emoji40:1510362334026268713> {price}｜庫存:{stock}",
-                inline=False
-            )
-
-            self.add_item(BuyButton(item_id, price, name))
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self
-        )
-
-    @discord.ui.button(
-        label="⬅ 上一頁",
-        style=discord.ButtonStyle.gray
-    )
-    async def prev(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        if self.page > 0:
-            self.page -= 1
-
-        await self.update(interaction)
-
-    @discord.ui.button(
-        label="➡ 下一頁",
-        style=discord.ButtonStyle.gray
-    )
-    async def next(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        if (self.page + 1) * self.per_page < len(self.items):
-            self.page += 1
-
-        await self.update(interaction)
-
-async def get_wanted_level(user_id):
-
-    c.execute(
-        "SELECT level FROM wanted WHERE user_id=?",
-        (user_id,)
-    )
-
-    data = c.fetchone()
-
-    return data[0] if data else 0
-
-
-async def add_wanted(user_id):
-
-    c.execute(
-        "SELECT level FROM wanted WHERE user_id=?",
-        (user_id,)
-    )
-
-    data = c.fetchone()
-
-    if data:
-
-        c.execute(
-            """
-            UPDATE wanted
-            SET level = level + 1
-            WHERE user_id=?
-            """,
-            (user_id,)
-        )
-
-    else:
-
-        c.execute(
-            """
-            INSERT INTO wanted
-            (user_id, level)
-            VALUES (?, 1)
-            """,
-            (user_id,)
-        )
-
-    conn.commit()
-
-    async def update(self, interaction):
-
-        self.clear_items()
-
-        embed = discord.Embed(
-            title="🛒 商店",
-            color=discord.Color.gold()
-        )
-
-        page_items = self.get_page_items()
-
-        for item_id, name, price, stock, desc, img in page_items:
-
-            embed.add_field(
-                name=f"🆔 {item_id}｜{name}",
-                value=f"{desc}\n<a:emoji40:1510362334026268713> {price}｜庫存:{stock}",
-                inline=False
-            )
-
-            self.add_item(BuyButton(item_id, price, name))
-
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="⬅ 上一頁", style=discord.ButtonStyle.gray)
-    async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.page > 0:
-            self.page -= 1
-        await self.update(interaction)
-
-    @discord.ui.button(label="➡ 下一頁", style=discord.ButtonStyle.gray)
-    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if (self.page + 1) * self.per_page < len(self.items):
-            self.page += 1
-        await self.update(interaction)
-
 c.execute("""
 CREATE TABLE IF NOT EXISTS inventory (
     user_id TEXT,
@@ -664,56 +494,6 @@ for husband in husband_list:
 
 conn.commit()
 
-class BuyButton(discord.ui.Button):
-    def __init__(self, item_id, price, name):
-        super().__init__(
-            label=f"購買 {name}",
-            style=discord.ButtonStyle.green
-        )
-        self.item_id = item_id
-        self.price = price
-        self.name = name
-
-    async def callback(self, interaction: discord.Interaction):
-
-        user_id = str(interaction.user.id)
-
-        # 💰 查錢
-        c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
-        data = c.fetchone()
-
-        if not data or data[0] < self.price:
-            await interaction.response.send_message("❌ 努努幣不足", ephemeral=True)
-            return
-
-        # 📦 查庫存
-        c.execute("SELECT stock FROM shop WHERE item_id=?", (self.item_id,))
-        stock = c.fetchone()
-
-        if not stock or stock[0] <= 0:
-            await interaction.response.send_message("❌ 商品已售完", ephemeral=True)
-            return
-
-        # 💰 扣錢
-        c.execute("UPDATE users SET money = money - ? WHERE user_id=?", (self.price, user_id))
-
-        # 📦 扣庫存
-        c.execute("UPDATE shop SET stock = stock - 1 WHERE item_id=?", (self.item_id,))
-
-        # 🎒 加入背包
-        c.execute("SELECT amount FROM inventory WHERE user_id=? AND item_id=?", (user_id, self.item_id))
-        inv = c.fetchone()
-
-        if inv:
-            c.execute("UPDATE inventory SET amount = amount + 1 WHERE user_id=? AND item_id=?", (user_id, self.item_id))
-        else:
-            c.execute("INSERT INTO inventory (user_id, item_id, amount) VALUES (?, ?, 1)", (user_id, self.item_id))
-
-        conn.commit()
-
-        await interaction.response.send_message(
-            f"🛍️ 購買成功！**{self.name}**\n<a:emoji40:1510362334026268713> -{self.price}"
-        )
 
 # 🚀 啟動
 @bot.event
