@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from discord.ui import View, Button
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import pytz
 import os
 import threading
@@ -11,13 +11,10 @@ from http.server import SimpleHTTPRequestHandler
 from socketserver import TCPServer
 import random
 import asyncio
-import time
 from PIL import Image, ImageDraw, ImageFont
 import aiohttp
 import io
 from events import CHECKIN_EVENTS, EVENT_THEMES
-import discord
-import sqlite3
 
 
 tz = pytz.timezone("Asia/Taipei")
