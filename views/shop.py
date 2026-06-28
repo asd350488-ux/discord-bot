@@ -1,3 +1,8 @@
+import discord
+
+from database import c, conn
+from config import *
+
 class BuyButton(discord.ui.Button):
     def __init__(self, item_id, price, name):
         super().__init__(
