@@ -18,6 +18,7 @@ from events import CHECKIN_EVENTS, EVENT_THEMES
 from config import NUNU_EMOJI
 import time as pytime
 from config import *
+from systems.welcome import create_welcome_card
 
 tz = pytz.timezone("Asia/Taipei")
 # 🌙 極曜月葵系統設定
@@ -1334,53 +1335,56 @@ async def birthday_check():
         await admin_channel.send(f"⚠️ 明天壽星：\n{text}")
 
 
-# 🌸 歡迎系統（動畫版）
+# ==========================================
+# 🌸 歡迎系統
+# ==========================================
+
+
 @bot.event
 async def on_member_join(member):
 
-    # 📡 取得頻道
-    c.execute("SELECT value FROM settings WHERE key='welcome_channel'")
+    # 取得歡迎頻道
+    c.execute("""
+        SELECT value
+        FROM settings
+        WHERE key='welcome_channel'
+        """)
+
     data = c.fetchone()
 
     if not data:
         return
 
     channel = bot.get_channel(int(data[0]))
-    if not channel:
+
+    if channel is None:
         return
 
-    count = member.guild.member_count
+    # ==========================
+    # Welcome Card
+    # ==========================
 
-    # 🎬 動畫開始
-    msg = await channel.send("🌙 星門正在開啟...")
-    await asyncio.sleep(1.2)
+    card = await create_welcome_card(member)
 
-    await msg.edit(content="✨ 正在確認身分...")
-    await asyncio.sleep(1.2)
+    await channel.send(file=card)
 
-    await msg.edit(content="🌸 新成員已抵達")
-    await asyncio.sleep(1.2)
+    # ==========================
+    # 歡迎文字
+    # ==========================
 
-    # 📝 抓歡迎訊息
-    c.execute("SELECT value FROM settings WHERE key='welcome_message'")
-    msg_data = c.fetchone()
+    await channel.send(
+        f"""歡迎 {member.mention} 寶寶加入我們𖤐⋆₊˚ 𝒳 ⋆ 𝒳 ⋆ 𝒳 ⋆ 𝒳 極 曜 月 葵 ˚₊⋆𖤐
+很開心你來到這個小小的粉絲交流空間！<a:emoji_32:1508529055832739911>
 
-    text = msg_data[0] if msg_data else f"歡迎 {member.mention} 加入伺服器 ✨"
+<a:emoji_1:1506013957905846372> 請 {member.mention} 寶寶至 <#1506198162724094074>
+提供與角色聊天的截圖。
 
-    # 💜 最終卡片
-    embed = discord.Embed(
-        title="🌙 𝑵𝒆𝒘 𝑨𝒓𝒓𝒊𝒗𝒂𝒍",
-        description=f"{text}\n你是第 **{count}** 位成員",
-        color=discord.Color.from_rgb(186, 85, 211),
+📌 C 台角色等級需達到 **30 等**
+📌 T 台角色等級需達到 **3 等**
+
+我們進行審核通過後，會再人工修改身分組唷 <a:emoji_2:1506043914115879014>
+"""
     )
-
-    embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
-
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_footer(text="極曜月葵 ✦ 歡迎儀式")
-
-    await asyncio.sleep(0.8)
-    await msg.edit(content=None, embed=embed)
 
 
 @bot.tree.command(name="生日登記", description="設定你的生日")
@@ -2101,7 +2105,7 @@ async def duel(interaction: discord.Interaction, target: discord.Member, amount:
         await interaction.response.send_message("❌ 不能挑戰自己")
         return
 
-     # 💰 賭注限制
+    # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
         await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
@@ -3171,7 +3175,7 @@ async def mood_game(interaction: discord.Interaction, mood: str, amount: int):
             ephemeral=True,
         )
         return
-    
+
     user_id = str(interaction.user.id)
 
     c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
