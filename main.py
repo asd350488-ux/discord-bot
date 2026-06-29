@@ -491,6 +491,14 @@ for husband in husband_list:
 conn.commit()
 
 
+@bot.tree.command(name="測試emoji")
+async def testemoji(interaction: discord.Interaction):
+
+    await interaction.response.send_message(
+        "<a:emoji40:1510362334026268713>\n"
+        f"{NUNU_EMOJI}"
+    )
+
 # 🚀 啟動
 @bot.event
 async def on_ready():
