@@ -1,5 +1,5 @@
 # ==========================================
-# 🌙 Moon Bot Welcome Card
+# 🌙 Moon Bot Welcome Card v3
 # ==========================================
 
 import io
@@ -13,7 +13,7 @@ from PIL import (
 )
 
 # ==========================================
-# 🖼️ 圖片設定
+# 🖼️ 圖片
 # ==========================================
 
 WIDTH = 1400
@@ -23,35 +23,36 @@ BACKGROUND = "images/welcome_bg.png"
 FONT = "fonts/NotoSansTC-Regular.ttf"
 
 # ==========================================
-# 📍 座標設定
+# 📍 座標
 # ==========================================
 
-TITLE_X = 700
-TITLE_Y = 90
+# Logo
+TITLE_X = WIDTH // 2
+TITLE_Y = 95
 
-WELCOME_X = 700
+WELCOME_X = WIDTH // 2
 WELCOME_Y = 170
 
-AVATAR_SIZE = 260
+# Avatar
+AVATAR_SIZE = 250
 
-AVATAR_X = 570
-AVATAR_Y = 280
+AVATAR_X = WIDTH // 2 - AVATAR_SIZE // 2
+AVATAR_Y = 205
 
-NAME_X = 700
-NAME_Y = 670
+# 資訊帶
+INFO_LEFT = 40
+INFO_TOP = 470
 
-MEMBER_X = 1090
-MEMBER_Y = 485
+INFO_RIGHT = WIDTH - 40
+INFO_BOTTOM = 900
 
-MEMBER_NO_Y = 560
+# 文字
+TEXT_X = WIDTH // 2
 
-LEFT_X = 300
-LEFT_Y = 435
-
-FOOTER_X = 700
-FOOTER_Y = 870
-
-MOONBOT_Y = 920
+WELCOME_TEXT_Y = 610
+MEMBER_Y = 685
+QUOTE_Y = 760
+BOT_Y = 830
 
 # ==========================================
 # 🎨 顏色
@@ -59,39 +60,84 @@ MOONBOT_Y = 920
 
 WHITE = (255, 255, 255)
 
-PURPLE = (228, 200, 255)
+PURPLE = (226, 197, 255)
 
 GLOW = (205, 167, 255)
+
+INFO_COLOR = (18, 18, 24, 150)
+
+OVERLAY = (25, 25, 30, 105)
+
+# ==========================================
+# 🔤 字型大小
+# ==========================================
+
+TITLE_SIZE = 90
+
+WELCOME_SIZE = 54
+
+NAME_SIZE = 76
+
+MEMBER_SIZE = 46
+
+FOOTER_SIZE = 34
+
+BOT_SIZE = 30
 
 # ==========================================
 # 🔤 字型
 # ==========================================
 
-TITLE_SIZE = 90
-WELCOME_SIZE = 54
-NAME_SIZE = 80
-MEMBER_SIZE = 68
-FOOTER_SIZE = 40
-
 
 def load_font(size):
-
     return ImageFont.truetype(FONT, size)
 
 
-def draw_glow_text(draw, position, text, font, fill, glow, anchor="mm"):
+# ==========================================
+# ✨ Glow 文字
+# ==========================================
+
+
+def draw_glow_text(
+    draw,
+    position,
+    text,
+    font,
+    fill,
+    glow,
+    anchor="mm",
+):
 
     x, y = position
 
+    # Glow
     for ox in range(-3, 4):
         for oy in range(-3, 4):
 
             if ox == 0 and oy == 0:
                 continue
 
-            draw.text((x + ox, y + oy), text, font=font, fill=glow, anchor=anchor)
+            draw.text(
+                (x + ox, y + oy),
+                text,
+                font=font,
+                fill=glow,
+                anchor=anchor,
+            )
 
-    draw.text(position, text, font=font, fill=fill, anchor=anchor)
+    # 正文
+    draw.text(
+        position,
+        text,
+        font=font,
+        fill=fill,
+        anchor=anchor,
+    )
+
+
+# ==========================================
+# 🖼️ Discord Avatar
+# ==========================================
 
 
 async def download_avatar(member):
@@ -100,11 +146,12 @@ async def download_avatar(member):
 
         async with session.get(member.display_avatar.url) as resp:
 
-            return Image.open(io.BytesIO(await resp.read())).convert("RGBA")
+            avatar = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
 
-        # ==========================================
+    return avatar
 
 
+# ==========================================
 # 🌙 Welcome Card
 # ==========================================
 
@@ -116,19 +163,19 @@ async def create_welcome_card(member):
     # =====================
 
     bg = Image.open(BACKGROUND).convert("RGBA")
-
     bg = bg.resize((WIDTH, HEIGHT))
 
-    # 🌙 整張背景加一層淡黑遮罩
-    overlay = Image.new(
-    "RGBA",
-    bg.size,
-    (25, 25, 30, 110)
-    )
-    
-    bg = Image.alpha_composite(bg, overlay)
+    # =====================
+    # 整張淡灰遮罩
+    # =====================
 
-    draw = ImageDraw.Draw(bg)
+    overlay = Image.new(
+        "RGBA",
+        bg.size,
+        OVERLAY,
+    )
+
+    bg = Image.alpha_composite(bg, overlay)
 
     # =====================
     # Discord 頭像
@@ -138,32 +185,74 @@ async def create_welcome_card(member):
 
     avatar = avatar.resize((AVATAR_SIZE, AVATAR_SIZE))
 
-    # =====================
-    # 圓形遮罩
-    # =====================
-
-    mask = Image.new("L", (AVATAR_SIZE, AVATAR_SIZE), 0)
+    mask = Image.new(
+        "L",
+        (AVATAR_SIZE, AVATAR_SIZE),
+        0,
+    )
 
     mask_draw = ImageDraw.Draw(mask)
 
-    mask_draw.ellipse((0, 0, AVATAR_SIZE, AVATAR_SIZE), fill=255)
+    mask_draw.ellipse(
+        (
+            0,
+            0,
+            AVATAR_SIZE,
+            AVATAR_SIZE,
+        ),
+        fill=255,
+    )
 
     # =====================
-    # 貼上頭像
+    # 中央資訊帶
     # =====================
 
-    bg.paste(avatar, (AVATAR_X, AVATAR_Y), mask)
+    info_layer = Image.new(
+        "RGBA",
+        bg.size,
+        (0, 0, 0, 0),
+    )
+
+    info_draw = ImageDraw.Draw(info_layer)
+
+    info_draw.rounded_rectangle(
+        (
+            INFO_LEFT,
+            INFO_TOP,
+            INFO_RIGHT,
+            INFO_BOTTOM,
+        ),
+        radius=42,
+        fill=INFO_COLOR,
+    )
+
+    bg = Image.alpha_composite(
+        bg,
+        info_layer,
+    )
+
+    draw = ImageDraw.Draw(bg)
 
     # =====================
-    # 紫色外框
+    # 貼頭像
+    # =====================
+
+    bg.paste(
+        avatar,
+        (AVATAR_X, AVATAR_Y),
+        mask,
+    )
+
+    # =====================
+    # 外框
     # =====================
 
     draw.ellipse(
         (
-            AVATAR_X - 6,
-            AVATAR_Y - 6,
-            AVATAR_X + AVATAR_SIZE + 6,
-            AVATAR_Y + AVATAR_SIZE + 6,
+            AVATAR_X - 7,
+            AVATAR_Y - 7,
+            AVATAR_X + AVATAR_SIZE + 7,
+            AVATAR_Y + AVATAR_SIZE + 7,
         ),
         outline=PURPLE,
         width=5,
@@ -171,10 +260,10 @@ async def create_welcome_card(member):
 
     draw.ellipse(
         (
-            AVATAR_X - 12,
-            AVATAR_Y - 12,
-            AVATAR_X + AVATAR_SIZE + 12,
-            AVATAR_Y + AVATAR_SIZE + 12,
+            AVATAR_X - 13,
+            AVATAR_Y - 13,
+            AVATAR_X + AVATAR_SIZE + 13,
+            AVATAR_Y + AVATAR_SIZE + 13,
         ),
         outline=GLOW,
         width=2,
@@ -188,6 +277,7 @@ async def create_welcome_card(member):
     welcome_font = load_font(WELCOME_SIZE)
     member_font = load_font(MEMBER_SIZE)
     footer_font = load_font(FOOTER_SIZE)
+    bot_font = load_font(BOT_SIZE)
 
     # =====================
     # 名字自動縮放
@@ -199,89 +289,88 @@ async def create_welcome_card(member):
 
         name_font = load_font(name_size)
 
-        bbox = draw.textbbox((0, 0), member.display_name, font=name_font)
+        bbox = draw.textbbox(
+            (0, 0),
+            member.display_name,
+            font=name_font,
+        )
 
-        text_width = bbox[2] - bbox[0]
-
-        if text_width <= 650:
+        if (bbox[2] - bbox[0]) <= 900:
             break
 
         name_size -= 2
 
-        if name_size <= 40:
+        if name_size <= 42:
             break
 
     # =====================
-    # 標題
+    # Logo
     # =====================
 
-    draw_glow_text(draw, (TITLE_X, TITLE_Y), "極 曜 月 葵", title_font, WHITE, GLOW)
+    draw_glow_text(
+        draw,
+        (TITLE_X, TITLE_Y),
+        "極 曜 月 葵",
+        title_font,
+        WHITE,
+        GLOW,
+    )
 
     draw.text(
-        (WELCOME_X, WELCOME_Y), "WELCOME", fill=PURPLE, font=welcome_font, anchor="mm"
+        (WELCOME_X, WELCOME_Y),
+        "WELCOME",
+        fill=PURPLE,
+        font=welcome_font,
+        anchor="mm",
     )
 
     # =====================
     # 玩家名稱
     # =====================
 
-    draw_glow_text(draw, (NAME_X, NAME_Y), member.display_name, name_font, WHITE, GLOW)
-
-    # =====================
-    # MEMBER
-    # =====================
-
-    draw.text(
-        (MEMBER_X, MEMBER_Y), "MEMBER", fill=PURPLE, font=footer_font, anchor="mm"
-    )
-
     draw_glow_text(
         draw,
-        (MEMBER_X, MEMBER_NO_Y),
-        f"#{member.guild.member_count:03d}",
-        member_font,
+        (TEXT_X, WELCOME_TEXT_Y),
+        f"歡迎 {member.display_name} 加入我們 ✦ 極曜月葵 ✦",
+        name_font,
         WHITE,
         GLOW,
     )
 
     # =====================
-    # 左側文字
-    # =====================
-
-    draw_glow_text(
-        draw,
-        (LEFT_X, LEFT_Y),
-        "歡迎加入",
-        footer_font,
-        PURPLE,
-        GLOW,
-        anchor="mm",
-    )
-
-    draw_glow_text(
-        draw,
-        (LEFT_X, LEFT_Y + 55),
-        "極曜月葵",
-        footer_font,
-        WHITE,
-        GLOW,
-        anchor="mm",
-    )
-
-    # =====================
-    # Footer
+    # Member
     # =====================
 
     draw.text(
-        (FOOTER_X, FOOTER_Y),
-        "願星光照亮你的旅程。",
+        (TEXT_X, MEMBER_Y),
+        f"Member  #{member.guild.member_count:03d}",
+        fill=PURPLE,
+        font=member_font,
+        anchor="mm",
+    )
+
+    # =====================
+    # 願星光
+    # =====================
+
+    draw.text(
+        (TEXT_X, QUOTE_Y),
+        "✦ 願星光照亮你的旅程。 ✦",
         fill=WHITE,
         font=footer_font,
         anchor="mm",
     )
 
+    # =====================
+    # Moon Bot
+    # =====================
+
     draw.text(
-        (FOOTER_X, MOONBOT_Y), "Moon Bot v2", fill=PURPLE, font=footer_font, anchor="mm"
+        (TEXT_X, BOT_Y),
+        "Moon Bot v2",
+        fill=PURPLE,
+        font=bot_font,
+        anchor="mm",
     )
 
     # =====================
@@ -290,8 +379,14 @@ async def create_welcome_card(member):
 
     output = io.BytesIO()
 
-    bg.save(output, format="PNG")
+    bg.save(
+        output,
+        format="PNG",
+    )
 
     output.seek(0)
 
-    return discord.File(fp=output, filename="welcome.png")
+    return discord.File(
+        fp=output,
+        filename="welcome.png",
+    )
