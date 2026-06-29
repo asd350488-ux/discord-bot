@@ -20,7 +20,7 @@ WIDTH = 1400
 HEIGHT = 1000
 
 BACKGROUND = "images/welcome_bg.png"
-FONT = "fonts/NotoSansTC-Regular.otf"
+FONT = "fonts/NotoSansTC-Regular.ttf"
 
 # ==========================================
 # 📍 座標設定
