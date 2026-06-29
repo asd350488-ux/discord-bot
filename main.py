@@ -15,12 +15,11 @@ from PIL import Image, ImageDraw, ImageFont
 import aiohttp
 import io
 from events import CHECKIN_EVENTS, EVENT_THEMES
+from config import NUNU_EMOJI
 
 
 tz = pytz.timezone("Asia/Taipei")
 # 🌙 極曜月葵系統設定
-NUNU_EMOJI = "<a:emoji40:1516703946012496025>"
-
 # 🎂 生日
 BIRTHDAY_DATA_CHANNEL = 1516119757383008479
 BIRTHDAY_ANNOUNCE_CHANNEL = 1504815515795853432
