@@ -1936,7 +1936,6 @@ async def guess_big_small(interaction: discord.Interaction, choice: str, amount:
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-
         await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
@@ -2102,9 +2101,8 @@ async def duel(interaction: discord.Interaction, target: discord.Member, amount:
         await interaction.response.send_message("❌ 不能挑戰自己")
         return
 
-    # 💰 賭注限制
+     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-
         await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
@@ -2155,7 +2153,6 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-
         await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
@@ -2301,7 +2298,6 @@ async def surprise_box(interaction: discord.Interaction, amount: int):
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-
         await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
@@ -2897,7 +2893,7 @@ async def give_money(
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-        await interaction.followup.send(
+        await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
         )
@@ -3007,7 +3003,7 @@ async def black_market(interaction: discord.Interaction, amount: int):
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-        await interaction.followup.send(
+        await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
         )
@@ -3170,12 +3166,12 @@ async def mood_game(interaction: discord.Interaction, mood: str, amount: int):
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-        await interaction.followup.send(
+        await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
         )
         return
-
+    
     user_id = str(interaction.user.id)
 
     c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
@@ -3302,7 +3298,7 @@ async def experiment(interaction: discord.Interaction, amount: int):
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-        await interaction.followup.send(
+        await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
         )
@@ -3447,7 +3443,7 @@ async def gamble_life(interaction: discord.Interaction, amount: int):
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-        await interaction.followup.send(
+        await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
         )
@@ -3566,7 +3562,6 @@ async def rob(interaction: discord.Interaction, amount: int):
 
     # 💰 賭注限制
     if amount < MIN_BET or amount > MAX_BET:
-
         await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
