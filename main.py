@@ -1336,7 +1336,7 @@ async def birthday_check():
 
 
 # ==========================================
-# 🌸 歡迎系統
+# # 🌸 歡迎系統 #
 # ==========================================
 
 
@@ -1348,7 +1348,7 @@ async def on_member_join(member):
         SELECT value
         FROM settings
         WHERE key='welcome_channel'
-        """)
+    """)
 
     data = c.fetchone()
 
@@ -1366,25 +1366,37 @@ async def on_member_join(member):
 
     card = await create_welcome_card(member)
 
-    await channel.send(file=card)
-
     # ==========================
-    # 歡迎文字
+    # 歡迎 Embed
     # ==========================
 
-    await channel.send(
-        f"""歡迎 {member.mention} 寶寶加入我們𖤐⋆₊˚ 𝒳 ⋆ 𝒳 ⋆ 𝒳 ⋆ 𝒳 極 曜 月 葵 ˚₊⋆𖤐
+    embed = discord.Embed(title="🌙 歡迎加入極曜月葵", color=discord.Color.dark_grey())
+
+    embed.description = f"""
+歡迎 {member.mention} 寶寶加入我們𖤐⋆₊˚ 𝒳 ⋆ 𝒳 ⋆ 𝒳 ⋆ 𝒳 極 曜 月 葵 ˚₊⋆𖤐
+
 很開心你來到這個小小的粉絲交流空間！<a:emoji_32:1508529055832739911>
 
 <a:emoji_1:1506013957905846372> 請 {member.mention} 寶寶至 <#1506198162724094074>
+
 提供與角色聊天的截圖。
 
-📌 C 台角色等級需達到 **30 等**
-📌 T 台角色等級需達到 **3 等**
+📌 **C 台角色等級需達到 30 等**
 
-我們進行審核通過後，會再人工修改身分組唷 <a:emoji_2:1506043914115879014>
+📌 **T 台角色等級需達到 3 等**
+
+我們進行審核通過後，
+會再人工修改身分組唷
+<a:emoji_2:1506043914115879014>
 """
-    )
+
+    embed.set_footer(text="極曜月葵 ✦ Welcome")
+
+    # 先送文字（灰底）
+    await channel.send(embed=embed)
+
+    # 再送 Welcome Card
+    await channel.send(file=card)
 
 
 @bot.tree.command(name="生日登記", description="設定你的生日")
