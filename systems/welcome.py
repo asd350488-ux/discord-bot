@@ -27,10 +27,10 @@ FONT = "fonts/NotoSansTC-Regular.ttf"
 # ==========================================
 
 TITLE_X = 700
-TITLE_Y = 110
+TITLE_Y = 90
 
 WELCOME_X = 700
-WELCOME_Y = 195
+WELCOME_Y = 170
 
 AVATAR_SIZE = 260
 
@@ -38,7 +38,7 @@ AVATAR_X = 570
 AVATAR_Y = 280
 
 NAME_X = 700
-NAME_Y = 650
+NAME_Y = 670
 
 MEMBER_X = 1090
 MEMBER_Y = 485
@@ -46,12 +46,12 @@ MEMBER_Y = 485
 MEMBER_NO_Y = 560
 
 LEFT_X = 300
-LEFT_Y = 500
+LEFT_Y = 435
 
 FOOTER_X = 700
-FOOTER_Y = 900
+FOOTER_Y = 870
 
-MOONBOT_Y = 950
+MOONBOT_Y = 920
 
 # ==========================================
 # 🎨 顏色
@@ -68,9 +68,9 @@ GLOW = (205, 167, 255)
 # ==========================================
 
 TITLE_SIZE = 90
-WELCOME_SIZE = 46
+WELCOME_SIZE = 54
 NAME_SIZE = 80
-MEMBER_SIZE = 60
+MEMBER_SIZE = 68
 FOOTER_SIZE = 40
 
 
@@ -83,8 +83,8 @@ def draw_glow_text(draw, position, text, font, fill, glow, anchor="mm"):
 
     x, y = position
 
-    for ox in range(-2, 3):
-        for oy in range(-2, 3):
+    for ox in range(-3, 4):
+        for oy in range(-3, 4):
 
             if ox == 0 and oy == 0:
                 continue
@@ -241,13 +241,44 @@ async def create_welcome_card(member):
     )
 
     # =====================
+    # 左側玻璃卡
+    # =====================
+
+    draw.rounded_rectangle(
+        (
+            120,
+            340,
+            500,
+            545,
+        ),
+        radius=30,
+        fill=(38, 32, 52, 80),
+        outline=(215, 185, 255, 160),
+        width=2,
+    )
+
+    # =====================
     # 左側文字
     # =====================
 
-    draw.text((LEFT_X, LEFT_Y), "歡迎加入", fill=PURPLE, font=footer_font, anchor="mm")
+    draw_glow_text(
+        draw,
+        (LEFT_X, LEFT_Y),
+        "歡迎加入",
+        footer_font,
+        PURPLE,
+        GLOW,
+        anchor="mm",
+    )
 
-    draw.text(
-        (LEFT_X, LEFT_Y + 55), "極曜月葵", fill=WHITE, font=footer_font, anchor="mm"
+    draw_glow_text(
+        draw,
+        (LEFT_X, LEFT_Y + 55),
+        "極曜月葵",
+        footer_font,
+        WHITE,
+        GLOW,
+        anchor="mm",
     )
 
     # =====================
