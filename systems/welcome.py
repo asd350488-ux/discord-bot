@@ -241,20 +241,17 @@ async def create_welcome_card(member):
     )
 
     # =====================
-    # 左側玻璃卡
+    # 底部資訊區
     # =====================
 
-    draw.rounded_rectangle(
+    draw.rectangle(
         (
-            120,
-            340,
-            500,
-            545,
+            0,
+            760,
+            WIDTH,
+            HEIGHT,
         ),
-        radius=30,
-        fill=(38, 32, 52, 80),
-        outline=(215, 185, 255, 160),
-        width=2,
+        fill=(15, 15, 20, 120),
     )
 
     # =====================
