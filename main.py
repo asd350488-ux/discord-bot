@@ -16,7 +16,7 @@ import aiohttp
 import io
 from events import CHECKIN_EVENTS, EVENT_THEMES
 from config import NUNU_EMOJI
-
+import time as pytime
 
 tz = pytz.timezone("Asia/Taipei")
 # 🌙 極曜月葵系統設定
@@ -4697,11 +4697,11 @@ async def rob(
 
     if jail_data:
 
-        if int(time.time()) < jail_data[0]:
+        if int(pytime.time()) < jail_data[0]:
 
             remain = (
                 jail_data[0]
-                - int(time.time())
+                - int(pytime.time())
             )
 
             await interaction.response.send_message(
@@ -4855,7 +4855,7 @@ async def rob(
             """,
             (
                 user_id,
-                int(time.time()) + 600
+                int(pytime.time()) + 600
             )
         )
 
