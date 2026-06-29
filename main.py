@@ -4730,13 +4730,14 @@ async def rob(
         )
         return
 
-    # 💰 賭注限制
-    if amount < MIN_BET or amount > MAX_BET:
-        await interaction.followup.send(
-            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
-            ephemeral=True
-        )
-        return
+# 💰 賭注限制
+if amount < MIN_BET or amount > MAX_BET:
+
+    await interaction.response.send_message(
+        f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
+        ephemeral=True
+    )
+    return
 
     user_id = str(interaction.user.id)
 
