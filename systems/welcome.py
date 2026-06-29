@@ -119,6 +119,11 @@ async def create_welcome_card(member):
 
     bg = bg.resize((WIDTH, HEIGHT))
 
+    # 🌙 整張背景加一層淡黑遮罩
+    overlay = Image.new("RGBA", bg.size, (0, 0, 0, 65))
+
+    bg = Image.alpha_composite(bg, overlay)
+
     draw = ImageDraw.Draw(bg)
 
     # =====================
