@@ -120,8 +120,12 @@ async def create_welcome_card(member):
     bg = bg.resize((WIDTH, HEIGHT))
 
     # 🌙 整張背景加一層淡黑遮罩
-    overlay = Image.new("RGBA", bg.size, (0, 0, 0, 65))
-
+    overlay = Image.new(
+    "RGBA",
+    bg.size,
+    (25, 25, 30, 110)
+    )
+    
     bg = Image.alpha_composite(bg, overlay)
 
     draw = ImageDraw.Draw(bg)
@@ -241,20 +245,6 @@ async def create_welcome_card(member):
     )
 
     # =====================
-    # 底部資訊區
-    # =====================
-
-    draw.rectangle(
-        (
-            0,
-            760,
-            WIDTH,
-            HEIGHT,
-        ),
-        fill=(15, 15, 20, 120),
-    )
-
-    # =====================
     # 左側文字
     # =====================
 
@@ -284,7 +274,7 @@ async def create_welcome_card(member):
 
     draw.text(
         (FOOTER_X, FOOTER_Y),
-        "✨ 願星光照亮你的旅程。",
+        "願星光照亮你的旅程。",
         fill=WHITE,
         font=footer_font,
         anchor="mm",
