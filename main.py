@@ -17,6 +17,8 @@ import io
 from events import CHECKIN_EVENTS, EVENT_THEMES
 from config import NUNU_EMOJI
 import time as pytime
+from config import *
+
 
 tz = pytz.timezone("Asia/Taipei")
 # 🌙 極曜月葵系統設定
@@ -136,6 +138,57 @@ CREATE TABLE IF NOT EXISTS jail (
 """)
 
 conn.commit()
+
+# =========================
+# 🚨 通緝系統
+# =========================
+
+async def get_wanted_level(user_id):
+
+    c.execute(
+        """
+        SELECT level
+        FROM wanted
+        WHERE user_id=?
+        """,
+        (user_id,)
+    )
+
+    data = c.fetchone()
+
+    if data:
+        return data[0]
+
+    c.execute(
+        """
+        INSERT INTO wanted(user_id, level)
+        VALUES (?, 0)
+        """,
+        (user_id,)
+    )
+
+    conn.commit()
+
+    return 0
+
+
+async def add_wanted(user_id, amount=1):
+
+    level = await get_wanted_level(user_id)
+
+    c.execute(
+        """
+        UPDATE wanted
+        SET level=?
+        WHERE user_id=?
+        """,
+        (
+            level + amount,
+            user_id
+        )
+    )
+
+    conn.commit()
 
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
@@ -2351,10 +2404,11 @@ async def guess_big_small(
         )
         return
 
-    if amount <= 0:
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
 
         await interaction.response.send_message(
-            "❌ 下注金額必須大於 0",
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -2583,10 +2637,11 @@ async def duel(
         )
         return
 
-    if amount <= 0:
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
 
         await interaction.response.send_message(
-            "❌ 下注金額必須大於 0",
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -2681,10 +2736,11 @@ async def slot_machine(
         )
         return
 
-    if amount <= 0:
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
 
         await interaction.response.send_message(
-            "❌ 下注金額必須大於 0",
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -2897,10 +2953,11 @@ async def surprise_box(
         )
         return
 
-    if amount <= 0:
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
 
         await interaction.response.send_message(
-            "❌ 金額必須大於 0",
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -3727,10 +3784,10 @@ async def give_money(
         )
         return
 
-    # 🔒 金額檢查
-    if amount <= 0:
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
         await interaction.followup.send(
-            "❌ 金額必須大於 0",
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -3891,10 +3948,10 @@ async def black_market(
         )
         return
 
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 投資金額必須大於 0",
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
+        await interaction.followup.send(
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -4120,10 +4177,10 @@ async def mood_game(
         )
         return
 
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 金額必須大於 0",
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
+        await interaction.followup.send(
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -4311,10 +4368,10 @@ async def experiment(
         )
         return
 
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 金額必須大於 0",
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
+        await interaction.followup.send(
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -4509,10 +4566,10 @@ async def gamble_life(
         )
         return
 
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 金額必須大於 0",
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
+        await interaction.followup.send(
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -4673,10 +4730,10 @@ async def rob(
         )
         return
 
-    if amount <= 0:
-
-        await interaction.response.send_message(
-            "❌ 金額必須大於 0",
+    # 💰 賭注限制
+    if amount < MIN_BET or amount > MAX_BET:
+        await interaction.followup.send(
+            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True
         )
         return
@@ -4776,8 +4833,8 @@ async def rob(
     )
 
     success_rate = max(
-        0.20,
-        0.60 - (wanted * 0.05)
+        ROBBERY_MIN_RATE,
+        ROBBERY_MAX_RATE - (wanted * 0.05)
     )
 
     roll = random.random()
@@ -4853,10 +4910,10 @@ async def rob(
             INSERT OR REPLACE INTO jail
             VALUES (?, ?)
             """,
-            (
-                user_id,
-                int(pytime.time()) + 600
-            )
+                (
+                    user_id,
+                    int(pytime.time()) + JAIL_TIME
+                )
         )
 
         result = "👮 被逮捕"
