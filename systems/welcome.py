@@ -40,10 +40,10 @@ AVATAR_X = WIDTH // 2 - AVATAR_SIZE // 2
 AVATAR_Y = 210
 
 # 資訊帶
-INFO_LEFT = 20
-INFO_RIGHT = WIDTH - 20
+INFO_LEFT = 50
+INFO_RIGHT = WIDTH - 50
 
-INFO_TOP = 500
+INFO_TOP = 180
 INFO_BOTTOM = 850
 
 # 中央文字
@@ -325,7 +325,7 @@ async def create_welcome_card(member):
 
     draw.text(
         (CENTER_X, QUOTE_Y),
-        "✦ 願星光照亮你的旅程。 ✦",
+        "願星光照亮你的旅程。",
         fill=WHITE,
         font=quote_font,
         anchor="mm",
