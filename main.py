@@ -610,7 +610,7 @@ async def checkin(interaction: discord.Interaction):
             f"{theme['emoji']}══════════════{theme['emoji']}\n\n"
             f"## {theme['name']}\n\n"
             f"{blessing}\n\n"
-            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            f" {NUNU_EMOJI} +{reward:,}\n\n"
             f"{theme['emoji']}══════════════{theme['emoji']}"
         )
 
