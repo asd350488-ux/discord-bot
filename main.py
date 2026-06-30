@@ -624,7 +624,7 @@ async def checkin(interaction: discord.Interaction):
             "👑🌙══════════════🌙👑\n\n"
             f"{blessing}\n\n"
             "🌙 **月神降臨！**\n\n"
-            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            f"{NUNU_EMOJI} +{reward:,}\n\n"
             "👑🌙══════════════🌙👑"
         )
 
@@ -636,7 +636,7 @@ async def checkin(interaction: discord.Interaction):
             "✨🌙══════════════🌙✨\n\n"
             f"{blessing}\n\n"
             "✨ **稀有獎勵！**\n\n"
-            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            f"{NUNU_EMOJI} +{reward:,}\n\n"
             "✨🌙══════════════🌙✨"
         )
 
@@ -648,7 +648,7 @@ async def checkin(interaction: discord.Interaction):
             "🌟✨══════════════✨🌟\n\n"
             f"{blessing}\n\n"
             "🍀 **幸運降臨！**\n\n"
-            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            f"{NUNU_EMOJI} +{reward:,}\n\n"
             "🌟✨══════════════✨🌟"
         )
 
@@ -659,7 +659,7 @@ async def checkin(interaction: discord.Interaction):
         reward_box = (
             "✨══════════════✨\n\n"
             f"{blessing}\n\n"
-            f"# {NUNU_EMOJI} +{reward:,}\n\n"
+            f"{NUNU_EMOJI} +{reward:,}\n\n"
             "✨══════════════✨"
         )
 
