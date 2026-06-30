@@ -37,14 +37,14 @@ WELCOME_Y = 170
 AVATAR_SIZE = 250
 
 AVATAR_X = WIDTH // 2 - AVATAR_SIZE // 2
-AVATAR_Y = 170
+AVATAR_Y = 210
 
 # 資訊帶
 INFO_LEFT = 50
 INFO_RIGHT = WIDTH - 50
 
-INFO_TOP = 520
-INFO_BOTTOM = 760
+INFO_TOP = 610
+INFO_BOTTOM = 790
 
 # 中央文字
 CENTER_X = WIDTH // 2
@@ -293,27 +293,6 @@ async def create_welcome_card(member):
 
         if text_size <= 42:
             break
-
-    # =====================
-    # Logo
-    # =====================
-
-    draw_glow_text(
-        draw,
-        (TITLE_X, TITLE_Y),
-        "極 曜 月 葵",
-        title_font,
-        WHITE,
-        GLOW,
-    )
-
-    draw.text(
-        (WELCOME_X, WELCOME_Y),
-        "WELCOME",
-        fill=PURPLE,
-        font=welcome_font,
-        anchor="mm",
-    )
 
     # =====================
     # 歡迎文字
