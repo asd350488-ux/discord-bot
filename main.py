@@ -472,6 +472,7 @@ async def testemoji(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
 
+    print("★★★★★ 我是新的 on_ready ★★★★★")
     # 只載入一次 Cog
     if not hasattr(bot, "loaded_cogs"):
         await load_cogs()
