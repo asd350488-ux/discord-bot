@@ -459,27 +459,23 @@ class ReviewPanelView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="📝 開始申請", style=discord.ButtonStyle.green, custom_id="review_start"
+        label="📝 開始申請",
+        style=discord.ButtonStyle.green,
+        custom_id="review_start"
     )
     async def review_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
     ):
 
-        embed = discord.Embed(
-            title="🌙 入群審核系統",
-            description=(
-                "感謝你點擊申請！\n\n"
-                "🚧 Ticket 系統正在建置中。\n"
-                "下一步將建立私人審核頻道。"
-            ),
-            color=discord.Color.gold(),
-        )
+        await create_review_ticket(interaction)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ==========================
 # 🌙 建立入群審核 Ticket
 # ==========================
+
 
 async def create_review_ticket(interaction: discord.Interaction):
 
@@ -490,10 +486,7 @@ async def create_review_ticket(interaction: discord.Interaction):
     category = guild.get_channel(REVIEW_CATEGORY)
 
     if category is None:
-        await interaction.response.send_message(
-            "❌ 找不到審核分類。",
-            ephemeral=True
-        )
+        await interaction.response.send_message("❌ 找不到審核分類。", ephemeral=True)
         return
 
     # ==========================
@@ -508,8 +501,7 @@ async def create_review_ticket(interaction: discord.Interaction):
         if f"Applicant={member.id}" in channel.topic:
 
             await interaction.response.send_message(
-                "❌ 你目前已有一張審核 Ticket，請等待管理員處理。",
-                ephemeral=True
+                "❌ 你目前已有一張審核 Ticket，請等待管理員處理。", ephemeral=True
             )
             return
 
@@ -518,36 +510,21 @@ async def create_review_ticket(interaction: discord.Interaction):
     # ==========================
 
     overwrites = {
-
-        guild.default_role: discord.PermissionOverwrite(
-            view_channel=False
-        ),
-
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
         member: discord.PermissionOverwrite(
-
             view_channel=True,
-
             send_messages=True,
-
             attach_files=True,
-
             embed_links=True,
-
-            read_message_history=True
+            read_message_history=True,
         ),
-
         guild.me: discord.PermissionOverwrite(
-
             view_channel=True,
-
             send_messages=True,
-
             manage_channels=True,
-
             manage_messages=True,
-
-            read_message_history=True
-        )
+            read_message_history=True,
+        ),
     }
 
     # ==========================
@@ -559,14 +536,10 @@ async def create_review_ticket(interaction: discord.Interaction):
     if review_role:
 
         overwrites[review_role] = discord.PermissionOverwrite(
-
             view_channel=True,
-
             send_messages=True,
-
             manage_messages=True,
-
-            read_message_history=True
+            read_message_history=True,
         )
 
     # ==========================
@@ -574,17 +547,10 @@ async def create_review_ticket(interaction: discord.Interaction):
     # ==========================
 
     ticket = await guild.create_text_channel(
-
         name=f"📋｜審核-{member.display_name}",
-
         category=category,
-
         overwrites=overwrites,
-
-        topic=(
-            f"Applicant={member.id}\n"
-            f"Status=Pending"
-        )
+        topic=(f"Applicant={member.id}\n" f"Status=Pending"),
     )
 
     # ==========================
@@ -592,10 +558,7 @@ async def create_review_ticket(interaction: discord.Interaction):
     # ==========================
 
     await interaction.response.send_message(
-
-        f"✅ 已成功建立審核 Ticket：{ticket.mention}",
-
-        ephemeral=True
+        f"✅ 已成功建立審核 Ticket：{ticket.mention}", ephemeral=True
     )
 
 
