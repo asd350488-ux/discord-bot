@@ -1352,10 +1352,6 @@ async def on_member_join(member):
     if role is not None:
         await member.add_roles(role, reason="新成員自動加入")
 
-
-@bot.event
-async def on_member_join(member):
-
     # 取得歡迎頻道
     c.execute("""
         SELECT value
