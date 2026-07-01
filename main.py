@@ -449,14 +449,39 @@ for husband in husband_list:
 
 conn.commit()
 
+# ===============================
+# 🌙 Moon 入群審核系統
+# ===============================
 
-@bot.tree.command(name="測試emoji")
-async def testemoji(interaction: discord.Interaction):
+class ReviewPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
-    await interaction.response.send_message(
-        "<a:emoji40:1510362334026268713>\n" f"{NUNU_EMOJI}"
+    @discord.ui.button(
+        label="📝 開始申請",
+        style=discord.ButtonStyle.green,
+        custom_id="review_start"
     )
+    async def review_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
 
+        embed = discord.Embed(
+            title="🌙 入群審核系統",
+            description=(
+                "感謝你點擊申請！\n\n"
+                "🚧 Ticket 系統正在建置中。\n"
+                "下一步將建立私人審核頻道。"
+            ),
+            color=discord.Color.gold()
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
 
 # 🚀 啟動
 @bot.event
@@ -468,6 +493,68 @@ async def on_ready():
     if not birthday_check.is_running():
         birthday_check.start()
 
+@bot.tree.command(
+    name="審核面板",
+    description="發送入群審核面板"
+)
+async def review_panel(interaction: discord.Interaction):
+
+    # 管理員限制
+    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ 你沒有權限使用此指令。",
+            ephemeral=True
+        )
+        return
+
+    embed = discord.Embed(
+        title="🌙 極曜月葵｜入群審核",
+        description=(
+            "歡迎加入 **極曜月葵 Discord**！\n\n"
+
+            "請先確認符合以下條件後，再開始申請。\n\n"
+
+            "━━━━━━━━━━━━━━━━━━\n\n"
+
+            "📸 **請提供以下其中一位媽咪的聊天截圖：**\n\n"
+
+            "🌸 星弦媽咪\n"
+            "🌸 韓馨媽咪\n"
+            "🌸 小貓媽咪\n"
+            "🌸 若曦璃媽咪\n\n"
+
+            "━━━━━━━━━━━━━━━━━━\n\n"
+
+            "🎮 **角色等級需求**\n\n"
+
+            "✅ C 台角色需達 **30 等**\n"
+            "✅ T 台角色需達 **3 等**\n\n"
+
+            "━━━━━━━━━━━━━━━━━━\n\n"
+
+            "審核通過後\n"
+            "管理員將協助修改正式身分組。"
+        ),
+        color=0xC77DFF
+    )
+
+    embed.set_thumbnail(
+        url=interaction.guild.icon.url if interaction.guild.icon else discord.Embed.Empty
+    )
+
+    embed.set_footer(
+        text="Moon Bot v2｜入群審核系統"
+    )
+
+    await interaction.channel.send(
+        embed=embed,
+        view=ReviewPanelView()
+    )
+
+    await interaction.response.send_message(
+        "✅ 已成功發送入群審核面板！",
+        ephemeral=True
+    )
 
 # 🐰 簽到
 @bot.tree.command(name="簽到")
