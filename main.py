@@ -551,18 +551,33 @@ async def create_review_ticket(interaction: discord.Interaction):
         topic=(f"Applicant={member.id}\n" f"Status=Pending"),
     )
 
-    # ==========================
+    # -------------------------
+    # 發送審核訊息
+    # -------------------------
+
+    message = await send_review_message(ticket, member)
+
+    # -------------------------
+    # 更新 Ticket Topic
+    # -------------------------
+
+    await ticket.edit(
+        topic=(f"Applicant={member.id}\n" f"Status=Pending\n" f"Message={message.id}")
+    )
+
+    # -------------------------
     # 回覆使用者
-    # ==========================
-    await send_review_message(ticket, member)
+    # -------------------------
 
     await interaction.response.send_message(
         f"✅ 已成功建立審核 Ticket：{ticket.mention}", ephemeral=True
     )
 
+
 # ==========================
 # 🌙 取得 Ticket 申請人
 # ==========================
+
 
 async def get_ticket_member(channel: discord.TextChannel):
 
@@ -581,6 +596,82 @@ async def get_ticket_member(channel: discord.TextChannel):
 
     return channel.guild.get_member(user_id)
 
+
+# ==========================
+# 🌙 取得審核 Embed 訊息
+# ==========================
+
+
+async def get_review_message(channel: discord.TextChannel):
+
+    if channel.topic is None:
+        return None
+
+    message_id = None
+
+    for line in channel.topic.split("\n"):
+
+        if line.startswith("Message="):
+            message_id = int(line.replace("Message=", ""))
+            break
+
+    if message_id is None:
+        return None
+
+    try:
+        message = await channel.fetch_message(message_id)
+        return message
+
+    except discord.NotFound:
+        return None
+
+
+# ==========================
+# 🌙 更新審核 Embed
+# ==========================
+
+
+async def update_review_embed(
+    channel: discord.TextChannel, reviewer: discord.Member, status: str
+):
+
+    message = await get_review_message(channel)
+
+    if message is None:
+        return
+
+    embed = message.embeds[0]
+
+    timestamp = int(datetime.now().timestamp())
+
+    # 👤 申請人（保持不變）
+    applicant = embed.fields[0].value
+
+    # 📌 審核狀態
+    embed.set_field_at(1, name="📌 審核狀態", value=status, inline=True)
+
+    # 👮 審核人
+    embed.set_field_at(2, name="👮 審核人", value=reviewer.mention, inline=True)
+
+    # 🕒 建立時間（保持原本）
+    created_time = embed.fields[3].value
+
+    embed.set_field_at(3, name="🕒 建立時間", value=created_time, inline=False)
+
+    # ✅ 通過時間
+    if len(embed.fields) == 4:
+
+        embed.add_field(name="✅ 通過時間", value=f"<t:{timestamp}:F>", inline=False)
+
+    else:
+
+        embed.set_field_at(
+            4, name="✅ 通過時間", value=f"<t:{timestamp}:F>", inline=False
+        )
+
+    await message.edit(embed=embed, view=ReviewManageView(disabled=True))
+
+
 # ==========================
 # 🌙 發送審核訊息
 # ==========================
@@ -591,85 +682,69 @@ async def send_review_message(channel: discord.TextChannel, member: discord.Memb
     review_role = channel.guild.get_role(REVIEW_ROLE)
 
     # --------------------------
-    # 通知
+    # 通知申請者與審核組
     # --------------------------
 
     if review_role:
-        await channel.send(f"{member.mention} {review_role.mention}")
+        mention_message = await channel.send(f"{member.mention} {review_role.mention}")
     else:
-        await channel.send(member.mention)
+        mention_message = await channel.send(member.mention)
+
+    await mention_message.delete(delay=3)
 
     # --------------------------
-    # 狀態 Embed
+    # 入群審核 Embed
     # --------------------------
 
-    status_embed = discord.Embed(
-        title="🌙 極曜月葵｜新成員審核",
-        description=(
-            "════════════════════\n\n"
-            f"👤 **申請人**\n"
-            f"{member.mention}\n\n"
-            "📌 **審核狀態**\n"
-            "🟡 等待審核\n\n"
-            f"🕒 **建立時間**\n"
-            f"<t:{int(datetime.now().timestamp())}:F>\n\n"
-            "════════════════════\n\n"
-            "請依照下方審核說明提供資料。\n"
-            "完成後請耐心等待管理員審核。"
-        ),
-        color=0xF1C40F,
+    timestamp = int(datetime.now().timestamp())
+
+    review_embed = discord.Embed(title="📂 極曜月葵｜資料提交", color=0xC77DFF)
+
+    review_embed.add_field(name="👤 申請人", value=member.mention, inline=False)
+
+    review_embed.add_field(name="📌 審核狀態", value="🟡 等待審核", inline=True)
+
+    review_embed.add_field(name="👮 審核人", value="等待審核", inline=True)
+
+    review_embed.add_field(name="🕒 建立時間", value=f"<t:{timestamp}:F>", inline=False)
+
+    review_embed.description = (
+        "════════════════════\n\n"
+        "📤 **請將以下資料上傳至此頻道**\n\n"
+        "📸 四位媽咪其中一位角色聊天截圖\n\n"
+        "📸 C 台 **30 等** 或 T 台 **3 等** 角色聊天截圖\n\n"
+        "════════════════════\n\n"
+        "📌 上傳完成後，\n"
+        "請耐心等待管理員審核即可。"
     )
+    message = await channel.send(embed=review_embed, view=ReviewManageView())
 
-    await channel.send(embed=status_embed)
-
-    # --------------------------
-    # 審核說明
-    # --------------------------
-
-    review_embed = discord.Embed(
-        title="📋 審核說明",
-        description=(
-            "📸 **請提供以下四位媽咪其中一位角色的聊天截圖：**\n\n"
-            "🌸 星弦媽咪\n"
-            "🌸 韓馨媽咪\n"
-            "🌸 小貓媽咪\n"
-            "🌸 若曦璃媽咪\n\n"
-            "════════════════════\n\n"
-            "🎮 **角色等級需求**\n\n"
-            "✅ C 台角色需達 **30 等**\n"
-            "✅ T 台角色需達 **3 等**\n\n"
-            "📌 **符合其中一項即可，**\n"
-            "請提供符合條件角色的聊天截圖。\n\n"
-            "════════════════════\n\n"
-            "⚠️ **為維護審核公平性**\n\n"
-            "請勿提供不實資訊或使用他人截圖，\n"
-            "經查證屬實將取消審核資格。\n\n"
-            "審核通過後，\n"
-            "將由管理員協助修改正式身分組。"
-        ),
-        color=0xC77DFF,
-    )
-
-    await channel.send(embed=review_embed, view=ReviewManageView())
+    return message
 
 
 # ==========================
 # 🌙 審核管理按鈕
 # ==========================
 
+
 class ReviewManageView(discord.ui.View):
-    def __init__(self):
+
+    def __init__(self, disabled=False):
+
         super().__init__(timeout=None)
 
+        if disabled:
+
+            for item in self.children:
+
+                if item.custom_id == "review_approve":
+                    item.disabled = True
+
     @discord.ui.button(
-        label="🟢 通過",
-        style=discord.ButtonStyle.success,
-        custom_id="review_approve"
+        label="🟢 通過", style=discord.ButtonStyle.success, custom_id="review_approve"
     )
     async def approve(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
 
         # -------------------------
@@ -678,18 +753,14 @@ class ReviewManageView(discord.ui.View):
 
         if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
             await interaction.response.send_message(
-                "❌ 只有管理員可以使用此按鈕。",
-                ephemeral=True
+                "❌ 只有管理員可以使用此按鈕。", ephemeral=True
             )
             return
 
         member = await get_ticket_member(interaction.channel)
 
         if member is None:
-            await interaction.response.send_message(
-                "❌ 找不到申請者。",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ 找不到申請者。", ephemeral=True)
             return
 
         # -------------------------
@@ -702,21 +773,14 @@ class ReviewManageView(discord.ui.View):
         try:
 
             if pending_role:
-                await member.remove_roles(
-                    pending_role,
-                    reason="入群審核通過"
-                )
+                await member.remove_roles(pending_role, reason="入群審核通過")
 
             if member_role:
-                await member.add_roles(
-                    member_role,
-                    reason="入群審核通過"
-                )
+                await member.add_roles(member_role, reason="入群審核通過")
 
         except discord.Forbidden:
             await interaction.response.send_message(
-                "❌ Bot 沒有權限修改身分組。",
-                ephemeral=True
+                "❌ Bot 沒有權限修改身分組。", ephemeral=True
             )
             return
 
@@ -727,48 +791,75 @@ class ReviewManageView(discord.ui.View):
         if interaction.channel.topic:
             await interaction.channel.edit(
                 topic=interaction.channel.topic.replace(
-                    "Status=Pending",
-                    "Status=Approved"
+                    "Status=Pending", "Status=Approved"
                 )
             )
 
         # -------------------------
-        # 完成訊息
+        # 更新審核 Embed
         # -------------------------
 
-        await interaction.response.send_message(
-            f"🟢 已通過 {member.mention} 的入群審核！"
-        )
+        await update_review_embed(interaction.channel, interaction.user, "🟢 已通過")
+
+        # -------------------------
+        # 完成
+        # -------------------------
+
+        await interaction.response.send_message("✅ 已完成審核。", ephemeral=True)
 
     @discord.ui.button(
-        label="🟡 補件",
-        style=discord.ButtonStyle.secondary,
-        custom_id="review_fix"
-    )
-    async def need_fix(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        await interaction.response.send_message(
-            "🟡 補件功能建置中...",
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="⚫ 關閉",
-        style=discord.ButtonStyle.danger,
-        custom_id="review_close"
+        label="⚫ 關閉", style=discord.ButtonStyle.danger, custom_id="review_close"
     )
     async def close_ticket(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
+
+        if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+
+            await interaction.response.send_message(
+                "❌ 只有管理員可以使用此按鈕。", ephemeral=True
+            )
+            return
+
         await interaction.response.send_message(
-            "⚫ 關閉功能建置中...",
-            ephemeral=True
+            "⚠️ 確定要關閉這張 Ticket 嗎？", view=CloseTicketView(), ephemeral=True
         )
+
+
+# ==========================
+# 🌙 關閉 Ticket 確認
+# ==========================
+
+
+class CloseTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="✅ 確認關閉", style=discord.ButtonStyle.danger)
+    async def confirm(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+
+        if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+
+            await interaction.response.send_message(
+                "❌ 只有管理員可以關閉 Ticket。", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "⚫ Ticket 將於 **5 秒後** 關閉。", ephemeral=True
+        )
+
+        await asyncio.sleep(5)
+
+        await interaction.channel.delete(reason=f"{interaction.user} 關閉入群審核")
+
+    @discord.ui.button(label="取消", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        await interaction.response.edit_message(content="✅ 已取消關閉。", view=None)
+
 
 # 🚀 啟動
 @bot.event
