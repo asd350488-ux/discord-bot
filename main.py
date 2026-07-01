@@ -453,19 +453,16 @@ conn.commit()
 # 🌙 Moon 入群審核系統
 # ===============================
 
+
 class ReviewPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="📝 開始申請",
-        style=discord.ButtonStyle.green,
-        custom_id="review_start"
+        label="📝 開始申請", style=discord.ButtonStyle.green, custom_id="review_start"
     )
     async def review_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
 
         embed = discord.Embed(
@@ -475,13 +472,132 @@ class ReviewPanelView(discord.ui.View):
                 "🚧 Ticket 系統正在建置中。\n"
                 "下一步將建立私人審核頻道。"
             ),
-            color=discord.Color.gold()
+            color=discord.Color.gold(),
         )
 
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ==========================
+# 🌙 建立入群審核 Ticket
+# ==========================
+
+async def create_review_ticket(interaction: discord.Interaction):
+
+    guild = interaction.guild
+    member = interaction.user
+
+    # 取得分類
+    category = guild.get_channel(REVIEW_CATEGORY)
+
+    if category is None:
         await interaction.response.send_message(
-            embed=embed,
+            "❌ 找不到審核分類。",
             ephemeral=True
         )
+        return
+
+    # ==========================
+    # 防止重複建立 Ticket
+    # ==========================
+
+    for channel in category.text_channels:
+
+        if channel.topic is None:
+            continue
+
+        if f"Applicant={member.id}" in channel.topic:
+
+            await interaction.response.send_message(
+                "❌ 你目前已有一張審核 Ticket，請等待管理員處理。",
+                ephemeral=True
+            )
+            return
+
+    # ==========================
+    # 建立權限
+    # ==========================
+
+    overwrites = {
+
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=False
+        ),
+
+        member: discord.PermissionOverwrite(
+
+            view_channel=True,
+
+            send_messages=True,
+
+            attach_files=True,
+
+            embed_links=True,
+
+            read_message_history=True
+        ),
+
+        guild.me: discord.PermissionOverwrite(
+
+            view_channel=True,
+
+            send_messages=True,
+
+            manage_channels=True,
+
+            manage_messages=True,
+
+            read_message_history=True
+        )
+    }
+
+    # ==========================
+    # 審核組
+    # ==========================
+
+    review_role = guild.get_role(REVIEW_ROLE)
+
+    if review_role:
+
+        overwrites[review_role] = discord.PermissionOverwrite(
+
+            view_channel=True,
+
+            send_messages=True,
+
+            manage_messages=True,
+
+            read_message_history=True
+        )
+
+    # ==========================
+    # 建立 Ticket
+    # ==========================
+
+    ticket = await guild.create_text_channel(
+
+        name=f"📋｜審核-{member.display_name}",
+
+        category=category,
+
+        overwrites=overwrites,
+
+        topic=(
+            f"Applicant={member.id}\n"
+            f"Status=Pending"
+        )
+    )
+
+    # ==========================
+    # 回覆使用者
+    # ==========================
+
+    await interaction.response.send_message(
+
+        f"✅ 已成功建立審核 Ticket：{ticket.mention}",
+
+        ephemeral=True
+    )
+
 
 # 🚀 啟動
 @bot.event
@@ -493,68 +609,61 @@ async def on_ready():
     if not birthday_check.is_running():
         birthday_check.start()
 
-@bot.tree.command(
-    name="審核面板",
-    description="發送入群審核面板"
-)
+
+@bot.tree.command(name="審核面板", description="發送入群審核面板")
 async def review_panel(interaction: discord.Interaction):
 
     # 管理員限制
     if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
         await interaction.response.send_message(
-            "❌ 你沒有權限使用此指令。",
-            ephemeral=True
+            "❌ 你沒有權限使用此指令。", ephemeral=True
         )
         return
 
     embed = discord.Embed(
-        title="🌙 極曜月葵｜入群審核",
+        title="🌙 極曜月葵｜新成員審核",
         description=(
             "歡迎加入 **極曜月葵 Discord**！\n\n"
-
-            "請先確認符合以下條件後，再開始申請。\n\n"
-
-            "━━━━━━━━━━━━━━━━━━\n\n"
-
-            "📸 **請提供以下其中一位媽咪的聊天截圖：**\n\n"
-
+            "為了維護社群品質，請先確認符合以下條件後，"
+            "再點擊下方按鈕開始申請。\n\n"
+            "════════════════════\n\n"
+            "📸 **請提供以下四位媽咪其中一位角色的聊天截圖：**\n\n"
             "🌸 星弦媽咪\n"
             "🌸 韓馨媽咪\n"
             "🌸 小貓媽咪\n"
             "🌸 若曦璃媽咪\n\n"
-
-            "━━━━━━━━━━━━━━━━━━\n\n"
-
+            "════════════════════\n\n"
             "🎮 **角色等級需求**\n\n"
-
             "✅ C 台角色需達 **30 等**\n"
             "✅ T 台角色需達 **3 等**\n\n"
-
-            "━━━━━━━━━━━━━━━━━━\n\n"
-
-            "審核通過後\n"
-            "管理員將協助修改正式身分組。"
+            "📌 **符合其中一項即可，**\n"
+            "請提供符合條件角色的聊天截圖。\n\n"
+            "════════════════════\n\n"
+            "⚠️ **為維護審核公平性**\n\n"
+            "請勿提供不實資訊或使用他人截圖，\n"
+            "經查證屬實將取消審核資格。\n\n"
+            "審核通過後，\n"
+            "將由管理員協助修改正式身分組。"
         ),
-        color=0xC77DFF
+        color=0xC77DFF,
     )
 
     embed.set_thumbnail(
-        url=interaction.guild.icon.url if interaction.guild.icon else discord.Embed.Empty
+        url=(
+            interaction.guild.icon.url
+            if interaction.guild.icon
+            else discord.Embed.Empty
+        )
     )
 
-    embed.set_footer(
-        text="Moon Bot v2｜入群審核系統"
-    )
+    embed.set_footer(text="Moon Bot v2｜入群審核系統")
 
-    await interaction.channel.send(
-        embed=embed,
-        view=ReviewPanelView()
-    )
+    await interaction.channel.send(embed=embed, view=ReviewPanelView())
 
     await interaction.response.send_message(
-        "✅ 已成功發送入群審核面板！",
-        ephemeral=True
+        "✅ 已成功發送入群審核面板！", ephemeral=True
     )
+
 
 # 🐰 簽到
 @bot.tree.command(name="簽到")
