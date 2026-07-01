@@ -19,6 +19,16 @@ from config import NUNU_EMOJI
 import time as pytime
 from config import *
 from systems.welcome import create_welcome_card
+import os
+
+async def load_cogs():
+    for filename in os.listdir("./cogs"):
+        if filename.endswith(".py"):
+            try:
+                await bot.load_extension(f"cogs.{filename[:-3]}")
+                print(f"✅ 已載入 Cog：{filename}")
+            except Exception as e:
+                print(f"❌ 載入 {filename} 失敗：{e}")
 
 tz = pytz.timezone("Asia/Taipei")
 # 🌙 極曜月葵系統設定
@@ -461,8 +471,17 @@ async def testemoji(interaction: discord.Interaction):
 # 🚀 啟動
 @bot.event
 async def on_ready():
+
+    # 只載入一次 Cog
+    if not hasattr(bot, "loaded_cogs"):
+        await load_cogs()
+        bot.loaded_cogs = True
+
     print(f"已登入：{bot.user}")
-    await bot.tree.sync()
+
+    synced = await bot.tree.sync()
+    print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
+
     if not birthday_check.is_running():
         birthday_check.start()
 
