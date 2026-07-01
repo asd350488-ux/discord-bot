@@ -748,6 +748,14 @@ class ReviewManageView(discord.ui.View):
     ):
 
         # -------------------------
+        # 除錯（暫時）
+        # -------------------------
+
+        print("使用者：", interaction.user)
+        print("使用者角色：")
+        print([(r.name, r.id) for r in interaction.user.roles])
+
+        # -------------------------
         # 權限檢查
         # -------------------------
 
