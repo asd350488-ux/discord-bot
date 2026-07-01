@@ -805,7 +805,7 @@ class ReviewManageView(discord.ui.View):
         # 完成
         # -------------------------
 
-        await interaction.response.send_message("✅ 已完成審核。", ephemeral=True)
+        await interaction.response.defer()
 
     @discord.ui.button(
         label="⚫ 關閉", style=discord.ButtonStyle.danger, custom_id="review_close"
