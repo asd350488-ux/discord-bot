@@ -208,6 +208,250 @@ def get_lottery_end_time(amount: int, unit: str):
     else:
         return None
 
+# ==========================
+# 🌙 努努幣抽獎 Modal
+# ==========================
+
+class MoneyLotteryModal(
+    discord.ui.Modal,
+    title="💰 努努幣抽獎"
+):
+
+    money = discord.ui.TextInput(
+        label="💰 努努幣數量",
+        placeholder="例如：5000",
+        required=True,
+        max_length=10
+    )
+
+    winners = discord.ui.TextInput(
+        label="👥 中獎人數",
+        placeholder="例如：3",
+        required=True,
+        max_length=3
+    )
+
+    time = discord.ui.TextInput(
+        label="⏰ 抽獎時間",
+        placeholder="例如：10",
+        required=True,
+        max_length=5
+    )
+
+    unit = discord.ui.TextInput(
+        label="🕒 時間單位",
+        placeholder="請輸入 S、M、H、D",
+        required=True,
+        max_length=1
+    )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        embed = discord.Embed(
+            title="📋 請確認抽獎內容",
+            description=(
+                f"**🎁 獎品**\n"
+                f"💰 努努幣 {self.money.value}\n\n"
+
+                f"**👥 中獎人數**\n"
+                f"{self.winners.value} 人\n\n"
+
+                f"**⏰ 抽獎時間**\n"
+                f"{self.time.value} {self.unit.value}"
+            ),
+            color=0xF1C40F
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=ConfirmLotteryView(
+                prize_type="money",
+                prize_value=self.money.value,
+                winner_count=int(self.winners.value),
+                time_amount=int(self.time.value),
+                time_unit=self.unit.value.upper()
+            ),
+            ephemeral=True
+        )
+
+# ==========================
+# 🌙 抽獎確認
+# ==========================
+
+class ConfirmLotteryView(discord.ui.View):
+
+    def __init__(
+        self,
+        prize_type: str,
+        prize_value: str,
+        winner_count: int,
+        time_amount: int,
+        time_unit: str
+    ):
+
+        super().__init__(timeout=180)
+
+        self.prize_type = prize_type
+        self.prize_value = prize_value
+        self.winner_count = winner_count
+        self.time_amount = time_amount
+        self.time_unit = time_unit
+
+    @discord.ui.button(
+        label="✅ 建立抽獎",
+        style=discord.ButtonStyle.success
+    )
+    async def confirm(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        # -------------------------
+        # 計算結束時間
+        # -------------------------
+
+        end_time = get_lottery_end_time(
+            self.time_amount,
+            self.time_unit
+        )
+
+        if end_time is None:
+
+            await interaction.response.send_message(
+                "❌ 時間單位錯誤。",
+                ephemeral=True
+            )
+            return
+
+        timestamp = int(end_time.timestamp())
+
+        # -------------------------
+        # 建立 Embed
+        # -------------------------
+
+        embed = discord.Embed(
+            title="🎉 Moon Bot 抽獎",
+            color=0xF1C40F
+        )
+
+        embed.add_field(
+            name="🎁 獎品",
+            value=f"💰 努努幣\n{self.prize_value}",
+            inline=False
+        )
+
+        embed.add_field(
+            name="👥 中獎人數",
+            value=f"{self.winner_count} 人",
+            inline=True
+        )
+
+        embed.add_field(
+            name="👤 主辦人",
+            value=interaction.user.mention,
+            inline=True
+        )
+
+        embed.add_field(
+            name="⏰ 抽獎截止",
+            value=(
+                f"<t:{timestamp}:F>\n"
+                f"<t:{timestamp}:R>"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="📌 狀態",
+            value="🟢 進行中",
+            inline=False
+        )
+
+        embed.set_footer(
+            text="點擊下方按鈕即可參加抽獎"
+        )
+
+        # -------------------------
+        # 發送抽獎
+        # -------------------------
+
+        message = await interaction.channel.send(
+            content=f"<@&{MEMBER_ROLE}>",
+            embed=embed,
+            view=LotteryView()
+        )
+
+        await interaction.response.send_message(
+            "✅ 抽獎已建立！",
+            ephemeral=True
+        )
+        # -------------------------
+        # 儲存抽獎資料
+        # -------------------------
+
+        c.execute(
+            """
+            INSERT INTO lotteries (
+
+                message_id,
+                channel_id,
+                host_id,
+
+                prize_type,
+                prize_value,
+
+                winner_count,
+
+                end_time,
+
+                status,
+
+                created_at
+
+            )
+
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(message.id),
+
+                str(interaction.channel.id),
+
+                str(interaction.user.id),
+
+                self.prize_type,
+
+                self.prize_value,
+
+                self.winner_count,
+
+                end_time.isoformat(),
+
+                "running",
+
+                datetime.now().isoformat()
+            )
+        )
+
+        conn.commit()
+    @discord.ui.button(
+        label="❌ 取消",
+        style=discord.ButtonStyle.danger
+    )
+    async def cancel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        await interaction.response.send_message(
+            "❌ 已取消建立抽獎。",
+            ephemeral=True
+        )
 
 # ==========================
 # 🌙 抽獎按鈕
@@ -362,6 +606,89 @@ class LotteryView(discord.ui.View):
             ephemeral=True,
         )
 
+# ==========================
+# 🌙 抽獎獎品選擇
+# ==========================
+
+class PrizeSelectView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    # -------------------------
+    # 🎨 人設圖
+    # -------------------------
+
+    @discord.ui.button(
+        label="🎨 人設圖",
+        style=discord.ButtonStyle.primary
+    )
+    async def image(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        await interaction.response.send_message(
+            "🎨 人設圖 Modal（建置中）",
+            ephemeral=True
+        )
+
+    # -------------------------
+    # 💕 合照
+    # -------------------------
+
+    @discord.ui.button(
+        label="💕 合照",
+        style=discord.ButtonStyle.primary
+    )
+    async def couple(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        await interaction.response.send_message(
+            "💕 合照 Modal（建置中）",
+            ephemeral=True
+        )
+
+    # -------------------------
+    # 💰 努努幣
+    # -------------------------
+
+    @discord.ui.button(
+        label="💰 努努幣",
+        style=discord.ButtonStyle.success
+    )
+    async def money(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        await interaction.response.send_modal(
+            MoneyLotteryModal()
+        )
+
+    # -------------------------
+    # 📝 自訂
+    # -------------------------
+
+    @discord.ui.button(
+        label="📝 自訂",
+        style=discord.ButtonStyle.secondary
+    )
+    async def custom(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        await interaction.response.send_message(
+            "📝 自訂 Modal（建置中）",
+            ephemeral=True
+        )
 
 class DuelView(discord.ui.View):
 
@@ -4561,20 +4888,16 @@ async def my_wanted(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-
 # ==========================
 # 🌙 建立抽獎
 # ==========================
 
-
-@bot.tree.command(name="抽獎建立", description="建立一場新的抽獎")
+@bot.tree.command(
+    name="抽獎建立",
+    description="建立一場新的抽獎"
+)
 async def lottery_create(
-    interaction: discord.Interaction,
-    獎品類型: str,
-    獎品內容: str,
-    中獎人數: int,
-    時間數字: int,
-    時間單位: str,
+    interaction: discord.Interaction
 ):
 
     # -------------------------
@@ -4584,7 +4907,8 @@ async def lottery_create(
     if interaction.channel.id != LOTTERY_CHANNEL:
 
         await interaction.response.send_message(
-            "❌ 請至抽獎頻道使用此指令。", ephemeral=True
+            "❌ 請至抽獎頻道使用此指令。",
+            ephemeral=True
         )
         return
 
@@ -4595,90 +4919,29 @@ async def lottery_create(
     if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
 
         await interaction.response.send_message(
-            "❌ 只有管理員可以建立抽獎。", ephemeral=True
+            "❌ 只有管理員可以建立抽獎。",
+            ephemeral=True
         )
         return
 
     # -------------------------
-    # 計算結束時間
+    # 選擇獎品
     # -------------------------
 
-    end_time = get_lottery_end_time(時間數字, 時間單位)
-
-    if end_time is None:
-
-        await interaction.response.send_message(
-            "❌ 時間單位只能輸入 S、M、H、D。", ephemeral=True
-        )
-        return
-
-    # -------------------------
-    # 建立抽獎 Embed
-    # -------------------------
-
-    timestamp = int(end_time.timestamp())
-
-    embed = discord.Embed(title="🎉 Moon Bot 抽獎", color=0xF1C40F)
-
-    embed.add_field(name="🎁 獎品", value=f"{獎品類型}\n{獎品內容}", inline=False)
-
-    embed.add_field(name="👥 中獎人數", value=f"{中獎人數} 人", inline=True)
-
-    embed.add_field(name="👤 主辦人", value=interaction.user.mention, inline=True)
-
-    embed.add_field(name="⏰ 抽獎截止", value=f"<t:{timestamp}:F>", inline=False)
-
-    embed.add_field(name="📌 狀態", value="🟢 進行中", inline=False)
-
-    embed.set_footer(text="點擊下方按鈕即可參加抽獎")
-    message = await interaction.channel.send(
-        content=f"<@&1504854895826698392>", embed=embed, view=LotteryView()
-    )
-
-    # -------------------------
-    # 儲存抽獎資料
-    # -------------------------
-
-    c.execute(
-        """
-        INSERT INTO lotteries (
-
-            message_id,
-            channel_id,
-            host_id,
-
-            prize_type,
-            prize_value,
-
-            winner_count,
-
-            end_time,
-
-            status,
-
-            created_at
-
-        )
-
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            str(message.id),
-            str(interaction.channel.id),
-            str(interaction.user.id),
-            獎品類型,
-            獎品內容,
-            中獎人數,
-            end_time.isoformat(),
-            "running",
-            datetime.now().isoformat(),
+    embed = discord.Embed(
+        title="🎁 建立抽獎",
+        description=(
+            "請選擇本次抽獎的獎品類型。\n\n"
+            "選擇後將會開啟對應的設定視窗。"
         ),
+        color=0xF1C40F
     )
 
-    conn.commit()
-
-    await interaction.response.send_message("✅ 抽獎建立成功！", ephemeral=True)
-
+    await interaction.response.send_message(
+        embed=embed,
+        view=PrizeSelectView(),
+        ephemeral=True
+    )
 
 # ⚙️ 設定歡迎訊息
 @bot.tree.command(name="設定歡迎訊息")
