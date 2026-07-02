@@ -18,6 +18,12 @@ from events import CHECKIN_EVENTS, EVENT_THEMES
 import time as pytime
 from config import *
 from systems.welcome import create_welcome_card
+from blessings import (
+    CHECKIN_BLESSINGS,
+    RARE_BLESSINGS,
+    EPIC_BLESSINGS,
+    MYTH_BLESSINGS,
+)
 
 tz = pytz.timezone(TIMEZONE)
 
