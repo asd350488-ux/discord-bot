@@ -71,6 +71,49 @@ CREATE TABLE IF NOT EXISTS jail (
 )
 """)
 
+# ==========================
+# 🌙 抽獎系統
+# ==========================
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS lotteries (
+
+    message_id TEXT PRIMARY KEY,
+
+    channel_id TEXT NOT NULL,
+
+    host_id TEXT NOT NULL,
+
+    prize_type TEXT NOT NULL,
+
+    prize_value TEXT NOT NULL,
+
+    winner_count INTEGER NOT NULL,
+
+    end_time TEXT NOT NULL,
+
+    status TEXT DEFAULT 'running',
+
+    created_at TEXT NOT NULL
+
+)
+""")
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS lottery_entries (
+
+    message_id TEXT NOT NULL,
+
+    user_id TEXT NOT NULL,
+
+    PRIMARY KEY (
+        message_id,
+        user_id
+    )
+
+)
+""")
+
 conn.commit()
 
 # =========================
@@ -138,6 +181,186 @@ CREATE TABLE IF NOT EXISTS users (
     last_adventure TEXT
 )
 """)
+
+# ==========================
+# 🌙 計算抽獎結束時間
+# ==========================
+
+
+def get_lottery_end_time(amount: int, unit: str):
+
+    now = datetime.now()
+
+    unit = unit.upper()
+
+    if unit == "S":
+        return now + timedelta(seconds=amount)
+
+    elif unit == "M":
+        return now + timedelta(minutes=amount)
+
+    elif unit == "H":
+        return now + timedelta(hours=amount)
+
+    elif unit == "D":
+        return now + timedelta(days=amount)
+
+    else:
+        return None
+
+
+# ==========================
+# 🌙 抽獎按鈕
+# ==========================
+
+
+class LotteryView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    # ==========================
+    # 🎉 參加抽獎
+    # ==========================
+
+    @discord.ui.button(
+        label="🎉 參加抽獎（0）",
+        style=discord.ButtonStyle.success,
+        custom_id="lottery_join",
+    )
+    async def join_lottery(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+
+        # -------------------------
+        # 取得抽獎 ID
+        # -------------------------
+
+        message_id = str(interaction.message.id)
+        user_id = str(interaction.user.id)
+
+        # -------------------------
+        # 是否已參加
+        # -------------------------
+
+        c.execute(
+            """
+            SELECT 1
+            FROM lottery_entries
+            WHERE message_id = ?
+            AND user_id = ?
+            """,
+            (message_id, user_id),
+        )
+
+        if c.fetchone():
+
+            await interaction.response.send_message(
+                "⚠️ 你已經參加過本次抽獎。", ephemeral=True
+            )
+            return
+
+        # -------------------------
+        # 加入抽獎
+        # -------------------------
+
+        c.execute(
+            """
+            INSERT INTO lottery_entries (
+                message_id,
+                user_id
+            )
+            VALUES (?, ?)
+            """,
+            (message_id, user_id),
+        )
+
+        conn.commit()
+
+        # -------------------------
+        # 更新參加人數
+        # -------------------------
+
+        c.execute(
+            """
+            SELECT COUNT(*)
+            FROM lottery_entries
+            WHERE message_id = ?
+            """,
+            (message_id,),
+        )
+
+        total = c.fetchone()[0]
+
+        self.children[0].label = f"🎉 參加抽獎（{total}）"
+
+        await interaction.message.edit(view=self)
+
+        # -------------------------
+        # 完成
+        # -------------------------
+
+        await interaction.response.send_message(
+            "✅ 已成功參加抽獎！\n\n祝你好運 🍀", ephemeral=True
+        )
+
+    # ==========================
+    # 👥 查看名單
+    # ==========================
+
+    @discord.ui.button(
+        label="👥 查看名單",
+        style=discord.ButtonStyle.secondary,
+        custom_id="lottery_list",
+    )
+    async def view_members(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+
+        # -------------------------
+        # 取得抽獎 ID
+        # -------------------------
+
+        message_id = str(interaction.message.id)
+
+        # -------------------------
+        # 查詢參加者
+        # -------------------------
+
+        c.execute(
+            """
+            SELECT user_id
+            FROM lottery_entries
+            WHERE message_id = ?
+            """,
+            (message_id,),
+        )
+
+        rows = c.fetchall()
+
+        if not rows:
+
+            await interaction.response.send_message(
+                "📋 目前還沒有人參加抽獎。", ephemeral=True
+            )
+            return
+
+        members = []
+
+        for index, (user_id,) in enumerate(rows, start=1):
+
+            member = interaction.guild.get_member(int(user_id))
+
+            if member:
+
+                members.append(f"{index}. {member.display_name}")
+
+        text = "\n".join(members)
+
+        await interaction.response.send_message(
+            f"📋 **本次抽獎參加名單**\n\n" f"共 **{len(members)}** 人\n\n" f"{text}",
+            ephemeral=True,
+        )
 
 
 class DuelView(discord.ui.View):
@@ -815,6 +1038,9 @@ async def on_ready():
 
     if not birthday_check.is_running():
         birthday_check.start()
+
+    if not lottery_checker.is_running():
+        lottery_checker.start()
 
 
 @bot.tree.command(name="審核面板", description="發送入群審核面板")
@@ -1738,6 +1964,125 @@ async def birthday_check():
             text += f"{user.display_name}\n"
 
         await admin_channel.send(f"⚠️ 明天壽星：\n{text}")
+
+
+# ==========================
+# 🌙 抽獎背景檢查
+# ==========================
+
+
+@tasks.loop(seconds=10)
+async def lottery_checker():
+
+    now = datetime.now()
+
+    c.execute("""
+        SELECT
+            message_id,
+            channel_id,
+            end_time
+        FROM lotteries
+        WHERE status='running'
+        """)
+
+    lotteries = c.fetchall()
+
+    for message_id, channel_id, end_time in lotteries:
+
+        end_time = datetime.fromisoformat(end_time)
+
+        # -------------------------
+        # 取得參加者
+        # -------------------------
+
+        c.execute(
+            """
+            SELECT user_id
+            FROM lottery_entries
+            WHERE message_id = ?
+            """,
+            (message_id,),
+        )
+
+        rows = c.fetchall()
+
+        participants = [row[0] for row in rows]
+
+        # -------------------------
+        # 無人參加
+        # -------------------------
+
+        if len(participants) == 0:
+
+            c.execute(
+                """
+                UPDATE lotteries
+                SET status='ended'
+                WHERE message_id=?
+                """,
+                (message_id,),
+            )
+
+            conn.commit()
+
+            continue
+
+        # -------------------------
+        # 取得中獎人數
+        # -------------------------
+
+        c.execute(
+            """
+            SELECT winner_count
+            FROM lotteries
+            WHERE message_id=?
+            """,
+            (message_id,),
+        )
+
+        winner_count = c.fetchone()[0]
+
+        # -------------------------
+        # 抽出中獎者
+        # -------------------------
+
+        if len(participants) <= winner_count:
+
+            winners = participants
+
+        else:
+
+            winners = random.sample(participants, winner_count)
+
+
+# ==========================
+# 🌙 抽獎背景檢查
+# ==========================
+
+
+@tasks.loop(seconds=10)
+async def lottery_checker():
+
+    now = datetime.now()
+
+    c.execute("""
+        SELECT
+            message_id,
+            channel_id,
+            end_time
+        FROM lotteries
+        WHERE status='running'
+        """)
+
+    lotteries = c.fetchall()
+
+    for message_id, channel_id, end_time in lotteries:
+
+        end_time = datetime.fromisoformat(end_time)
+
+        if end_time <= now:
+
+            print(f"抽獎 {message_id} 已結束")
 
 
 # ==========================================
@@ -4215,6 +4560,124 @@ async def my_wanted(interaction: discord.Interaction):
     embed.add_field(name="🎯 下次搶劫成功率", value=f"`{success_rate}%`", inline=False)
 
     await interaction.response.send_message(embed=embed)
+
+
+# ==========================
+# 🌙 建立抽獎
+# ==========================
+
+
+@bot.tree.command(name="抽獎建立", description="建立一場新的抽獎")
+async def lottery_create(
+    interaction: discord.Interaction,
+    獎品類型: str,
+    獎品內容: str,
+    中獎人數: int,
+    時間數字: int,
+    時間單位: str,
+):
+
+    # -------------------------
+    # 頻道限制
+    # -------------------------
+
+    if interaction.channel.id != LOTTERY_CHANNEL:
+
+        await interaction.response.send_message(
+            "❌ 請至抽獎頻道使用此指令。", ephemeral=True
+        )
+        return
+
+    # -------------------------
+    # 權限限制
+    # -------------------------
+
+    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+
+        await interaction.response.send_message(
+            "❌ 只有管理員可以建立抽獎。", ephemeral=True
+        )
+        return
+
+    # -------------------------
+    # 計算結束時間
+    # -------------------------
+
+    end_time = get_lottery_end_time(時間數字, 時間單位)
+
+    if end_time is None:
+
+        await interaction.response.send_message(
+            "❌ 時間單位只能輸入 S、M、H、D。", ephemeral=True
+        )
+        return
+
+    # -------------------------
+    # 建立抽獎 Embed
+    # -------------------------
+
+    timestamp = int(end_time.timestamp())
+
+    embed = discord.Embed(title="🎉 Moon Bot 抽獎", color=0xF1C40F)
+
+    embed.add_field(name="🎁 獎品", value=f"{獎品類型}\n{獎品內容}", inline=False)
+
+    embed.add_field(name="👥 中獎人數", value=f"{中獎人數} 人", inline=True)
+
+    embed.add_field(name="👤 主辦人", value=interaction.user.mention, inline=True)
+
+    embed.add_field(name="⏰ 抽獎截止", value=f"<t:{timestamp}:F>", inline=False)
+
+    embed.add_field(name="📌 狀態", value="🟢 進行中", inline=False)
+
+    embed.set_footer(text="點擊下方按鈕即可參加抽獎")
+    message = await interaction.channel.send(
+        content=f"<@&1504854895826698392>", embed=embed, view=LotteryView()
+    )
+
+    # -------------------------
+    # 儲存抽獎資料
+    # -------------------------
+
+    c.execute(
+        """
+        INSERT INTO lotteries (
+
+            message_id,
+            channel_id,
+            host_id,
+
+            prize_type,
+            prize_value,
+
+            winner_count,
+
+            end_time,
+
+            status,
+
+            created_at
+
+        )
+
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(message.id),
+            str(interaction.channel.id),
+            str(interaction.user.id),
+            獎品類型,
+            獎品內容,
+            中獎人數,
+            end_time.isoformat(),
+            "running",
+            datetime.now().isoformat(),
+        ),
+    )
+
+    conn.commit()
+
+    await interaction.response.send_message("✅ 抽獎建立成功！", ephemeral=True)
 
 
 # ⚙️ 設定歡迎訊息
