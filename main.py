@@ -436,6 +436,7 @@ class LotteryView(discord.ui.View):
         )
 
         # ==========================
+
     # 👥 查看名單
     # ==========================
 
@@ -445,9 +446,7 @@ class LotteryView(discord.ui.View):
         custom_id="lottery_list",
     )
     async def view_members(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
 
         # -------------------------
@@ -467,7 +466,7 @@ class LotteryView(discord.ui.View):
             WHERE message_id = ?
             ORDER BY rowid ASC
             """,
-            (message_id,)
+            (message_id,),
         )
 
         rows = c.fetchall()
@@ -475,8 +474,7 @@ class LotteryView(discord.ui.View):
         if not rows:
 
             await interaction.response.send_message(
-                "📋 目前還沒有人參加本次抽獎。",
-                ephemeral=True
+                "📋 目前還沒有人參加本次抽獎。", ephemeral=True
             )
             return
 
@@ -488,32 +486,19 @@ class LotteryView(discord.ui.View):
 
             if member:
 
-                member_list.append(
-                    f"`{index:02}`｜{member.mention}"
-                )
+                member_list.append(f"`{index:02}`｜{member.mention}")
 
         text = "\n".join(member_list)
 
-        embed = discord.Embed(
-            title="👥 抽獎參加名單",
-            description=text,
-            color=0x5865F2
-        )
+        embed = discord.Embed(title="👥 抽獎參加名單", description=text, color=0x5865F2)
 
         embed.add_field(
-            name="📊 參加人數",
-            value=f"**{len(member_list)} 人**",
-            inline=False
+            name="📊 參加人數", value=f"**{len(member_list)} 人**", inline=False
         )
 
-        embed.set_footer(
-            text="Moon Bot Lottery"
-        )
+        embed.set_footer(text="Moon Bot Lottery")
 
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ==========================
@@ -2176,6 +2161,7 @@ async def birthday_check():
 
         await admin_channel.send(f"⚠️ 明天壽星：\n{text}")
 
+
 # ==========================
 # 🌙 抽獎背景檢查
 # ==========================
@@ -2213,7 +2199,7 @@ async def lottery_checker():
                 FROM lottery_entries
                 WHERE message_id = ?
                 """,
-                (message_id,)
+                (message_id,),
             )
 
             rows = c.fetchall()
@@ -2221,6 +2207,7 @@ async def lottery_checker():
             print(f"抽獎 {message_id}")
 
             print(f"參加人數：{len(rows)}")
+
 
 # ==========================================
 # # 🌸 歡迎系統 #
