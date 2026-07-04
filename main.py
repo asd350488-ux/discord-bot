@@ -535,6 +535,11 @@ class PrizeSelectView(discord.ui.View):
 
         await interaction.response.send_modal(MoneyLotteryModal())
 
+        try:
+            await interaction.delete_original_response()
+        except:
+            pass
+
     # -------------------------
     # 📝 自訂
     # -------------------------
