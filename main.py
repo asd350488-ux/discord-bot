@@ -2170,6 +2170,8 @@ async def birthday_check():
 @tasks.loop(seconds=10)
 async def lottery_checker():
 
+    print("🌙 lottery_checker 執行中")
+
     now = datetime.now()
 
     c.execute("""
@@ -2179,34 +2181,21 @@ async def lottery_checker():
             end_time
         FROM lotteries
         WHERE status='running'
-        """)
+    """)
 
     lotteries = c.fetchall()
 
+    print(f"找到 {len(lotteries)} 場進行中的抽獎")
+
     for message_id, channel_id, end_time in lotteries:
+
+        print(f"檢查抽獎：{message_id}")
 
         end_time = datetime.fromisoformat(end_time)
 
         if end_time <= now:
 
-            # -------------------------
-            # 查詢參加者
-            # -------------------------
-
-            c.execute(
-                """
-                SELECT user_id
-                FROM lottery_entries
-                WHERE message_id = ?
-                """,
-                (message_id,),
-            )
-
-            rows = c.fetchall()
-
-            print(f"抽獎 {message_id}")
-
-            print(f"參加人數：{len(rows)}")
+            print("✅ 已到截止時間")
 
 
 # ==========================================
