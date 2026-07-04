@@ -435,7 +435,7 @@ class LotteryView(discord.ui.View):
             "✅ 已成功參加抽獎！\n\n祝你好運 🍀", ephemeral=True
         )
 
-    # ==========================
+        # ==========================
     # 👥 查看名單
     # ==========================
 
@@ -445,7 +445,9 @@ class LotteryView(discord.ui.View):
         custom_id="lottery_list",
     )
     async def view_members(
-        self, interaction: discord.Interaction, button: discord.ui.Button
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
     ):
 
         # -------------------------
@@ -463,8 +465,9 @@ class LotteryView(discord.ui.View):
             SELECT user_id
             FROM lottery_entries
             WHERE message_id = ?
+            ORDER BY rowid ASC
             """,
-            (message_id,),
+            (message_id,)
         )
 
         rows = c.fetchall()
@@ -472,11 +475,12 @@ class LotteryView(discord.ui.View):
         if not rows:
 
             await interaction.response.send_message(
-                "📋 目前還沒有人參加抽獎。", ephemeral=True
+                "📋 目前還沒有人參加本次抽獎。",
+                ephemeral=True
             )
             return
 
-        members = []
+        member_list = []
 
         for index, (user_id,) in enumerate(rows, start=1):
 
@@ -484,13 +488,31 @@ class LotteryView(discord.ui.View):
 
             if member:
 
-                members.append(f"{index}. {member.display_name}")
+                member_list.append(
+                    f"`{index:02}`｜{member.mention}"
+                )
 
-        text = "\n".join(members)
+        text = "\n".join(member_list)
+
+        embed = discord.Embed(
+            title="👥 抽獎參加名單",
+            description=text,
+            color=0x5865F2
+        )
+
+        embed.add_field(
+            name="📊 參加人數",
+            value=f"**{len(member_list)} 人**",
+            inline=False
+        )
+
+        embed.set_footer(
+            text="Moon Bot Lottery"
+        )
 
         await interaction.response.send_message(
-            f"📋 **本次抽獎參加名單**\n\n" f"共 **{len(members)}** 人\n\n" f"{text}",
-            ephemeral=True,
+            embed=embed,
+            ephemeral=True
         )
 
 
@@ -2154,96 +2176,6 @@ async def birthday_check():
 
         await admin_channel.send(f"⚠️ 明天壽星：\n{text}")
 
-
-# ==========================
-# 🌙 抽獎背景檢查
-# ==========================
-
-
-@tasks.loop(seconds=10)
-async def lottery_checker():
-
-    now = datetime.now()
-
-    c.execute("""
-        SELECT
-            message_id,
-            channel_id,
-            end_time
-        FROM lotteries
-        WHERE status='running'
-        """)
-
-    lotteries = c.fetchall()
-
-    for message_id, channel_id, end_time in lotteries:
-
-        end_time = datetime.fromisoformat(end_time)
-
-        # -------------------------
-        # 取得參加者
-        # -------------------------
-
-        c.execute(
-            """
-            SELECT user_id
-            FROM lottery_entries
-            WHERE message_id = ?
-            """,
-            (message_id,),
-        )
-
-        rows = c.fetchall()
-
-        participants = [row[0] for row in rows]
-
-        # -------------------------
-        # 無人參加
-        # -------------------------
-
-        if len(participants) == 0:
-
-            c.execute(
-                """
-                UPDATE lotteries
-                SET status='ended'
-                WHERE message_id=?
-                """,
-                (message_id,),
-            )
-
-            conn.commit()
-
-            continue
-
-        # -------------------------
-        # 取得中獎人數
-        # -------------------------
-
-        c.execute(
-            """
-            SELECT winner_count
-            FROM lotteries
-            WHERE message_id=?
-            """,
-            (message_id,),
-        )
-
-        winner_count = c.fetchone()[0]
-
-        # -------------------------
-        # 抽出中獎者
-        # -------------------------
-
-        if len(participants) <= winner_count:
-
-            winners = participants
-
-        else:
-
-            winners = random.sample(participants, winner_count)
-
-
 # ==========================
 # 🌙 抽獎背景檢查
 # ==========================
@@ -2271,8 +2203,24 @@ async def lottery_checker():
 
         if end_time <= now:
 
-            print(f"抽獎 {message_id} 已結束")
+            # -------------------------
+            # 查詢參加者
+            # -------------------------
 
+            c.execute(
+                """
+                SELECT user_id
+                FROM lottery_entries
+                WHERE message_id = ?
+                """,
+                (message_id,)
+            )
+
+            rows = c.fetchall()
+
+            print(f"抽獎 {message_id}")
+
+            print(f"參加人數：{len(rows)}")
 
 # ==========================================
 # # 🌸 歡迎系統 #
