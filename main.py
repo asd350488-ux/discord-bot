@@ -1295,6 +1295,13 @@ async def on_ready():
 
     await bot.tree.sync()
 
+    # -------------------------
+    # 永久 View（Persistent View）
+    # -------------------------
+
+    bot.add_view(ReviewPanelView())
+    bot.add_view(ReviewManageView())
+
     if not birthday_check.is_running():
         birthday_check.start()
 
