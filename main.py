@@ -506,8 +506,7 @@ class LotteryView(discord.ui.View):
             "✅ 已成功參加抽獎！\n\n祝你好運 🍀", ephemeral=True
         )
 
-        # ==========================
-
+    # ==========================
     # 👥 查看名單
     # ==========================
 
@@ -1614,17 +1613,11 @@ async def wallet(interaction: discord.Interaction):
         color=discord.Color.from_rgb(186, 85, 211),
     )
 
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
-
     embed.add_field(name=f"{NUNU_EMOJI} 努努幣", value=f"```{money:,}```", inline=False)
 
     embed.add_field(name="📅 累積簽到", value=f"```{total:,} 天```", inline=True)
 
     embed.add_field(name="🔥 連續簽到", value=f"```{streak:,} 天```", inline=True)
-
-    embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
     embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
@@ -1807,12 +1800,6 @@ async def level(interaction: discord.Interaction):
         description="✨ 星月旅人的成長紀錄",
         color=discord.Color.from_rgb(138, 43, 226),
     )
-
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
-
-    embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
     embed.add_field(name="📈 等級", value=f"```Lv.{level}```", inline=True)
 
@@ -2195,17 +2182,13 @@ async def birthday_check():
                 color=discord.Color.from_rgb(186, 85, 211),
             )
 
-            embed.set_author(
-                name=f"{user.display_name} ✦ 星月之子", icon_url=user.display_avatar.url
-            )
+            embed.set_author(name=f"{user.display_name} ✦ 星月之子")
 
             embed.add_field(
                 name="🎁 星月贈禮",
                 value=f"{reward_text}\n<a:emoji40:1510362334026268713> +{reward}",
                 inline=False,
             )
-
-            embed.set_thumbnail(url=user.display_avatar.url)
 
             if reward == 5000:
                 embed.add_field(
@@ -2347,6 +2330,80 @@ async def lottery_checker():
             )
 
             conn.commit()
+
+            # -------------------------
+            # 取得抽獎訊息
+            # -------------------------
+
+            channel = bot.get_channel(int(channel_id))
+
+            if channel is None:
+                continue
+
+            try:
+                message = await channel.fetch_message(int(message_id))
+
+            except discord.NotFound:
+                continue
+
+            except discord.Forbidden:
+                continue
+
+            # -------------------------
+            # 更新抽獎畫面
+            # -------------------------
+
+            embed = message.embeds[0]
+
+            embed.clear_fields()
+
+            embed.add_field(
+                name="🎁 獎品",
+                value=f"💰 努努幣 {int(prize_value):,}",
+                inline=False,
+            )
+
+            embed.add_field(
+                name="👥 中獎人數",
+                value=f"{winner_count} 人",
+                inline=True,
+            )
+
+            embed.add_field(
+                name="👤 主辦人",
+                value=f"<@{host_id}>",
+                inline=True,
+            )
+
+            embed.add_field(
+                name="🏆 中獎者",
+                value="\n".join(winner_mentions) if winner_mentions else "❌ 無人參加",
+                inline=False,
+            )
+
+            embed.add_field(
+                name="📌 狀態",
+                value="🔴 已結束",
+                inline=False,
+            )
+
+            # -------------------------
+            # 關閉按鈕
+            # -------------------------
+
+            ended_view = LotteryView()
+
+            for item in ended_view.children:
+                item.disabled = True
+
+            # -------------------------
+            # 更新抽獎訊息
+            # -------------------------
+
+            await message.edit(
+                embed=embed,
+                view=ended_view,
+            )
 
 
 # ==========================================
@@ -2648,10 +2705,6 @@ async def work(interaction: discord.Interaction):
         title="🌙 𝑴𝒐𝒐𝒏 𝑾𝒐𝒓𝒌",
         description=desc,
         color=discord.Color.from_rgb(186, 85, 211),
-    )
-
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
     )
 
     embed.add_field(name="📜 委託內容", value=f"```{job_name}```", inline=False)
@@ -3060,10 +3113,6 @@ async def guess_big_small(interaction: discord.Interaction, choice: str, amount:
         title="🎲 星月賭場・猜大小", color=discord.Color.from_rgb(186, 85, 211)
     )
 
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
-
     embed.add_field(name="🎯 你的選擇", value=f"```{choice}```", inline=True)
 
     embed.add_field(name="🎲 骰子結果", value=f"```{dice}```", inline=True)
@@ -3272,10 +3321,6 @@ async def slot_machine(interaction: discord.Interaction, amount: int):
 
     embed = discord.Embed(title="🎰 星月老虎機", color=discord.Color.gold())
 
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
-
     embed.add_field(name="🎰 結果", value=f"```{result_text}```", inline=False)
 
     embed.add_field(name="✨ 判定", value=f"```{title}```", inline=False)
@@ -3412,10 +3457,6 @@ async def surprise_box(interaction: discord.Interaction, amount: int):
     net = reward - amount
 
     embed = discord.Embed(title="🎁 星月驚喜箱", color=discord.Color.orange())
-
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
 
     embed.add_field(name="🎊 開箱結果", value=f"```{title}```", inline=False)
 
@@ -3585,10 +3626,6 @@ async def adventure(interaction: discord.Interaction):
     conn.commit()
 
     embed = discord.Embed(title="🧭 星月探險", color=discord.Color.blurple())
-
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
 
     embed.add_field(name="📖 探險結果", value=f"```{title}```", inline=False)
 
@@ -4101,10 +4138,6 @@ async def black_market(interaction: discord.Interaction, amount: int):
     # 🎨 結果 Embed
     embed = discord.Embed(title="💣 黑市投資結果", color=discord.Color.dark_red())
 
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
-
     embed.add_field(
         name="💵 投資金額", value=f"{NUNU_EMOJI} `{amount:,}`", inline=False
     )
@@ -4259,10 +4292,6 @@ async def mood_game(interaction: discord.Interaction, mood: str, amount: int):
 
     embed = discord.Embed(title="🎯 月神心情屋", color=discord.Color.fuchsia())
 
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
-
     embed.add_field(name="🎭 你的猜測", value=f"```{mood}```", inline=True)
 
     embed.add_field(name="🌙 真實心情", value=f"```{real_mood}```", inline=True)
@@ -4402,10 +4431,6 @@ async def experiment(interaction: discord.Interaction, amount: int):
 
     embed = discord.Embed(title="🧪 禁忌實驗室", color=discord.Color.teal())
 
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
-
     embed.add_field(name="⚗️ 實驗結果", value=f"```{result}```", inline=False)
 
     if diff >= 0:
@@ -4531,10 +4556,6 @@ async def gamble_life(interaction: discord.Interaction, amount: int):
     conn.commit()
 
     embed = discord.Embed(title="🎰 命運審判所", color=discord.Color.dark_purple())
-
-    embed.set_author(
-        name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url
-    )
 
     embed.add_field(name="⚖️ 審判結果", value=f"```{result}```", inline=False)
 
