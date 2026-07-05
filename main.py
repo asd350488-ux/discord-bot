@@ -1,4 +1,5 @@
 import discord
+from config import EXCLUDED_USERS
 from discord import app_commands
 from discord.ext import commands, tasks
 from discord.ui import View, Button
@@ -2143,23 +2144,30 @@ async def leaderboard(interaction: discord.Interaction):
         embed = discord.Embed(
             title="🌙 星月指令限制",
             description=(
-                "📊 排行查詢僅能於指定區域使用\n\n" f"請前往 <#{INFO_CHANNEL}>"
+                "📊 排行查詢僅能於指定區域使用\n\n"
+                f"請前往 <#{INFO_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(186, 85, 211),
         )
 
-        embed.add_field(name="✨ 可使用功能", value="等級｜排行榜｜查詢", inline=False)
+        embed.add_field(
+            name="✨ 可使用功能",
+            value="等級｜排行榜｜查詢",
+            inline=False,
+        )
 
         embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True,
+        )
         return
 
     c.execute("""
         SELECT user_id, money
         FROM users
         ORDER BY money DESC
-        LIMIT 10
     """)
 
     ranking = c.fetchall()
@@ -2170,28 +2178,41 @@ async def leaderboard(interaction: discord.Interaction):
         color=discord.Color.gold(),
     )
 
-    medals = {1: "👑", 2: "🥈", 3: "🥉"}
+    medals = {
+        1: "👑",
+        2: "🥈",
+        3: "🥉",
+    }
 
-    for index, (user_id, money) in enumerate(ranking, start=1):
+    rank = 1
+
+    for user_id, money in ranking:
+
+        # 🚫 排除指定玩家
+        if int(user_id) in EXCLUDED_USERS:
+            continue
 
         member = interaction.guild.get_member(int(user_id))
 
-        if member:
-            name = member.display_name
-        else:
-            name = f"未知使用者 ({user_id})"
+        if member is None:
+            continue
 
-        icon = medals.get(index, f"#{index}")
+        icon = medals.get(rank, f"#{rank}")
 
         embed.add_field(
-            name=f"{icon} {name}", value=f"{NUNU_EMOJI} `{money:,}`", inline=False
+            name=f"{icon} {member.display_name}",
+            value=f"{NUNU_EMOJI} `{money:,}`",
+            inline=False,
         )
+
+        rank += 1
+
+        if rank > 10:
+            break
 
     embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
     await interaction.response.send_message(embed=embed)
-    return
-
 
 # 🌟 聊天等級排行榜
 @bot.tree.command(name="聊天等級排行榜")
@@ -2203,40 +2224,73 @@ async def level_leaderboard(interaction: discord.Interaction):
         embed = discord.Embed(
             title="🌙 星月指令限制",
             description=(
-                "📊 排行查詢僅能於指定區域使用\n\n" f"請前往 <#{INFO_CHANNEL}>"
+                "📊 排行查詢僅能於指定區域使用\n\n"
+                f"請前往 <#{INFO_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(186, 85, 211),
         )
 
-        embed.add_field(name="✨ 可使用功能", value="等級｜排行榜｜查詢", inline=False)
+        embed.add_field(
+            name="✨ 可使用功能",
+            value="等級｜排行榜｜查詢",
+            inline=False,
+        )
 
         embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True,
+        )
         return
 
-    c.execute("SELECT user_id, level, exp FROM users ORDER BY level DESC, exp DESC")
+    c.execute("""
+        SELECT user_id, level, exp
+        FROM users
+        ORDER BY level DESC, exp DESC
+    """)
+
     data = c.fetchall()
 
     text = ""
 
-    for i, (uid, level, exp) in enumerate(data[:10]):
-        user = bot.get_user(int(uid)) or await bot.fetch_user(int(uid))
+    rank = 1
 
-        if i == 0:
-            text += f"👑 {user.display_name} ｜ Lv.{level} ✨\n"
-        elif i == 1:
-            text += f"🌟 {user.display_name} ｜ Lv.{level}\n"
-        elif i == 2:
-            text += f"💫 {user.display_name} ｜ Lv.{level}\n"
+    for uid, level, exp in data:
+
+        # 🚫 排除指定玩家
+        if int(uid) in EXCLUDED_USERS:
+            continue
+
+        member = interaction.guild.get_member(int(uid))
+
+        if member is None:
+            continue
+
+        if rank == 1:
+            text += f"👑 {member.display_name} ｜ Lv.{level} ✨\n"
+
+        elif rank == 2:
+            text += f"🥈 {member.display_name} ｜ Lv.{level}\n"
+
+        elif rank == 3:
+            text += f"🥉 {member.display_name} ｜ Lv.{level}\n"
+
         else:
-            text += f"{i+1}. {user.display_name} ｜ Lv.{level}\n"
+            text += f"`{rank}.` {member.display_name} ｜ Lv.{level}\n"
+
+        rank += 1
+
+        if rank > 10:
+            break
 
     embed = discord.Embed(
         title="🏆 等級排行榜",
-        description=text,
+        description=text if text else "目前沒有排行榜資料。",
         color=discord.Color.from_rgb(186, 85, 211),
     )
+
+    embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
     await interaction.response.send_message(embed=embed)
 
