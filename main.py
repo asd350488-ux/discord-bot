@@ -2316,6 +2316,17 @@ async def lottery_checker():
                 if prize_type == "money":
 
                     add_money(winner_id, int(prize_value))
+
+                # -------------------------
+                # 私訊中獎者
+                # -------------------------
+                await send_lottery_dm(
+                    winner_id,
+                    host_id,
+                    prize_type,
+                    prize_value,
+                )
+
             # -------------------------
             # 標記抽獎結束
             # -------------------------
@@ -2390,11 +2401,25 @@ async def lottery_checker():
             # -------------------------
             # 關閉按鈕
             # -------------------------
-
             ended_view = LotteryView()
 
-            for item in ended_view.children:
-                item.disabled = True
+            # 保留最後參加人數
+            c.execute(
+                """
+                SELECT COUNT(*)
+                FROM lottery_entries
+                WHERE message_id = ?
+                """,
+                (message_id,),
+            )
+
+            total = c.fetchone()[0]
+
+            # 更新按鈕文字
+            ended_view.children[0].label = f"🎉 參加抽獎（{total}）"
+
+            # 只停用參加抽獎
+            ended_view.children[0].disabled = True
 
             # -------------------------
             # 更新抽獎訊息
@@ -2404,6 +2429,123 @@ async def lottery_checker():
                 embed=embed,
                 view=ended_view,
             )
+
+
+# ==========================
+# 🌙 抽獎中獎通知
+# ==========================
+
+
+async def send_lottery_dm(user_id, host_id, prize_type, prize_value):
+
+    try:
+
+        user = await bot.fetch_user(int(user_id))
+
+        embed = discord.Embed(
+            title="🌙 Moon Bot｜抽獎通知",
+            description="🎉 恭喜你在本次抽獎中幸運中獎！",
+            color=0xF1C40F,
+        )
+
+        # -------------------------
+        # 💰 努努幣
+        # -------------------------
+
+        if prize_type == "money":
+
+            embed.add_field(
+                name="🎁 獎品",
+                value=f"💰 努努幣 {int(prize_value):,}",
+                inline=False,
+            )
+
+            embed.description += (
+                "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                "Moon Bot 已自動將獎勵發放至你的帳戶。\n\n"
+                "可使用 `/錢包` 查看目前餘額。"
+            )
+
+        # -------------------------
+        # 🎨 人設圖
+        # -------------------------
+
+        elif prize_type == "image":
+
+            embed.add_field(
+                name="🎁 獎品",
+                value="🎨 隨機風格人設圖",
+                inline=False,
+            )
+
+            embed.add_field(
+                name="👤 主辦人",
+                value=f"<@{host_id}>",
+                inline=False,
+            )
+
+            embed.description += (
+                "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                "請私訊主辦人，並提供你的人設圖照片。\n\n"
+                "主辦人將協助製作本次抽獎獎品。"
+            )
+
+        # -------------------------
+        # 💕 合照
+        # -------------------------
+
+        elif prize_type == "couple":
+
+            embed.add_field(
+                name="🎁 獎品",
+                value="💕 與喜愛角色合照",
+                inline=False,
+            )
+
+            embed.add_field(
+                name="👤 主辦人",
+                value=f"<@{host_id}>",
+                inline=False,
+            )
+
+            embed.description += (
+                "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                "請私訊主辦人，並提供：\n\n"
+                "📸 你的人設圖照片\n"
+                "💖 想要合照的角色名稱"
+            )
+
+        # -------------------------
+        # 📝 自訂
+        # -------------------------
+
+        elif prize_type == "custom":
+
+            embed.add_field(
+                name="🎁 獎品",
+                value=prize_value,
+                inline=False,
+            )
+
+            embed.add_field(
+                name="👤 主辦人",
+                value=f"<@{host_id}>",
+                inline=False,
+            )
+
+            embed.description += (
+                "\n\n━━━━━━━━━━━━━━━━━━\n\n" "請私訊主辦人領取本次抽獎獎品。"
+            )
+
+        embed.set_footer(text="🌙 本訊息由 Moon Bot 自動發送")
+
+        await user.send(embed=embed)
+
+    except discord.Forbidden:
+        print(f"⚠️ 無法私訊 {user_id}，對方已關閉私訊。")
+
+    except Exception as e:
+        print(f"⚠️ 發送抽獎私訊失敗：{e}")
 
 
 # ==========================================
