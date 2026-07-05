@@ -3928,7 +3928,7 @@ async def give_money(
             f"❌ 金額必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
         )
-    return
+        return
     # 🔒 至少選一個對象
     if not member and not role and not everyone:
         await interaction.followup.send("❌ 請選擇發送對象", ephemeral=True)
