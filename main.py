@@ -2504,13 +2504,29 @@ async def lottery_checker():
             # 更新抽獎畫面
             # -------------------------
 
-            embed = message.embeds[0]
+            # 根據獎品類型顯示內容
+            if prize_type == "money":
+                prize_text = f"💰 努努幣 {int(prize_value):,}"
 
-            embed.clear_fields()
+            elif prize_type == "image":
+                prize_text = "🎨 隨機風格人設圖"
+
+            elif prize_type == "couple":
+                prize_text = "💕 與喜愛角色合照"
+
+            else:
+                prize_text = f"📝 {prize_value}"
+
+            timestamp = int(end_time.timestamp())
+
+            embed = discord.Embed(
+                title="🎉 Moon Bot 抽獎",
+                color=0xF1C40F,
+            )
 
             embed.add_field(
                 name="🎁 獎品",
-                value=f"💰 努努幣 {int(prize_value):,}",
+                value=prize_text,
                 inline=False,
             )
 
@@ -2527,8 +2543,18 @@ async def lottery_checker():
             )
 
             embed.add_field(
+                name="⏰ 抽獎截止",
+                value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
+                inline=False,
+            )
+
+            embed.add_field(
                 name="🏆 中獎者",
-                value="\n".join(winner_mentions) if winner_mentions else "❌ 無人參加",
+                value=(
+                    "\n".join(winner_mentions)
+                    if winner_mentions
+                    else "📭 本次抽獎無人參加"
+                ),
                 inline=False,
             )
 
@@ -2538,9 +2564,12 @@ async def lottery_checker():
                 inline=False,
             )
 
+            embed.set_footer(text="🎉 本次抽獎已結束，感謝大家參與！")
+
             # -------------------------
             # 關閉按鈕
             # -------------------------
+
             ended_view = LotteryView()
 
             # 保留最後參加人數
@@ -2555,10 +2584,7 @@ async def lottery_checker():
 
             total = c.fetchone()[0]
 
-            # 更新按鈕文字
             ended_view.children[0].label = f"🎉 參加抽獎（{total}）"
-
-            # 只停用參加抽獎
             ended_view.children[0].disabled = True
 
             # -------------------------
