@@ -2233,6 +2233,8 @@ async def birthday_check():
 @tasks.loop(seconds=10)
 async def lottery_checker():
 
+    print("🌙 lottery_checker 執行中")
+
     now = datetime.now()
 
     c.execute("""
