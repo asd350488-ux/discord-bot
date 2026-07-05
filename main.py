@@ -38,6 +38,77 @@ from database import conn, c
 
 from views.shop import ShopView, BuyButton
 
+# ==========================
+# 💰 經濟系統
+# ==========================
+
+
+def ensure_user(user_id):
+
+    c.execute(
+        """
+        INSERT OR IGNORE INTO users (user_id)
+        VALUES (?)
+        """,
+        (str(user_id),),
+    )
+
+    conn.commit()
+
+
+def get_money(user_id):
+
+    ensure_user(user_id)
+
+    c.execute(
+        """
+        SELECT money
+        FROM users
+        WHERE user_id = ?
+        """,
+        (str(user_id),),
+    )
+
+    row = c.fetchone()
+
+    return row[0] if row else 0
+
+
+def add_money(user_id, amount):
+
+    ensure_user(user_id)
+
+    c.execute(
+        """
+        UPDATE users
+        SET money = money + ?
+        WHERE user_id = ?
+        """,
+        (amount, str(user_id)),
+    )
+
+    conn.commit()
+
+
+def remove_money(user_id, amount):
+
+    ensure_user(user_id)
+
+    c.execute(
+        """
+        UPDATE users
+        SET money = CASE
+            WHEN money >= ? THEN money - ?
+            ELSE 0
+        END
+        WHERE user_id = ?
+        """,
+        (amount, amount, str(user_id)),
+    )
+
+    conn.commit()
+
+
 # 💜 老公資料表
 c.execute("""
 CREATE TABLE IF NOT EXISTS husbands (
@@ -1104,14 +1175,6 @@ class ReviewManageView(discord.ui.View):
     ):
 
         # -------------------------
-        # 除錯（暫時）
-        # -------------------------
-
-        print("使用者：", interaction.user)
-        print("使用者角色：")
-        print([(r.name, r.id) for r in interaction.user.roles])
-
-        # -------------------------
         # 權限檢查
         # -------------------------
 
@@ -2170,14 +2233,16 @@ async def birthday_check():
 @tasks.loop(seconds=10)
 async def lottery_checker():
 
-    print("🌙 lottery_checker 執行中")
-
     now = datetime.now()
 
     c.execute("""
         SELECT
             message_id,
             channel_id,
+            host_id,
+            prize_type,
+            prize_value,
+            winner_count,
             end_time
         FROM lotteries
         WHERE status='running'
@@ -2185,17 +2250,94 @@ async def lottery_checker():
 
     lotteries = c.fetchall()
 
-    print(f"找到 {len(lotteries)} 場進行中的抽獎")
-
-    for message_id, channel_id, end_time in lotteries:
-
-        print(f"檢查抽獎：{message_id}")
+    for (
+        message_id,
+        channel_id,
+        host_id,
+        prize_type,
+        prize_value,
+        winner_count,
+        end_time,
+    ) in lotteries:
 
         end_time = datetime.fromisoformat(end_time)
 
         if end_time <= now:
 
-            print("✅ 已到截止時間")
+            # -------------------------
+            # 查詢參加者
+            # -------------------------
+
+            c.execute(
+                """
+                SELECT user_id
+                FROM lottery_entries
+                WHERE message_id = ?
+                """,
+                (message_id,),
+            )
+
+            rows = c.fetchall()
+
+            print(f"抽獎 {message_id}")
+
+            print(f"參加人數：{len(rows)}")
+
+            # -------------------------
+            # 沒有人參加
+            # -------------------------
+
+            if len(rows) == 0:
+
+                winners = []
+
+            # -------------------------
+            # 人數不足，全中
+            # -------------------------
+
+            elif len(rows) <= winner_count:
+
+                winners = rows
+
+            # -------------------------
+            # 正常抽獎
+            # -------------------------
+
+            else:
+
+                winners = random.sample(rows, winner_count)
+
+            print(f"中獎人數：{len(winners)}")
+            # -------------------------
+            # 發放獎勵
+            # -------------------------
+
+            winner_mentions = []
+
+            for (winner_id,) in winners:
+
+                winner_id = str(winner_id)
+
+                winner_mentions.append(f"<@{winner_id}>")
+
+                # 💰 努努幣
+                if prize_type == "money":
+
+                    add_money(winner_id, int(prize_value))
+            # -------------------------
+            # 標記抽獎結束
+            # -------------------------
+
+            c.execute(
+                """
+                UPDATE lotteries
+                SET status='ended'
+                WHERE message_id=?
+                """,
+                (message_id,),
+            )
+
+            conn.commit()
 
 
 # ==========================================
@@ -3778,14 +3920,13 @@ async def give_money(
         await interaction.followup.send("❌ 你沒有權限", ephemeral=True)
         return
 
-    # 💰 賭注限制
+    # 💰 金額限制
     if amount < MIN_BET or amount > MAX_BET:
-        await interaction.response.send_message(
-            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
+        await interaction.followup.send(
+            f"❌ 金額必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
         )
-        return
-
+    return
     # 🔒 至少選一個對象
     if not member and not role and not everyone:
         await interaction.followup.send("❌ 請選擇發送對象", ephemeral=True)
@@ -3796,13 +3937,7 @@ async def give_money(
     # 👤 單人
     if member:
 
-        user_id = str(member.id)
-
-        c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-
-        c.execute(
-            "UPDATE users SET money = money + ? WHERE user_id=?", (amount, user_id)
-        )
+        add_money(member.id, amount)
 
         count = 1
 
@@ -3814,13 +3949,7 @@ async def give_money(
             if m.bot:
                 continue
 
-            user_id = str(m.id)
-
-            c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-
-            c.execute(
-                "UPDATE users SET money = money + ? WHERE user_id=?", (amount, user_id)
-            )
+            add_money(m.id, amount)
 
             count += 1
 
@@ -3832,17 +3961,9 @@ async def give_money(
             if m.bot:
                 continue
 
-            user_id = str(m.id)
-
-            c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-
-            c.execute(
-                "UPDATE users SET money = money + ? WHERE user_id=?", (amount, user_id)
-            )
+            add_money(m.id, amount)
 
             count += 1
-
-    conn.commit()
 
     embed = discord.Embed(title="💰 發錢完成", color=discord.Color.green())
 
