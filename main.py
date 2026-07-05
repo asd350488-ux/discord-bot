@@ -3922,13 +3922,6 @@ async def give_money(
         await interaction.followup.send("❌ 你沒有權限", ephemeral=True)
         return
 
-    # 💰 金額限制
-    if amount < MIN_BET or amount > MAX_BET:
-        await interaction.followup.send(
-            f"❌ 金額必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
-            ephemeral=True,
-        )
-        return
     # 🔒 至少選一個對象
     if not member and not role and not everyone:
         await interaction.followup.send("❌ 請選擇發送對象", ephemeral=True)
