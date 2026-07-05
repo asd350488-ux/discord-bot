@@ -584,13 +584,17 @@ class PrizeSelectView(discord.ui.View):
     # -------------------------
     # 🎨 人設圖
     # -------------------------
+    @discord.ui.button(
+        label="🎨 人設圖",
+        style=discord.ButtonStyle.primary,
+    )
+    async def image(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
 
-    @discord.ui.button(label="🎨 人設圖", style=discord.ButtonStyle.primary)
-    async def image(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        await interaction.response.send_message(
-            "🎨 人設圖 Modal（建置中）", ephemeral=True
-        )
+        await interaction.response.send_modal(ImageLotteryModal())
 
     # -------------------------
     # 💕 合照
@@ -626,6 +630,142 @@ class PrizeSelectView(discord.ui.View):
 
         await interaction.response.send_message(
             "📝 自訂 Modal（建置中）", ephemeral=True
+        )
+
+
+# ==========================
+# 🌙 人設圖抽獎 Modal
+# ==========================
+
+
+class ImageLotteryModal(discord.ui.Modal, title="🎨 人設圖抽獎"):
+
+    winners = discord.ui.TextInput(
+        label="👥 中獎人數",
+        placeholder="例如：1",
+        required=True,
+        max_length=3,
+    )
+
+    time = discord.ui.TextInput(
+        label="⏰ 抽獎時間",
+        placeholder="例如：10",
+        required=True,
+        max_length=5,
+    )
+
+    unit = discord.ui.TextInput(
+        label="🕒 時間單位",
+        placeholder="請輸入 S、M、H、D",
+        required=True,
+        max_length=1,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+
+        try:
+
+            winners = int(self.winners.value)
+            time_amount = int(self.time.value)
+
+        except ValueError:
+
+            await interaction.response.send_message(
+                "❌ 請輸入正確的數字。",
+                ephemeral=True,
+            )
+            return
+
+        unit = self.unit.value.upper()
+
+        end_time = get_lottery_end_time(time_amount, unit)
+
+        if end_time is None:
+
+            await interaction.response.send_message(
+                "❌ 時間單位只能輸入 S、M、H、D。",
+                ephemeral=True,
+            )
+            return
+
+        timestamp = int(end_time.timestamp())
+
+        embed = discord.Embed(
+            title="🎉 Moon Bot 抽獎",
+            color=0xF1C40F,
+        )
+
+        embed.add_field(
+            name="🎁 獎品",
+            value="🎨 隨機風格人設圖",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="👥 中獎人數",
+            value=f"{winners} 人",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="👤 主辦人",
+            value=interaction.user.mention,
+            inline=True,
+        )
+
+        embed.add_field(
+            name="⏰ 抽獎截止",
+            value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="📌 狀態",
+            value="🟢 進行中",
+            inline=False,
+        )
+
+        embed.set_footer(text="點擊下方按鈕即可參加抽獎")
+
+        message = await interaction.channel.send(
+            content=f"<@&{MEMBER_ROLE}>",
+            embed=embed,
+            view=LotteryView(),
+        )
+
+        c.execute(
+            """
+            INSERT INTO lotteries (
+                message_id,
+                channel_id,
+                host_id,
+                prize_type,
+                prize_value,
+                winner_count,
+                end_time,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(message.id),
+                str(interaction.channel.id),
+                str(interaction.user.id),
+                "image",
+                "隨機風格人設圖",
+                winners,
+                end_time.isoformat(),
+                "running",
+                datetime.now().isoformat(),
+            ),
+        )
+
+        conn.commit()
+
+        await interaction.response.send_message(
+            "✅ 抽獎建立成功！",
+            ephemeral=True,
         )
 
 
