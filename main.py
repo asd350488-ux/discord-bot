@@ -2144,8 +2144,7 @@ async def leaderboard(interaction: discord.Interaction):
         embed = discord.Embed(
             title="🌙 星月指令限制",
             description=(
-                "📊 排行查詢僅能於指定區域使用\n\n"
-                f"請前往 <#{INFO_CHANNEL}>"
+                "📊 排行查詢僅能於指定區域使用\n\n" f"請前往 <#{INFO_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(186, 85, 211),
         )
@@ -2214,6 +2213,7 @@ async def leaderboard(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
+
 # 🌟 聊天等級排行榜
 @bot.tree.command(name="聊天等級排行榜")
 async def level_leaderboard(interaction: discord.Interaction):
@@ -2224,8 +2224,7 @@ async def level_leaderboard(interaction: discord.Interaction):
         embed = discord.Embed(
             title="🌙 星月指令限制",
             description=(
-                "📊 排行查詢僅能於指定區域使用\n\n"
-                f"請前往 <#{INFO_CHANNEL}>"
+                "📊 排行查詢僅能於指定區域使用\n\n" f"請前往 <#{INFO_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(186, 85, 211),
         )
@@ -2250,13 +2249,23 @@ async def level_leaderboard(interaction: discord.Interaction):
         ORDER BY level DESC, exp DESC
     """)
 
-    data = c.fetchall()
+    ranking = c.fetchall()
 
-    text = ""
+    embed = discord.Embed(
+        title="🏆 𝑳𝒖𝒏𝒂 𝑹𝒂𝒏𝒌𝒊𝒏𝒈",
+        description="✨ 星月聊天等級排行榜 ✨",
+        color=discord.Color.from_rgb(186, 85, 211),
+    )
+
+    medals = {
+        1: "👑",
+        2: "🥈",
+        3: "🥉",
+    }
 
     rank = 1
 
-    for uid, level, exp in data:
+    for uid, level, exp in ranking:
 
         # 🚫 排除指定玩家
         if int(uid) in EXCLUDED_USERS:
@@ -2267,28 +2276,18 @@ async def level_leaderboard(interaction: discord.Interaction):
         if member is None:
             continue
 
-        if rank == 1:
-            text += f"👑 {member.display_name} ｜ Lv.{level} ✨\n"
+        icon = medals.get(rank, f"#{rank}")
 
-        elif rank == 2:
-            text += f"🥈 {member.display_name} ｜ Lv.{level}\n"
-
-        elif rank == 3:
-            text += f"🥉 {member.display_name} ｜ Lv.{level}\n"
-
-        else:
-            text += f"`{rank}.` {member.display_name} ｜ Lv.{level}\n"
+        embed.add_field(
+            name=f"{icon} {member.display_name}",
+            value=(f"🌟 **Lv.{level}**\n" f"✨ XP：`{exp:,}`"),
+            inline=False,
+        )
 
         rank += 1
 
         if rank > 10:
             break
-
-    embed = discord.Embed(
-        title="🏆 等級排行榜",
-        description=text if text else "目前沒有排行榜資料。",
-        color=discord.Color.from_rgb(186, 85, 211),
-    )
 
     embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
