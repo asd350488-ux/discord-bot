@@ -354,7 +354,7 @@ class MoneyLotteryModal(discord.ui.Modal, title="💰 努努幣抽獎"):
 
         embed.add_field(
             name="⏰ 抽獎截止",
-            value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
+            value=f"<t:{timestamp}:F>",
             inline=False,
         )
 
@@ -582,11 +582,30 @@ class PrizeSelectView(discord.ui.View):
         super().__init__(timeout=180)
 
     # -------------------------
+    # 💰 努努幣
+    # -------------------------
+
+    @discord.ui.button(
+        label="💰 努努幣",
+        style=discord.ButtonStyle.success,
+        row=0,
+    )
+    async def money(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        await interaction.response.send_modal(MoneyLotteryModal())
+
+    # -------------------------
     # 🎨 人設圖
     # -------------------------
+
     @discord.ui.button(
         label="🎨 人設圖",
         style=discord.ButtonStyle.primary,
+        row=0,
     )
     async def image(
         self,
@@ -600,37 +619,35 @@ class PrizeSelectView(discord.ui.View):
     # 💕 合照
     # -------------------------
 
-    @discord.ui.button(label="💕 合照", style=discord.ButtonStyle.primary)
-    async def couple(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="💕 合照",
+        style=discord.ButtonStyle.primary,
+        row=0,
+    )
+    async def couple(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
 
-        await interaction.response.send_message(
-            "💕 合照 Modal（建置中）", ephemeral=True
-        )
-
-    # -------------------------
-    # 💰 努努幣
-    # -------------------------
-
-    @discord.ui.button(label="💰 努努幣", style=discord.ButtonStyle.success)
-    async def money(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        await interaction.response.send_modal(MoneyLotteryModal())
-
-        try:
-            await interaction.delete_original_response()
-        except:
-            pass
+        await interaction.response.send_modal(CoupleLotteryModal())
 
     # -------------------------
     # 📝 自訂
     # -------------------------
 
-    @discord.ui.button(label="📝 自訂", style=discord.ButtonStyle.secondary)
-    async def custom(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="📝 自訂",
+        style=discord.ButtonStyle.secondary,
+        row=0,
+    )
+    async def custom(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
 
-        await interaction.response.send_message(
-            "📝 自訂 Modal（建置中）", ephemeral=True
-        )
+        await interaction.response.send_modal(CustomLotteryModal())
 
 
 # ==========================
@@ -661,7 +678,15 @@ class ImageLotteryModal(discord.ui.Modal, title="🎨 人設圖抽獎"):
         max_length=1,
     )
 
+    # ==========================
+    # 🌙 建立抽獎
+    # ==========================
+
     async def on_submit(self, interaction: discord.Interaction):
+
+        # -------------------------
+        # 驗證資料
+        # -------------------------
 
         try:
 
@@ -689,6 +714,10 @@ class ImageLotteryModal(discord.ui.Modal, title="🎨 人設圖抽獎"):
             return
 
         timestamp = int(end_time.timestamp())
+
+        # -------------------------
+        # 建立 Embed
+        # -------------------------
 
         embed = discord.Embed(
             title="🎉 Moon Bot 抽獎",
@@ -727,11 +756,19 @@ class ImageLotteryModal(discord.ui.Modal, title="🎨 人設圖抽獎"):
 
         embed.set_footer(text="點擊下方按鈕即可參加抽獎")
 
+        # -------------------------
+        # 發送抽獎
+        # -------------------------
+
         message = await interaction.channel.send(
             content=f"<@&{MEMBER_ROLE}>",
             embed=embed,
             view=LotteryView(),
         )
+
+        # -------------------------
+        # 寫入資料庫
+        # -------------------------
 
         c.execute(
             """
@@ -763,8 +800,339 @@ class ImageLotteryModal(discord.ui.Modal, title="🎨 人設圖抽獎"):
 
         conn.commit()
 
+        # -------------------------
+        # 完成
+        # -------------------------
+
         await interaction.response.send_message(
-            "✅ 抽獎建立成功！",
+            "✅ 人設圖抽獎建立成功！",
+            ephemeral=True,
+        )
+
+
+# ==========================
+# 🌙 合照抽獎 Modal
+# ==========================
+
+
+class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
+
+    winners = discord.ui.TextInput(
+        label="👥 中獎人數",
+        placeholder="例如：1",
+        required=True,
+        max_length=3,
+    )
+
+    time = discord.ui.TextInput(
+        label="⏰ 抽獎時間",
+        placeholder="例如：10",
+        required=True,
+        max_length=5,
+    )
+
+    unit = discord.ui.TextInput(
+        label="🕒 時間單位",
+        placeholder="請輸入 S、M、H、D",
+        required=True,
+        max_length=1,
+    )
+
+    # ==========================
+    # 🌙 建立抽獎
+    # ==========================
+
+    async def on_submit(self, interaction: discord.Interaction):
+
+        # -------------------------
+        # 驗證資料
+        # -------------------------
+
+        try:
+
+            winners = int(self.winners.value)
+            time_amount = int(self.time.value)
+
+        except ValueError:
+
+            await interaction.response.send_message(
+                "❌ 請輸入正確的數字。",
+                ephemeral=True,
+            )
+            return
+
+        unit = self.unit.value.upper()
+
+        end_time = get_lottery_end_time(time_amount, unit)
+
+        if end_time is None:
+
+            await interaction.response.send_message(
+                "❌ 時間單位只能輸入 S、M、H、D。",
+                ephemeral=True,
+            )
+            return
+
+        timestamp = int(end_time.timestamp())
+
+        # -------------------------
+        # 建立 Embed
+        # -------------------------
+
+        embed = discord.Embed(
+            title="🎉 Moon Bot 抽獎",
+            color=0xF1C40F,
+        )
+
+        embed.add_field(
+            name="🎁 獎品",
+            value="💕 與喜愛角色合照",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="👥 中獎人數",
+            value=f"{winners} 人",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="👤 主辦人",
+            value=interaction.user.mention,
+            inline=True,
+        )
+
+        embed.add_field(
+            name="⏰ 抽獎截止",
+            value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="📌 狀態",
+            value="🟢 進行中",
+            inline=False,
+        )
+
+        embed.set_footer(text="點擊下方按鈕即可參加抽獎")
+
+        # -------------------------
+        # 發送抽獎
+        # -------------------------
+
+        message = await interaction.channel.send(
+            content=f"<@&{MEMBER_ROLE}>",
+            embed=embed,
+            view=LotteryView(),
+        )
+
+        # -------------------------
+        # 寫入資料庫
+        # -------------------------
+
+        c.execute(
+            """
+            INSERT INTO lotteries (
+                message_id,
+                channel_id,
+                host_id,
+                prize_type,
+                prize_value,
+                winner_count,
+                end_time,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(message.id),
+                str(interaction.channel.id),
+                str(interaction.user.id),
+                "couple",
+                "與喜愛角色合照",
+                winners,
+                end_time.isoformat(),
+                "running",
+                datetime.now().isoformat(),
+            ),
+        )
+
+        conn.commit()
+
+        # -------------------------
+        # 完成
+        # -------------------------
+
+        await interaction.response.send_message(
+            "✅ 合照抽獎建立成功！",
+            ephemeral=True,
+        )
+
+
+# ==========================
+# 🌙 自訂抽獎 Modal
+# ==========================
+
+
+class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
+
+    prize = discord.ui.TextInput(
+        label="🎁 獎品內容",
+        placeholder="例如：Discord Nitro 一個月",
+        required=True,
+        max_length=100,
+    )
+
+    winners = discord.ui.TextInput(
+        label="👥 中獎人數",
+        placeholder="例如：1",
+        required=True,
+        max_length=3,
+    )
+
+    time = discord.ui.TextInput(
+        label="⏰ 抽獎時間",
+        placeholder="例如：10",
+        required=True,
+        max_length=5,
+    )
+
+    unit = discord.ui.TextInput(
+        label="🕒 時間單位",
+        placeholder="請輸入 S、M、H、D",
+        required=True,
+        max_length=1,
+    )
+
+    # ==========================
+    # 🌙 建立抽獎
+    # ==========================
+
+    async def on_submit(self, interaction: discord.Interaction):
+
+        # -------------------------
+        # 驗證資料
+        # -------------------------
+
+        try:
+
+            winners = int(self.winners.value)
+            time_amount = int(self.time.value)
+
+        except ValueError:
+
+            await interaction.response.send_message(
+                "❌ 請輸入正確的數字。",
+                ephemeral=True,
+            )
+            return
+
+        unit = self.unit.value.upper()
+
+        end_time = get_lottery_end_time(time_amount, unit)
+
+        if end_time is None:
+
+            await interaction.response.send_message(
+                "❌ 時間單位只能輸入 S、M、H、D。",
+                ephemeral=True,
+            )
+            return
+
+        timestamp = int(end_time.timestamp())
+
+        # -------------------------
+        # 建立 Embed
+        # -------------------------
+
+        embed = discord.Embed(
+            title="🎉 Moon Bot 抽獎",
+            color=0xF1C40F,
+        )
+
+        embed.add_field(
+            name="🎁 獎品",
+            value=self.prize.value,
+            inline=False,
+        )
+
+        embed.add_field(
+            name="👥 中獎人數",
+            value=f"{winners} 人",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="👤 主辦人",
+            value=interaction.user.mention,
+            inline=True,
+        )
+
+        embed.add_field(
+            name="⏰ 抽獎截止",
+            value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="📌 狀態",
+            value="🟢 進行中",
+            inline=False,
+        )
+
+        embed.set_footer(text="點擊下方按鈕即可參加抽獎")
+
+        # -------------------------
+        # 發送抽獎
+        # -------------------------
+
+        message = await interaction.channel.send(
+            content=f"<@&{MEMBER_ROLE}>",
+            embed=embed,
+            view=LotteryView(),
+        )
+
+        # -------------------------
+        # 寫入資料庫
+        # -------------------------
+
+        c.execute(
+            """
+            INSERT INTO lotteries (
+                message_id,
+                channel_id,
+                host_id,
+                prize_type,
+                prize_value,
+                winner_count,
+                end_time,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(message.id),
+                str(interaction.channel.id),
+                str(interaction.user.id),
+                "custom",
+                self.prize.value,
+                winners,
+                end_time.isoformat(),
+                "running",
+                datetime.now().isoformat(),
+            ),
+        )
+
+        conn.commit()
+
+        # -------------------------
+        # 完成
+        # -------------------------
+
+        await interaction.response.send_message(
+            "✅ 自訂抽獎建立成功！",
             ephemeral=True,
         )
 
@@ -2544,7 +2912,7 @@ async def lottery_checker():
 
             embed.add_field(
                 name="⏰ 抽獎截止",
-                value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
+                value=f"<t:{timestamp}:F>",
                 inline=False,
             )
 
