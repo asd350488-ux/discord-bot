@@ -1686,7 +1686,7 @@ class ReviewManageView(discord.ui.View):
         # 權限檢查
         # -------------------------
 
-        if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+        if interaction.user.id not in BOT_ADMINS:
             await interaction.response.send_message(
                 "❌ 只有管理員可以使用此按鈕。", ephemeral=True
             )
@@ -1749,7 +1749,7 @@ class ReviewManageView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
 
-        if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+        if interaction.user.id not in BOT_ADMINS:
 
             await interaction.response.send_message(
                 "❌ 只有管理員可以使用此按鈕。", ephemeral=True
@@ -1775,7 +1775,7 @@ class CloseTicketView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
 
-        if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+        if interaction.user.id not in BOT_ADMINS:
 
             await interaction.response.send_message(
                 "❌ 只有管理員可以關閉 Ticket。", ephemeral=True
@@ -1821,12 +1821,13 @@ async def on_ready():
 async def review_panel(interaction: discord.Interaction):
 
     # 管理員限制
-    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
-        await interaction.response.send_message(
-            "❌ 你沒有權限使用此指令。", ephemeral=True
-        )
-        return
+    if interaction.user.id not in BOT_ADMINS:
 
+        await interaction.response.send_message(
+            "❌ 只有管理員可以使用此指令。",
+            ephemeral=True,
+        )
+    return
     embed = discord.Embed(
         title="🌙 極曜月葵｜新成員審核",
         description=(
@@ -5128,7 +5129,10 @@ async def mood_game(interaction: discord.Interaction, mood: str, amount: int):
 @app_commands.describe(amount="投入金額")
 async def experiment(interaction: discord.Interaction, amount: int):
 
+    # ==========================
     # 🔒 頻道限制
+    # ==========================
+
     if interaction.channel.id != LAB_CHANNEL:
 
         embed = discord.Embed(
@@ -5137,11 +5141,26 @@ async def experiment(interaction: discord.Interaction, amount: int):
             color=discord.Color.teal(),
         )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        embed.add_field(
+            name="⚗️ 禁忌實驗",
+            value="高風險｜高報酬｜可能瞬間歸零",
+            inline=False,
+        )
+
+        embed.set_footer(text="極曜月葵 ✦ 禁忌實驗室")
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True,
+        )
         return
 
+    # ==========================
     # 💰 賭注限制
+    # ==========================
+
     if amount < MIN_BET or amount > MAX_BET:
+
         await interaction.response.send_message(
             f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
             ephemeral=True,
@@ -5150,23 +5169,39 @@ async def experiment(interaction: discord.Interaction, amount: int):
 
     user_id = str(interaction.user.id)
 
-    c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
+    # ==========================
+    # 💰 查詢錢包
+    # ==========================
+
+    c.execute(
+        "SELECT money FROM users WHERE user_id=?",
+        (user_id,),
+    )
 
     data = c.fetchone()
 
     if not data:
 
-        await interaction.response.send_message("❌ 找不到帳戶資料", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ 找不到帳戶資料",
+            ephemeral=True,
+        )
         return
 
-    money = data[0]
+    money = data["money"]
 
     if money < amount:
 
-        await interaction.response.send_message("❌ 努努幣不足", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ 努努幣不足",
+            ephemeral=True,
+        )
         return
 
-    # 🎬 動畫
+    # ==========================
+    # 🎬 實驗動畫
+    # ==========================
+
     await interaction.response.send_message("🧪 準備實驗材料...")
 
     msg = await interaction.original_response()
@@ -5180,48 +5215,74 @@ async def experiment(interaction: discord.Interaction, amount: int):
     await msg.edit(content="🌙 注入月神能量...")
 
     await asyncio.sleep(1.2)
+    # ==========================
+    # 🎲 實驗結果
+    # ==========================
 
     roll = random.randint(1, 100)
 
-    if roll <= 50:
-
-        result = "💀 虛空湮滅"
-        new_money = 0
-
-    elif roll <= 55:
+    # 🌌 神之造物（1%）
+    if roll == 1:
 
         result = "🌌 神之造物"
-        new_money = money - amount + (amount * 20)
+        change = amount * 19
 
-    elif roll <= 70:
+    # ⚡ 超級成功（4%）
+    elif roll <= 5:
 
         result = "⚡ 超級成功"
-        new_money = money - amount + (amount * 10)
+        change = amount * 9
 
-    elif roll <= 85:
+    # 🧬 成功（15%）
+    elif roll <= 20:
 
         result = "🧬 成功"
-        new_money = money - amount + (amount * 5)
+        change = amount * 4
 
-    elif roll <= 95:
+    # ✨ 穩定反應（25%）
+    elif roll <= 45:
 
         result = "✨ 穩定反應"
-        new_money = money - amount + (amount * 2)
+        change = amount
 
-    elif roll <= 98:
+    # 💨 實驗失敗（30%）
+    elif roll <= 75:
 
         result = "💨 實驗失敗"
-        new_money = money - amount
+        change = -amount
 
-    else:
+    # ☠️ 實驗爆炸（20%）
+    elif roll <= 95:
 
         result = "☠️ 實驗爆炸"
-        new_money = money - (amount * 2)
+        change = -(amount * 2)
 
-    if new_money < 0:
-        new_money = 0
+    # 💀 虛空湮滅（5%）
+    else:
 
-    diff = new_money - money
+        result = "💀 虛空湮滅"
+
+        # 歸零（比 new_money 更乾淨）
+        change = -money
+
+    # ==========================
+    # 🧪 實驗耗材（10%）
+    # ==========================
+
+    original_change = change
+
+    tax = int(abs(change) * 0.10)
+
+    change -= tax
+
+    # ==========================
+    # 💰 更新錢包
+    # ==========================
+
+    money += change
+
+    if money < 0:
+        money = 0
 
     c.execute(
         """
@@ -5229,158 +5290,108 @@ async def experiment(interaction: discord.Interaction, amount: int):
         SET money=?
         WHERE user_id=?
         """,
-        (new_money, user_id),
+        (
+            money,
+            user_id,
+        ),
     )
 
     conn.commit()
+    # ==========================
+    # 🎨 結果 Embed
+    # ==========================
 
-    embed = discord.Embed(title="🧪 禁忌實驗室", color=discord.Color.teal())
+    embed = discord.Embed(
+        title="🧪 禁忌實驗室",
+        color=discord.Color.teal(),
+    )
 
-    embed.add_field(name="⚗️ 實驗結果", value=f"```{result}```", inline=False)
+    embed.add_field(
+        name="⚗️ 實驗結果",
+        value=f"```{result}```",
+        inline=False,
+    )
 
-    if diff >= 0:
+    # ==========================
+    # 🎉 成功
+    # ==========================
 
-        embed.add_field(name="🎉 收益", value=f"{NUNU_EMOJI} `+{diff:,}`", inline=False)
+    if change >= 0:
+
+        embed.add_field(
+            name="🎉 原始收益",
+            value=f"{NUNU_EMOJI} `{original_change:,}`",
+            inline=False,
+        )
+
+        if tax > 0:
+
+            embed.add_field(
+                name="🧪 實驗耗材",
+                value=f"{NUNU_EMOJI} `{tax:,}` (10%)",
+                inline=True,
+            )
+
+        embed.add_field(
+            name="🏆 實際收益",
+            value=f"{NUNU_EMOJI} `{change:,}`",
+            inline=True,
+        )
+
+    # ==========================
+    # 💸 失敗
+    # ==========================
 
     else:
 
         embed.add_field(
-            name="💸 損失", value=f"{NUNU_EMOJI} `-{abs(diff):,}`", inline=False
+            name="💸 原始損失",
+            value=f"{NUNU_EMOJI} `{abs(original_change):,}`",
+            inline=False,
         )
 
+        if tax > 0:
+
+            embed.add_field(
+                name="🧪 實驗耗材",
+                value=f"{NUNU_EMOJI} `{tax:,}` (10%)",
+                inline=True,
+            )
+
+        embed.add_field(
+            name="☠️ 實際扣除",
+            value=f"{NUNU_EMOJI} `{abs(change):,}`",
+            inline=True,
+        )
+
+    # ==========================
+    # 🏦 錢包
+    # ==========================
+
     embed.add_field(
-        name="🏦 錢包餘額", value=f"{NUNU_EMOJI} `{new_money:,}`", inline=False
+        name="🏦 錢包餘額",
+        value=f"{NUNU_EMOJI} `{money:,}`",
+        inline=False,
     )
+
+    # ==========================
+    # 🌑 虛空湮滅
+    # ==========================
 
     if result == "💀 虛空湮滅":
 
         embed.add_field(
-            name="🌑 虛空吞噬", value="你的所有努努幣被虛空徹底吞噬了...", inline=False
+            name="🌑 虛空吞噬",
+            value="你的所有努努幣被虛空徹底吞噬了...",
+            inline=False,
         )
 
     embed.set_footer(text="極曜月葵 ✦ 禁忌實驗室")
 
-    await msg.edit(content=None, embed=embed)
-
-
-# 🎰 賭命
-@bot.tree.command(name="賭命")
-@app_commands.rename(amount="金額")
-@app_commands.describe(amount="下注金額")
-async def gamble_life(interaction: discord.Interaction, amount: int):
-
-    # 🔒 頻道限制
-    if interaction.channel.id != LIFEBET_CHANNEL:
-
-        embed = discord.Embed(
-            title="🎰 命運審判所",
-            description=("⚖️ 命運之輪區域限定\n\n" f"請前往 <#{LIFEBET_CHANNEL}>"),
-            color=discord.Color.dark_purple(),
-        )
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-
-    # 💰 賭注限制
-    if amount < MIN_BET or amount > MAX_BET:
-        await interaction.response.send_message(
-            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
-            ephemeral=True,
-        )
-        return
-
-    user_id = str(interaction.user.id)
-
-    c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
-
-    data = c.fetchone()
-
-    if not data:
-
-        await interaction.response.send_message("❌ 找不到帳戶資料", ephemeral=True)
-        return
-
-    money = data[0]
-
-    if money < amount:
-
-        await interaction.response.send_message("❌ 努努幣不足", ephemeral=True)
-        return
-
-    # 🎬 動畫
-    await interaction.response.send_message("🎰 命運之輪啟動...")
-
-    msg = await interaction.original_response()
-
-    await asyncio.sleep(1.2)
-
-    await msg.edit(content="🌙 月神正在審判...")
-
-    await asyncio.sleep(1.2)
-
-    await msg.edit(content="⚖️ 命運正在選擇...")
-
-    await asyncio.sleep(1.2)
-
-    roll = random.randint(1, 100)
-
-    if roll <= 50:
-
-        result = "🌙 命運眷顧"
-        new_money = money + amount
-
-    elif roll <= 98:
-
-        result = "💀 命運終結"
-        new_money = money - amount
-
-    elif roll == 99:
-
-        result = "🌌 月神憐憫"
-        new_money = money
-
-    else:
-
-        result = "☠️ 虛空吞噬"
-        new_money = money - (amount * 2)
-
-    if new_money < 0:
-        new_money = 0
-
-    diff = new_money - money
-
-    c.execute(
-        """
-        UPDATE users
-        SET money=?
-        WHERE user_id=?
-        """,
-        (new_money, user_id),
+    await msg.edit(
+        content=None,
+        embed=embed,
     )
-
-    conn.commit()
-
-    embed = discord.Embed(title="🎰 命運審判所", color=discord.Color.dark_purple())
-
-    embed.add_field(name="⚖️ 審判結果", value=f"```{result}```", inline=False)
-
-    if diff >= 0:
-
-        embed.add_field(name="🎉 收益", value=f"{NUNU_EMOJI} `+{diff:,}`", inline=False)
-
-    else:
-
-        embed.add_field(
-            name="💸 損失", value=f"{NUNU_EMOJI} `-{abs(diff):,}`", inline=False
-        )
-
-    embed.add_field(
-        name="🏦 錢包餘額", value=f"{NUNU_EMOJI} `{new_money:,}`", inline=False
-    )
-
-    embed.set_footer(text="極曜月葵 ✦ 命運審判所")
-
-    await msg.edit(content=None, embed=embed)
 
 
 # 🗡 搶劫
@@ -5647,10 +5658,11 @@ async def lottery_create(interaction: discord.Interaction):
     # 權限限制
     # -------------------------
 
-    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+    if interaction.user.id not in LOTTERY_MANAGERS:
 
         await interaction.response.send_message(
-            "❌ 只有管理員可以建立抽獎。", ephemeral=True
+            "❌ 只有抽獎管理員可以建立抽獎。",
+            ephemeral=True,
         )
         return
 
