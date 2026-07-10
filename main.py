@@ -3192,7 +3192,7 @@ async def on_member_join(member):
 
 📌 **C 台角色等級需達到 30 等**
 
-📌 **T 台角色等級需達到 3 等**
+📌 **T 台角色等級需達到 2 等**
 
 我們進行審核通過後，
 會再人工修改身分組唷<a:emoji_2:1506043914115879014>
@@ -4822,30 +4822,42 @@ async def black_market(interaction: discord.Interaction, amount: int):
     # 🎲 投資結果
     roll = random.randint(1, 100)
 
-    if roll <= 5:
+    if roll == 1:
 
         event = "🚀 暴富"
         change = amount * 5
 
-    elif roll <= 25:
+    elif roll <= 11:
 
         event = "📈 大賺"
         change = amount * 2
 
-    elif roll <= 50:
+    elif roll <= 41:
 
         event = "💰 小賺"
         change = int(amount * 1.5)
 
-    elif roll <= 85:
+    elif roll <= 71:
 
         event = "📉 虧損"
-        change = -amount
+        change = -int(amount * 1.5)
 
     else:
 
         event = "💥 捲款跑路"
-        change = -(amount * 2)
+        change = -(amount * 3)
+
+    # ==========================
+    # 🕶️ 黑市手續費（每筆交易10%）
+    # ==========================
+    original_change = change
+
+    tax = int(abs(change) * 0.10)
+
+    if change >= 0:
+        change -= tax
+    else:
+        change -= tax
 
     money += change
 
@@ -4876,13 +4888,38 @@ async def black_market(interaction: discord.Interaction, amount: int):
     if change >= 0:
 
         embed.add_field(
-            name="🎉 本次獲利", value=f"{NUNU_EMOJI} `{change:,}`", inline=False
+            name="🎉 原始獲利",
+            value=f"{NUNU_EMOJI} `{original_change:,}`",
+            inline=False,
         )
 
+        embed.add_field(
+            name="📄 黑市手續費",
+            value=f"{NUNU_EMOJI} `{tax:,}` (10%)",
+            inline=False,
+        )
+        embed.add_field(
+            name="🏆 實際入帳",
+            value=f"{NUNU_EMOJI} `{change:,}`",
+            inline=True,
+        )
     else:
 
         embed.add_field(
-            name="💸 本次損失", value=f"{NUNU_EMOJI} `{abs(change):,}`", inline=False
+            name="💸 原始損失",
+            value=f"{NUNU_EMOJI} `{abs(original_change):,}`",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="📄 黑市手續費",
+            value=f"{NUNU_EMOJI} `{tax:,}` (10%)",
+            inline=False,
+        )
+        embed.add_field(
+            name="☠️ 實際扣除",
+            value=f"{NUNU_EMOJI} `{abs(change):,}`",
+            inline=True,
         )
 
     embed.add_field(name="🏦 錢包餘額", value=f"{NUNU_EMOJI} `{money:,}`", inline=False)
@@ -4984,24 +5021,34 @@ async def mood_game(interaction: discord.Interaction, mood: str, amount: int):
     if mood == real_mood:
 
         result = "🎉 猜中了"
-        change = amount * 3
+        change = int(amount * 2.5)
 
     else:
 
-        if special <= 5:
+        if special <= 4:
 
             result = "🌙 月神偏愛"
             change = 0
 
-        elif special >= 96:
+        elif special <= 10:
 
             result = "💀 月神暴怒"
-            change = -(amount * 2)
+            change = -(amount * 5)
 
         else:
 
             result = "❌ 猜錯了"
             change = -amount
+
+    # ==========================
+    # 🌙 月神供奉（每次占卜 10%）
+    # ==========================
+
+    original_change = change
+
+    tax = int(abs(change) * 0.10)
+
+    change -= tax
 
     money += change
 
@@ -5030,13 +5077,42 @@ async def mood_game(interaction: discord.Interaction, mood: str, amount: int):
     if change >= 0:
 
         embed.add_field(
-            name="🎉 本次獲得", value=f"{NUNU_EMOJI} `{change:,}`", inline=False
+            name="🎉 原始獲得",
+            value=f"{NUNU_EMOJI} `{original_change:,}`",
+            inline=False,
+        )
+
+    if tax > 0:
+        embed.add_field(
+            name="🌙 月神供奉",
+            value=f"{NUNU_EMOJI} `{tax:,}` (10%)",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="🏆 實際獲得",
+            value=f"{NUNU_EMOJI} `{change:,}`",
+            inline=True,
         )
 
     else:
 
         embed.add_field(
-            name="💸 本次損失", value=f"{NUNU_EMOJI} `{abs(change):,}`", inline=False
+            name="💸 原始損失",
+            value=f"{NUNU_EMOJI} `{abs(original_change):,}`",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="🌙 月神供奉",
+            value=f"{NUNU_EMOJI} `{tax:,}` (10%)",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="☠️ 實際扣除",
+            value=f"{NUNU_EMOJI} `{abs(change):,}`",
+            inline=True,
         )
 
     embed.add_field(name="🏦 錢包餘額", value=f"{NUNU_EMOJI} `{money:,}`", inline=False)
@@ -5105,42 +5181,8 @@ async def experiment(interaction: discord.Interaction, amount: int):
 
     await asyncio.sleep(1.2)
 
-    roll = random.randint(1, 100)
-
-    if roll == 1:
-
-        result = "🌌 神之造物"
-        new_money = money - amount + (amount * 20)
-
-    elif roll <= 5:
-
-        result = "⚡ 超級成功"
-        new_money = money - amount + (amount * 10)
-
-    elif roll <= 20:
-
-        result = "🧬 成功"
-        new_money = money - amount + (amount * 5)
-
-    elif roll <= 50:
-
-        result = "✨ 穩定反應"
-        new_money = money - amount + (amount * 2)
-
-    elif roll <= 80:
-
-        result = "💨 實驗失敗"
-        new_money = money - amount
-
-    elif roll <= 95:
-
-        result = "☠️ 實驗爆炸"
-        new_money = money - (amount * 2)
-
-    else:
-
-        result = "💀 虛空湮滅"
-        new_money = 0
+    result = "💀 虛空湮滅"
+    new_money = 0
 
     if new_money < 0:
         new_money = 0
