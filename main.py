@@ -24,6 +24,7 @@ from blessings import (
     RARE_BLESSINGS,
     EPIC_BLESSINGS,
     MYTH_BLESSINGS,
+    BIRTHDAY_BLESSINGS,
 )
 
 tz = pytz.timezone(TIMEZONE)
@@ -1802,9 +1803,14 @@ class CloseTicketView(discord.ui.View):
 # 🚀 啟動
 @bot.event
 async def on_ready():
+
     print(f"已登入：{bot.user}")
 
-    await bot.tree.sync()
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
+    except Exception as e:
+        print(f"❌ 指令同步失敗：{e}")
 
     # -------------------------
     # 永久 View（Persistent View）
@@ -2616,25 +2622,6 @@ async def set_level(
 
     await interaction.response.send_message(f"✅ 已將 {member.mention} 設為 Lv.{level}")
 
-
-# ⚙️ 頻道設定
-@bot.tree.command(name="設定生日頻道")
-@app_commands.default_permissions(administrator=True)
-@app_commands.rename(channel="頻道")
-async def set_birthday_channel(
-    interaction: discord.Interaction, channel: discord.TextChannel
-):
-
-    c.execute(
-        "REPLACE INTO settings VALUES ('birthday_channel', ?)", (str(channel.id),)
-    )
-    conn.commit()
-
-    await interaction.response.send_message(
-        f"✅ 生日通知頻道已設定為 {channel.mention}"
-    )
-
-
 @bot.tree.command(name="設定歡迎頻道")
 @app_commands.default_permissions(administrator=True)
 @app_commands.rename(channel="頻道")
@@ -2656,129 +2643,283 @@ async def set_admin_channel(
     conn.commit()
     await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
 
+# ==========================
+# 🎂 生日系統（Birthday v2）
+# ==========================
 
-# 🎂 生日系統（最終穩定版）
 @tasks.loop(time=time(hour=8, minute=0, tzinfo=tz))
 async def birthday_check():
 
     now = datetime.now(tz)
+    today = now.strftime("%m-%d")
     today_str = now.strftime("%Y-%m-%d")
 
-    c.execute("SELECT value FROM settings WHERE key='last_birthday'")
+    # ==========================
+    # 🔒 防止重複執行
+    # ==========================
+
+    c.execute(
+        """
+        SELECT value
+        FROM settings
+        WHERE key = 'last_birthday'
+        """
+    )
+
     data = c.fetchone()
-    if data and data[0] == today_str:
+
+    if data and data["value"] == today_str:
         return
 
-    if now.hour != 8 or now.minute != 0:
-        return
+    c.execute(
+        """
+        REPLACE INTO settings(key, value)
+        VALUES('last_birthday', ?)
+        """,
+        (today_str,),
+    )
 
-    c.execute("REPLACE INTO settings VALUES ('last_birthday', ?)", (today_str,))
     conn.commit()
 
-    today = now.strftime("%m-%d")
+    # ==========================
+    # 🎂 今日壽星
+    # ==========================
 
-    c.execute("SELECT user_id FROM users WHERE birthday=?", (today,))
-    users = c.fetchall()
+    c.execute(
+        """
+        SELECT
+            user_id,
+            birth_year
+        FROM users
+        WHERE birthday = ?
+        ORDER BY birthday
+        """,
+        (today,),
+    )
 
-    if not users:
-        return
+    birthday_users = c.fetchall()
 
-    # 🎂 生日頻道（直接綁定）
-    channel = bot.get_channel(1516119757383008479)
+    # ==========================
+    # 📢 公告頻道
+    # ==========================
 
-    # 🔐 管理員頻道
-    c.execute("SELECT value FROM settings WHERE key='admin_channel'")
-    admin_data = c.fetchone()
-    admin_channel = bot.get_channel(int(admin_data[0])) if admin_data else None
+    birthday_channel = bot.get_channel(BIRTHDAY_CHANNEL)
 
-    for (uid,) in users:
-        user = bot.get_user(int(uid)) or await bot.fetch_user(int(uid))
+    # ==========================
+    # 👑 管理員頻道
+    # ==========================
 
-        # 🎰 抽卡
-        roll = random.random()
-        if roll < 0.70:
-            reward = 1000
-            reward_text = "✨ 星月祝福"
-        elif roll < 0.95:
-            reward = 2000
-            reward_text = "🌟 閃耀祝福"
-        else:
-            reward = 5000
-            reward_text = "💎 極光降臨"
+    admin_channel = bot.get_channel(BIRTHDAY_ADMIN_CHANNEL)
 
-        # 💰 發錢
-        c.execute("UPDATE users SET money = money + ? WHERE user_id=?", (reward, uid))
-        conn.commit()
+    if birthday_users:
 
-        # 🔐 管理員
-        if admin_channel:
-            c.execute("SELECT birth_year FROM users WHERE user_id=?", (uid,))
-            year_data = c.fetchone()
+        # ==========================
+        # 📋 準備公告資料
+        # ==========================
 
-            age_text = "未提供"
-            if year_data and year_data[0]:
-                age = now.year - year_data[0]
-                age_text = f"{age}歲（{year_data[0]}）"
+        birthday_members = []
 
-            admin_embed = discord.Embed(
-                title="🎂 壽星資料", color=discord.Color.orange()
+        total_reward = 0
+        normal_count = 0
+        rare_count = 0
+        myth_count = 0
+
+        # ==========================
+        # 🎁 發送生日獎勵
+        # ==========================
+
+        for row in birthday_users:
+
+            user_id = row["user_id"]
+            birth_year = row["birth_year"]
+
+            member = bot.get_user(int(user_id))
+
+            if member is None:
+                try:
+                    member = await bot.fetch_user(int(user_id))
+                except Exception:
+                    continue
+
+            # ==========================
+            # 🎲 抽取生日獎勵
+            # ==========================
+
+            roll = random.random()
+
+            if roll < 0.70:
+
+                reward = 1000
+                reward_text = "✨ 星月祝福"
+                normal_count += 1
+
+            elif roll < 0.95:
+
+                reward = 2000
+                reward_text = "🌟 閃耀祝福"
+                rare_count += 1
+
+            else:
+
+                reward = 5000
+                reward_text = "💎 極光降臨"
+                myth_count += 1
+
+            # ==========================
+            # 💰 發放獎勵
+            # ==========================
+
+            c.execute(
+                """
+                UPDATE users
+                SET money = money + ?
+                WHERE user_id = ?
+                """,
+                (
+                    reward,
+                    user_id,
+                ),
             )
 
-            admin_embed.add_field(name="👤 使用者", value=user.display_name)
-            admin_embed.add_field(name="🎁 獎勵", value=f"{reward_text} +{reward}")
-            admin_embed.add_field(name="🎂 年齡", value=age_text)
+            total_reward += reward
 
-            await admin_channel.send(embed=admin_embed)
+            # ==========================
+            # 🎂 年齡
+            # ==========================
 
-        # 🎬 動畫（完整三段）
-        if channel:
-            msg = await channel.send("🌙 星門正在開啟...")
-            await asyncio.sleep(1.2)
+            age_text = ""
 
-            await msg.edit(content="✨ 正在編織誕生日祝福...")
-            await asyncio.sleep(1.2)
+            if birth_year:
 
-            await msg.edit(content="🎂 星月祝福降臨")
-            await asyncio.sleep(1.2)
+                age = now.year - birth_year
+                age_text = f"（{age}歲）"
+
+            # ==========================
+            # 📋 公告資料
+            # ==========================
+
+            birthday_members.append(
+                {
+                    "mention": member.mention,
+                    "name": member.display_name,
+                    "age": age_text,
+                    "reward": reward,
+                    "reward_text": reward_text,
+                }
+            )
+
+        conn.commit()
+        # ==========================
+        # 🎂 今日壽星公告
+        # ==========================
+
+        if birthday_channel:
+
+            description = ""
+
+            for member in birthday_members:
+
+                description += (
+                    f"🎉 {member['mention']} {member['age']}\n"
+                )
+
+            birthday_blessing = random.choice(BIRTHDAY_BLESSINGS)
 
             embed = discord.Embed(
-                title="🌙 𝑩𝒊𝒓𝒕𝒉𝒅𝒂𝒚 𝑩𝒍𝒆𝒔𝒔𝒊𝒏𝒈",
-                description=f"✨ 今天是 {user.mention} 的誕生日 ✨\n\n願星光與月影都為你停留 🌙\n願這一刻，被世界溫柔記住",
-                color=discord.Color.from_rgb(186, 85, 211),
+                title="🎂 今日壽星",
+                description=(
+                    f"{description}"
+                    "\n━━━━━━━━━━━━━━━━━━\n\n"
+                    f"{birthday_blessing}"
+                ),
+                color=discord.Color.from_rgb(255, 105, 180),
             )
 
-            embed.set_author(name=f"{user.display_name} ✦ 星月之子")
+            gift_text = ""
+
+            if normal_count:
+                gift_text += f"✨ 星月祝福 × {normal_count}\n"
+
+            if rare_count:
+                gift_text += f"🌟 閃耀祝福 × {rare_count}\n"
+
+            if myth_count:
+                gift_text += f"💎 極光降臨 × {myth_count}\n"
+
+            gift_text += (
+                f"\n💰 今日共發放 **{total_reward:,} 努努幣**"
+            )
 
             embed.add_field(
-                name="🎁 星月贈禮",
-                value=f"{reward_text}\n<a:emoji40:1510362334026268713> +{reward}",
+                name="🎁 已發送生日禮物",
+                value=gift_text,
                 inline=False,
             )
 
-            if reward == 5000:
-                embed.add_field(
-                    name="💎 極光降臨",
-                    value="✨ 罕見祝福降臨，全服見證 ✨",
-                    inline=False,
-                )
+            embed.set_footer(
+                text="Moon Bot v2｜Birthday System"
+            )
 
-            await asyncio.sleep(0.8)
-            await msg.edit(content=None, embed=embed)
+            await birthday_channel.send(embed=embed)
+    # ==========================
+    # ⏰ 明日壽星提醒
+    # ==========================
 
-    # 🔔 明天提醒
     tomorrow = (now + timedelta(days=1)).strftime("%m-%d")
 
-    c.execute("SELECT user_id FROM users WHERE birthday=?", (tomorrow,))
+    c.execute(
+        """
+        SELECT
+            user_id,
+            birth_year
+        FROM users
+        WHERE birthday = ?
+        ORDER BY birthday
+        """,
+        (tomorrow,),
+    )
+
     tomorrow_users = c.fetchall()
 
-    if tomorrow_users and admin_channel:
-        text = ""
-        for (uid,) in tomorrow_users:
-            user = bot.get_user(int(uid)) or await bot.fetch_user(int(uid))
-            text += f"{user.display_name}\n"
+    if admin_channel and tomorrow_users:
 
-        await admin_channel.send(f"⚠️ 明天壽星：\n{text}")
+        guild = bot.get_guild(GUILD_ID)
 
+        if guild is not None:
+
+            reminder_text = ""
+            count = 0
+
+            for row in tomorrow_users:
+
+                member = guild.get_member(int(row["user_id"]))
+
+                if member is None:
+                    try:
+                        member = await guild.fetch_member(int(row["user_id"]))
+                    except Exception:
+                        continue
+
+                reminder_text += f"🎂 {member.mention}\n"
+                count += 1
+
+            if count:
+
+                reminder = discord.Embed(
+                    title="📅 明日壽星提醒",
+                    description=(
+                        f"{reminder_text}"
+                        "\n━━━━━━━━━━━━━━━━━━\n\n"
+                        "✨ 請記得提前送上生日祝福！"
+                    ),
+                    color=discord.Color.gold(),
+                )
+
+                reminder.set_footer(
+                    text=f"Moon Bot v2｜共 {count} 位壽星"
+                )
+
+                await admin_channel.send(embed=reminder)
 
 # ==========================
 # 🌙 抽獎背景檢查
@@ -3210,96 +3351,500 @@ async def on_member_join(member):
     # 再送 Welcome Card
     await channel.send(file=card)
 
+# ==========================
+# 📅 生日登記
+# ==========================
 
-@bot.tree.command(name="生日登記", description="設定你的生日")
+@bot.tree.command(name="生日登記", description="登記你的生日")
 @app_commands.rename(month="月份", day="日期", year="出生年")
-@app_commands.describe(month="生日月份", day="生日日期", year="選填")
+@app_commands.describe(
+    month="生日月份",
+    day="生日日期",
+    year="出生年（選填）",
+)
 async def set_birthday(
-    interaction: discord.Interaction, month: int, day: int, year: int = None
+    interaction: discord.Interaction,
+    month: int,
+    day: int,
+    year: int = None,
 ):
 
     user_id = str(interaction.user.id)
 
-    # 格式：MM-DD
+    # ==========================
+    # 📅 日期驗證
+    # ==========================
+
+    try:
+        datetime(2000, month, day)
+    except ValueError:
+        await interaction.response.send_message(
+            "❌ 生日日期錯誤，請重新確認。",
+            ephemeral=True,
+        )
+        return
+    
+    # ==========================
+    # 🔒 是否已登記
+    # ==========================
+
+    c.execute(
+        """
+        SELECT birthday
+        FROM users
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    )
+
+    data = c.fetchone()
+
+    if data and data["birthday"]:
+
+        await interaction.response.send_message(
+            "❌ 你已經完成生日登記。\n\n"
+            "如需修改生日資料，請聯絡管理員協助處理。",
+            ephemeral=True,
+        )
+        return
+
+    # ==========================
+    # 🎂 更新生日資料
+    # ==========================
+
     birthday = f"{month:02d}-{day:02d}"
 
     c.execute(
         """
-    UPDATE users
-    SET birthday=?, birth_year=?
-    WHERE user_id=?
-    """,
-        (birthday, year, user_id),
+        UPDATE users
+        SET birthday = ?, birth_year = ?
+        WHERE user_id = ?
+        """,
+        (
+            birthday,
+            year,
+            user_id,
+        ),
     )
 
     conn.commit()
 
+    # ==========================
+    # 📝 登記紀錄
+    # ==========================
+
+    log_channel = bot.get_channel(BIRTHDAY_LOG_CHANNEL)
+
+    if log_channel:
+
+        embed = discord.Embed(
+            title="🎂 生日登記",
+            color=discord.Color.pink(),
+            timestamp=datetime.now(tz),
+        )
+
+        embed.add_field(
+            name="👤 使用者",
+            value=interaction.user.mention,
+            inline=False,
+        )
+
+        embed.add_field(
+            name="📅 生日",
+            value=f"{month:02d} / {day:02d}",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="🎈 出生年",
+            value=str(year) if year else "未填寫",
+            inline=True,
+        )
+
+        embed.set_footer(
+            text="Moon Bot v2｜生日系統"
+        )
+
+        await log_channel.send(embed=embed)
+
+    # ==========================
+    # ✅ 完成
+    # ==========================
+
     await interaction.response.send_message(
-        f"🎂 已設定生日為 {birthday}" + (f"（{year}）" if year else ""), ephemeral=True
+        "✅ 生日登記成功！",
+        ephemeral=True,
     )
 
+# ==========================
+# 📅 生日修改
+# ==========================
 
-@bot.tree.command(name="生日查詢", description="查看你的生日")
-async def check_birthday(interaction: discord.Interaction):
+@bot.tree.command(name="生日修改", description="修改玩家生日")
+@app_commands.rename(
+    member="玩家",
+    month="月份",
+    day="日期",
+    year="出生年",
+)
+@app_commands.describe(
+    member="要修改生日的玩家",
+    month="生日月份",
+    day="生日日期",
+    year="出生年（選填）",
+)
+async def edit_birthday(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    month: int,
+    day: int,
+    year: int = None,
+):
 
-    user_id = str(interaction.user.id)
+    # ==========================
+    # 👑 管理員限制
+    # ==========================
 
-    c.execute("SELECT birthday, birth_year FROM users WHERE user_id=?", (user_id,))
-    data = c.fetchone()
+    if interaction.user.id not in BOT_ADMINS:
 
-    if not data or not data[0]:
-        await interaction.response.send_message("❌ 你還沒有設定生日", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ 只有管理員可以使用此指令。",
+            ephemeral=True,
+        )
         return
 
-    birthday, year = data
+    # ==========================
+    # 📍 頻道限制
+    # ==========================
 
-    text = f"🎂 你的生日：{birthday}"
-    if year:
-        text += f"\n📅 出生年：{year}"
+    if interaction.channel.id != BIRTHDAY_ADMIN_CHANNEL:
 
-    await interaction.response.send_message(text, ephemeral=True)
+        await interaction.response.send_message(
+            f"❌ 請前往 <#{BIRTHDAY_ADMIN_CHANNEL}> 使用此指令。",
+            ephemeral=True,
+        )
+        return
 
+    # ==========================
+    # 📅 日期驗證
+    # ==========================
+
+    try:
+        datetime(2000, month, day)
+    except ValueError:
+
+        await interaction.response.send_message(
+            "❌ 日期格式錯誤。",
+            ephemeral=True,
+        )
+        return
+
+    user_id = str(member.id)
+    ensure_user(user_id)
+
+    # ==========================
+    # 🔍 取得舊資料
+    # ==========================
+
+    c.execute(
+        """
+        SELECT birthday, birth_year
+        FROM users
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    )
+
+    data = c.fetchone()
+
+    if not data or not data["birthday"]:
+
+        await interaction.response.send_message(
+            "❌ 該玩家尚未登記生日。",
+            ephemeral=True,
+        )
+        return
+
+    old_birthday = data["birthday"]
+    old_year = data["birth_year"]
+
+    new_birthday = f"{month:02d}-{day:02d}"
+
+    # ==========================
+    # 📋 資料相同
+    # ==========================
+
+    if old_birthday == new_birthday and old_year == year:
+
+        await interaction.response.send_message(
+            "⚠️ 新資料與目前生日資料相同，未進行修改。",
+            ephemeral=True,
+        )
+        return
+
+    # ==========================
+    # 💾 更新資料
+    # ==========================
+
+    c.execute(
+        """
+        UPDATE users
+        SET birthday = ?, birth_year = ?
+        WHERE user_id = ?
+        """,
+        (
+            new_birthday,
+            year,
+            user_id,
+        ),
+    )
+
+    conn.commit()
+
+    # ==========================
+    # 📝 修改紀錄
+    # ==========================
+
+    log_channel = bot.get_channel(BIRTHDAY_LOG_CHANNEL)
+
+    if log_channel:
+
+        embed = discord.Embed(
+            title="✏️ 生日資料修改",
+            color=discord.Color.orange(),
+            timestamp=datetime.now(tz),
+        )
+
+        embed.add_field(
+            name="👤 玩家",
+            value=member.mention,
+            inline=False,
+        )
+
+        embed.add_field(
+            name="👑 管理員",
+            value=interaction.user.mention,
+            inline=False,
+        )
+
+        old_text = old_birthday.replace("-", " / ")
+        if old_year:
+            old_text += f"\n🎈 {old_year}"
+
+        new_text = new_birthday.replace("-", " / ")
+        if year:
+            new_text += f"\n🎈 {year}"
+        else:
+            new_text += "\n🎈 未填寫"
+        embed.add_field(
+            name="📅 舊資料",
+            value=old_text,
+            inline=True,
+        )
+
+        embed.add_field(
+            name="📅 新資料",
+            value=new_text,
+            inline=True,
+        )
+
+        embed.set_footer(
+            text="Moon Bot v2｜生日系統"
+        )
+
+        await log_channel.send(embed=embed)
+
+    # ==========================
+    # ✅ 完成
+    # ==========================
+
+    await interaction.response.send_message(
+        f"✅ 已成功修改 **{member.display_name}** 的生日資料。",
+        ephemeral=True,
+    )
+# ==========================
+# 📅 生日查詢
+# ==========================
+
+@bot.tree.command(name="生日查詢", description="查看所有已登記生日")
+async def check_birthday(interaction: discord.Interaction):
+
+    # ==========================
+    # 👑 管理員限制
+    # ==========================
+
+    if interaction.user.id not in BOT_ADMINS:
+
+        await interaction.response.send_message(
+            "❌ 只有管理員可以使用此指令。",
+            ephemeral=True,
+        )
+        return
+
+    # ==========================
+    # 📍 頻道限制
+    # ==========================
+
+    if interaction.channel.id != BIRTHDAY_ADMIN_CHANNEL:
+
+        await interaction.response.send_message(
+            f"❌ 請前往 <#{BIRTHDAY_ADMIN_CHANNEL}> 使用此指令。",
+            ephemeral=True,
+        )
+        return
+
+    # ==========================
+    # 📋 查詢生日
+    # ==========================
+
+    c.execute(
+        """
+        SELECT user_id, birthday, birth_year
+        FROM users
+        WHERE birthday IS NOT NULL
+        ORDER BY birthday
+        """
+    )
+
+    users = c.fetchall()
+
+    if not users:
+
+        await interaction.response.send_message(
+            "📭 目前沒有任何生日資料。",
+            ephemeral=True,
+        )
+        return
+
+    embed = discord.Embed(
+        title="🎂 已登記生日",
+        color=discord.Color.pink(),
+    )
+
+    text = ""
+
+    for row in users:
+
+        user = interaction.guild.get_member(int(row["user_id"]))
+
+        if user is None:
+            continue
+
+        birthday = row["birthday"].replace("-", " / ")
+
+        if row["birth_year"]:
+
+            birthday += f"（{row['birth_year']}）"
+
+        text += f"🌸 {user.display_name}\n📅 {birthday}\n\n"
+
+    embed.description = text
+
+    embed.set_footer(
+        text=f"共 {len(users)} 位玩家"
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
+
+# ==========================
+# 📅 本月壽星
+# ==========================
 
 @bot.tree.command(name="本月壽星", description="查看本月壽星")
 async def birthday_list(interaction: discord.Interaction):
+
+    # ==========================
+    # 👑 管理員限制
+    # ==========================
+
+    if interaction.user.id not in BOT_ADMINS:
+
+        await interaction.response.send_message(
+            "❌ 只有管理員可以使用此指令。",
+            ephemeral=True,
+        )
+        return
+
+    # ==========================
+    # 📍 頻道限制
+    # ==========================
+
+    if interaction.channel.id != BIRTHDAY_ADMIN_CHANNEL:
+
+        await interaction.response.send_message(
+            f"❌ 請前往 <#{BIRTHDAY_ADMIN_CHANNEL}> 使用此指令。",
+            ephemeral=True,
+        )
+        return
 
     now = datetime.now(tz)
     month = now.strftime("%m")
 
     c.execute(
-        "SELECT user_id, birthday FROM users WHERE birthday LIKE ?", (f"{month}-%",)
+        """
+        SELECT user_id, birthday, birth_year
+        FROM users
+        WHERE birthday LIKE ?
+        ORDER BY birthday
+        """,
+        (f"{month}-%",),
     )
+
     users = c.fetchall()
 
     if not users:
-        await interaction.response.send_message("📭 本月沒有壽星", ephemeral=True)
+
+        await interaction.response.send_message(
+            "📭 本月沒有壽星。",
+            ephemeral=True,
+        )
         return
+
+    embed = discord.Embed(
+        title=f"🎂 {int(month)} 月壽星",
+        color=discord.Color.pink(),
+    )
 
     text = ""
 
-    for uid, bday in users:
-        user = await bot.fetch_user(int(uid))
-        text += f"{user.display_name} ｜ {bday}\n"
+    count = 0
 
-    embed = discord.Embed(
-        title="🎂 本月壽星", description=text, color=discord.Color.pink()
+    for row in users:
+
+        member = interaction.guild.get_member(int(row["user_id"]))
+
+        if member is None:
+            continue
+
+        birthday = row["birthday"].replace("-", " / ")
+
+        if row["birth_year"]:
+            birthday += f"（{row['birth_year']}）"
+
+        text += (
+            f"🌸 **{member.display_name}**\n"
+            f"📅 {birthday}\n\n"
+        )
+
+        count += 1
+
+    if not text:
+
+        await interaction.response.send_message(
+            "📭 本月沒有壽星。",
+            ephemeral=True,
+        )
+        return
+
+    embed.description = text
+
+    embed.set_footer(
+        text=f"本月共 {count} 位壽星｜Moon Bot v2"
     )
 
     await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="生日刪除", description="刪除你的生日資料")
-async def delete_birthday(interaction: discord.Interaction):
-
-    user_id = str(interaction.user.id)
-
-    c.execute(
-        "UPDATE users SET birthday=NULL, birth_year=NULL WHERE user_id=?", (user_id,)
-    )
-    conn.commit()
-
-    await interaction.response.send_message("🗑️ 生日資料已刪除", ephemeral=True)
-
 
 # 💼 打工
 @bot.tree.command(name="打工")
@@ -3318,6 +3863,7 @@ async def work(interaction: discord.Interaction):
         return
 
     user_id = str(interaction.user.id)
+    ensure_user(user_id)
 
     # 👤 建立資料
     c.execute(
@@ -5866,20 +6412,6 @@ async def lottery_create(interaction: discord.Interaction):
     await interaction.response.send_message(
         embed=embed, view=PrizeSelectView(), ephemeral=True
     )
-
-
-# ⚙️ 設定歡迎訊息
-@bot.tree.command(name="設定歡迎訊息")
-@app_commands.default_permissions(administrator=True)
-@app_commands.rename(message="訊息內容")
-@app_commands.describe(message="新會員加入時顯示的歡迎訊息")
-async def set_welcome_message(interaction: discord.Interaction, message: str):
-
-    c.execute("REPLACE INTO settings VALUES ('welcome_message', ?)", (message,))
-    conn.commit()
-
-    await interaction.response.send_message("✅ 歡迎訊息已更新")
-
 
 # 🌐 保活
 def run_web():
