@@ -1703,19 +1703,37 @@ class ReviewManageView(discord.ui.View):
         # -------------------------
 
         pending_role = interaction.guild.get_role(PENDING_ROLE)
-        member_role = interaction.guild.get_role(MEMBER_ROLE)
+
+        member_roles = [
+            interaction.guild.get_role(role_id)
+            for role_id in MEMBER_ROLES
+        ]
 
         try:
 
             if pending_role:
-                await member.remove_roles(pending_role, reason="入群審核通過")
+                await member.remove_roles(
+                    pending_role,
+                    reason="入群審核通過"
+                )
 
-            if member_role:
-                await member.add_roles(member_role, reason="入群審核通過")
+            roles_to_add = [
+                role
+                for role in member_roles
+                if role is not None
+            ]
+
+            if roles_to_add:
+                await member.add_roles(
+                    *roles_to_add,
+                    reason="入群審核通過"
+                )
 
         except discord.Forbidden:
+
             await interaction.response.send_message(
-                "❌ Bot 沒有權限修改身分組。", ephemeral=True
+                "❌ Bot 沒有權限修改身分組。",
+                ephemeral=True,
             )
             return
 
