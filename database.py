@@ -13,11 +13,20 @@ if os.path.exists("/var/data"):
 else:
     DB_PATH = "bot.db"
 
-conn = sqlite3.connect(
-    DB_PATH,
-    check_same_thread=False
-)
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 
 conn.row_factory = sqlite3.Row
 
 c = conn.cursor()
+
+# 🛒 商店
+c.execute("""
+CREATE TABLE IF NOT EXISTS shop (
+    item_id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    price INTEGER NOT NULL,
+    stock INTEGER DEFAULT 0,
+    description TEXT,
+    image TEXT
+)
+""")
