@@ -5181,8 +5181,42 @@ async def experiment(interaction: discord.Interaction, amount: int):
 
     await asyncio.sleep(1.2)
 
-    result = "💀 虛空湮滅"
-    new_money = 0
+    roll = random.randint(1, 100)
+
+    if roll <= 50:
+
+        result = "💀 虛空湮滅"
+        new_money = 0
+
+    elif roll <= 55:
+
+        result = "🌌 神之造物"
+        new_money = money - amount + (amount * 20)
+
+    elif roll <= 70:
+
+        result = "⚡ 超級成功"
+        new_money = money - amount + (amount * 10)
+
+    elif roll <= 85:
+
+        result = "🧬 成功"
+        new_money = money - amount + (amount * 5)
+
+    elif roll <= 95:
+
+        result = "✨ 穩定反應"
+        new_money = money - amount + (amount * 2)
+
+    elif roll <= 98:
+
+        result = "💨 實驗失敗"
+        new_money = money - amount
+
+    else:
+
+        result = "☠️ 實驗爆炸"
+        new_money = money - (amount * 2)
 
     if new_money < 0:
         new_money = 0
