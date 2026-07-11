@@ -367,7 +367,7 @@ class MoneyLotteryModal(discord.ui.Modal, title="💰 努努幣抽獎"):
         # -------------------------
 
         message = await interaction.channel.send(
-            content=f"<@&{MEMBER_ROLE}>", embed=embed, view=LotteryView()
+            content=f"<@&{LOTTERY_PING_ROLE}>", embed=embed, view=LotteryView()
         )
 
         # -------------------------
@@ -2622,6 +2622,7 @@ async def set_level(
 
     await interaction.response.send_message(f"✅ 已將 {member.mention} 設為 Lv.{level}")
 
+
 @bot.tree.command(name="設定歡迎頻道")
 @app_commands.default_permissions(administrator=True)
 @app_commands.rename(channel="頻道")
@@ -2643,9 +2644,11 @@ async def set_admin_channel(
     conn.commit()
     await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
 
+
 # ==========================
 # 🎂 生日系統（Birthday v2）
 # ==========================
+
 
 @tasks.loop(time=time(hour=8, minute=0, tzinfo=tz))
 async def birthday_check():
@@ -2658,13 +2661,11 @@ async def birthday_check():
     # 🔒 防止重複執行
     # ==========================
 
-    c.execute(
-        """
+    c.execute("""
         SELECT value
         FROM settings
         WHERE key = 'last_birthday'
-        """
-    )
+        """)
 
     data = c.fetchone()
 
@@ -2819,18 +2820,14 @@ async def birthday_check():
 
             for member in birthday_members:
 
-                description += (
-                    f"🎉 {member['mention']} {member['age']}\n"
-                )
+                description += f"🎉 {member['mention']} {member['age']}\n"
 
             birthday_blessing = random.choice(BIRTHDAY_BLESSINGS)
 
             embed = discord.Embed(
                 title="🎂 今日壽星",
                 description=(
-                    f"{description}"
-                    "\n━━━━━━━━━━━━━━━━━━\n\n"
-                    f"{birthday_blessing}"
+                    f"{description}" "\n━━━━━━━━━━━━━━━━━━\n\n" f"{birthday_blessing}"
                 ),
                 color=discord.Color.from_rgb(255, 105, 180),
             )
@@ -2846,9 +2843,7 @@ async def birthday_check():
             if myth_count:
                 gift_text += f"💎 極光降臨 × {myth_count}\n"
 
-            gift_text += (
-                f"\n💰 今日共發放 **{total_reward:,} 努努幣**"
-            )
+            gift_text += f"\n💰 今日共發放 **{total_reward:,} 努努幣**"
 
             embed.add_field(
                 name="🎁 已發送生日禮物",
@@ -2856,9 +2851,7 @@ async def birthday_check():
                 inline=False,
             )
 
-            embed.set_footer(
-                text="Moon Bot v2｜Birthday System"
-            )
+            embed.set_footer(text="Moon Bot v2｜Birthday System")
 
             await birthday_channel.send(embed=embed)
     # ==========================
@@ -2915,11 +2908,10 @@ async def birthday_check():
                     color=discord.Color.gold(),
                 )
 
-                reminder.set_footer(
-                    text=f"Moon Bot v2｜共 {count} 位壽星"
-                )
+                reminder.set_footer(text=f"Moon Bot v2｜共 {count} 位壽星")
 
                 await admin_channel.send(embed=reminder)
+
 
 # ==========================
 # 🌙 抽獎背景檢查
@@ -3351,9 +3343,11 @@ async def on_member_join(member):
     # 再送 Welcome Card
     await channel.send(file=card)
 
+
 # ==========================
 # 📅 生日登記
 # ==========================
+
 
 @bot.tree.command(name="生日登記", description="登記你的生日")
 @app_commands.rename(month="月份", day="日期", year="出生年")
@@ -3383,7 +3377,7 @@ async def set_birthday(
             ephemeral=True,
         )
         return
-    
+
     # ==========================
     # 🔒 是否已登記
     # ==========================
@@ -3402,8 +3396,7 @@ async def set_birthday(
     if data and data["birthday"]:
 
         await interaction.response.send_message(
-            "❌ 你已經完成生日登記。\n\n"
-            "如需修改生日資料，請聯絡管理員協助處理。",
+            "❌ 你已經完成生日登記。\n\n" "如需修改生日資料，請聯絡管理員協助處理。",
             ephemeral=True,
         )
         return
@@ -3461,9 +3454,7 @@ async def set_birthday(
             inline=True,
         )
 
-        embed.set_footer(
-            text="Moon Bot v2｜生日系統"
-        )
+        embed.set_footer(text="Moon Bot v2｜生日系統")
 
         await log_channel.send(embed=embed)
 
@@ -3476,9 +3467,11 @@ async def set_birthday(
         ephemeral=True,
     )
 
+
 # ==========================
 # 📅 生日修改
 # ==========================
+
 
 @bot.tree.command(name="生日修改", description="修改玩家生日")
 @app_commands.rename(
@@ -3648,9 +3641,7 @@ async def edit_birthday(
             inline=True,
         )
 
-        embed.set_footer(
-            text="Moon Bot v2｜生日系統"
-        )
+        embed.set_footer(text="Moon Bot v2｜生日系統")
 
         await log_channel.send(embed=embed)
 
@@ -3662,9 +3653,12 @@ async def edit_birthday(
         f"✅ 已成功修改 **{member.display_name}** 的生日資料。",
         ephemeral=True,
     )
+
+
 # ==========================
 # 📅 生日查詢
 # ==========================
+
 
 @bot.tree.command(name="生日查詢", description="查看所有已登記生日")
 async def check_birthday(interaction: discord.Interaction):
@@ -3697,14 +3691,12 @@ async def check_birthday(interaction: discord.Interaction):
     # 📋 查詢生日
     # ==========================
 
-    c.execute(
-        """
+    c.execute("""
         SELECT user_id, birthday, birth_year
         FROM users
         WHERE birthday IS NOT NULL
         ORDER BY birthday
-        """
-    )
+        """)
 
     users = c.fetchall()
 
@@ -3740,17 +3732,15 @@ async def check_birthday(interaction: discord.Interaction):
 
     embed.description = text
 
-    embed.set_footer(
-        text=f"共 {len(users)} 位玩家"
-    )
+    embed.set_footer(text=f"共 {len(users)} 位玩家")
 
-    await interaction.response.send_message(
-        embed=embed
-    )
+    await interaction.response.send_message(embed=embed)
+
 
 # ==========================
 # 📅 本月壽星
 # ==========================
+
 
 @bot.tree.command(name="本月壽星", description="查看本月壽星")
 async def birthday_list(interaction: discord.Interaction):
@@ -3823,10 +3813,7 @@ async def birthday_list(interaction: discord.Interaction):
         if row["birth_year"]:
             birthday += f"（{row['birth_year']}）"
 
-        text += (
-            f"🌸 **{member.display_name}**\n"
-            f"📅 {birthday}\n\n"
-        )
+        text += f"🌸 **{member.display_name}**\n" f"📅 {birthday}\n\n"
 
         count += 1
 
@@ -3840,11 +3827,10 @@ async def birthday_list(interaction: discord.Interaction):
 
     embed.description = text
 
-    embed.set_footer(
-        text=f"本月共 {count} 位壽星｜Moon Bot v2"
-    )
+    embed.set_footer(text=f"本月共 {count} 位壽星｜Moon Bot v2")
 
     await interaction.response.send_message(embed=embed)
+
 
 # 💼 打工
 @bot.tree.command(name="打工")
@@ -6412,6 +6398,7 @@ async def lottery_create(interaction: discord.Interaction):
     await interaction.response.send_message(
         embed=embed, view=PrizeSelectView(), ephemeral=True
     )
+
 
 # 🌐 保活
 def run_web():
