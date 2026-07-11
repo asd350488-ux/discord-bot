@@ -2572,6 +2572,14 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    # ==========================
+    # 📺 限定聊天頻道升等
+    # ==========================
+
+    if message.channel.id != EVENT_CHANNEL:
+        await bot.process_commands(message)
+        return
+
     user_id = str(message.author.id)
 
     c.execute(
