@@ -25,6 +25,7 @@ from blessings import (
     EPIC_BLESSINGS,
     MYTH_BLESSINGS,
     BIRTHDAY_BLESSINGS,
+    CHECKIN_REMINDERS,
 )
 
 tz = pytz.timezone(TIMEZONE)
@@ -1801,6 +1802,34 @@ class CloseTicketView(discord.ui.View):
 
 
 # 🚀 啟動
+
+
+@bot.event
+async def on_ready():
+    print(f"已登入：{bot.user}")
+
+    await bot.tree.sync()
+
+    # -------------------------
+    # 永久 View（Persistent View）
+    # -------------------------
+
+    bot.add_view(ReviewPanelView())
+    bot.add_view(ReviewManageView())
+
+    # 🎂 生日系統
+    if not birthday_check.is_running():
+        birthday_check.start()
+
+    # 🌙 每日簽到提醒
+    if not checkin_reminder.is_running():
+        checkin_reminder.start()
+
+    # 🎁 抽獎系統
+    if not lottery_checker.is_running():
+        lottery_checker.start()
+
+
 @bot.event
 async def on_ready():
 
@@ -2643,6 +2672,48 @@ async def set_admin_channel(
     c.execute("REPLACE INTO settings VALUES ('admin_channel', ?)", (str(channel.id),))
     conn.commit()
     await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
+
+
+# ==========================
+# 🌙 每日簽到提醒
+# ==========================
+
+
+@tasks.loop(time=time(hour=23, minute=0, tzinfo=tz))
+async def checkin_reminder():
+
+    channel = bot.get_channel(EVENT_CHANNEL)
+
+    if channel is None:
+        return
+    reminder = random.choice(CHECKIN_REMINDERS)
+
+    role = f"<@&{LOTTERY_PING_ROLE}>"
+
+    embed = discord.Embed(
+        title="🌙 每日簽到提醒",
+        description=(
+            f"{reminder}\n\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "⏰ 每日 **00:00** 重置\n"
+            "🎁 記得前往每日簽到領取努努幣與祝福！\n\n"
+            f"📍 簽到頻道：<#{CHECKIN_CHANNEL}>"
+        ),
+        color=discord.Color.purple(),
+    )
+
+    embed.add_field(
+        name="🎁 每日獎勵",
+        value=("• 每日努努幣\n" "• 連續簽到獎勵\n" "• 節日限定祝福"),
+        inline=False,
+    )
+
+    embed.set_footer(text="Moon Bot v2｜每日提醒")
+
+    await channel.send(
+        content=role,
+        embed=embed,
+    )
 
 
 # ==========================
