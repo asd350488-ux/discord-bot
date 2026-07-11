@@ -761,7 +761,7 @@ class ImageLotteryModal(discord.ui.Modal, title="🎨 人設圖抽獎"):
         # -------------------------
 
         message = await interaction.channel.send(
-            content=f"<@&{MEMBER_ROLE}>",
+            content=f"<@&{LOTTERY_PING_ROLE}>",
             embed=embed,
             view=LotteryView(),
         )
@@ -1088,7 +1088,7 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
         # -------------------------
 
         message = await interaction.channel.send(
-            content=f"<@&{MEMBER_ROLE}>",
+            content=f"<@&{LOTTERY_PING_ROLE}>",
             embed=embed,
             view=LotteryView(),
         )
