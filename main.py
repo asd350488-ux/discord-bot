@@ -4591,15 +4591,17 @@ async def guess_big_small(interaction: discord.Interaction, choice: str, amount:
 
     event_name = ""
     change = 0
+    # 💸 賭場手續費（10%）
+    fee = int(amount * CASINO_FEE_RATE)
 
     if win:
 
-        if roll <= 5:
+        if roll <= 3:
 
             event_name = "⭐ 神運"
-            change = int(amount * 5)
+            change = int(amount * 4)
 
-        elif roll <= 25:
+        elif roll <= 20:
 
             event_name = "✨ 大勝"
             change = int(amount * 2)
@@ -4607,11 +4609,11 @@ async def guess_big_small(interaction: discord.Interaction, choice: str, amount:
         else:
 
             event_name = "🎉 小勝"
-            change = int(amount * 1.5)
+            change = int(amount * 1.2)
 
     else:
 
-        if roll <= 70:
+        if roll <= 80:
 
             event_name = "💀 失敗"
             change = -amount
@@ -4621,7 +4623,11 @@ async def guess_big_small(interaction: discord.Interaction, choice: str, amount:
             event_name = "☠️ 爆死"
             change = -(amount * 2)
 
+    # 💰 扣除本次輸贏
     money += change
+
+    # 💸 扣除賭場手續費
+    money -= fee
 
     if money < 0:
         money = 0
@@ -4656,12 +4662,18 @@ async def guess_big_small(interaction: discord.Interaction, choice: str, amount:
     else:
 
         embed.add_field(
-            name="💸 本次損失", value=f"{NUNU_EMOJI} `{abs(change):,}`", inline=False
+            name="💸 本次損失",
+            value=f"{NUNU_EMOJI} `{abs(change):,}`",
+            inline=False,
         )
-
+    embed.add_field(
+        name="💸 賭場手續費",
+        value=f"{NUNU_EMOJI} `{fee:,}`",
+        inline=False,
+    )
     embed.add_field(name="💰 錢包餘額", value=f"{NUNU_EMOJI} `{money:,}`", inline=False)
 
-    embed.set_footer(text="極曜月葵 ✦ 星月賭場")
+    embed.set_footer(text="極曜月葵 ✦ 星月賭場｜每局收取 10% 手續費")
     await interaction.response.send_message("🎲 擲骰準備中...")
 
     msg = await interaction.original_response()
