@@ -1806,9 +1806,14 @@ class CloseTicketView(discord.ui.View):
 
 @bot.event
 async def on_ready():
+
     print(f"已登入：{bot.user}")
 
-    await bot.tree.sync()
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
+    except Exception as e:
+        print(f"❌ 指令同步失敗：{e}")
 
     # -------------------------
     # 永久 View（Persistent View）
@@ -1826,31 +1831,6 @@ async def on_ready():
         checkin_reminder.start()
 
     # 🎁 抽獎系統
-    if not lottery_checker.is_running():
-        lottery_checker.start()
-
-
-@bot.event
-async def on_ready():
-
-    print(f"已登入：{bot.user}")
-
-    try:
-        synced = await bot.tree.sync()
-        print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
-    except Exception as e:
-        print(f"❌ 指令同步失敗：{e}")
-
-    # -------------------------
-    # 永久 View（Persistent View）
-    # -------------------------
-
-    bot.add_view(ReviewPanelView())
-    bot.add_view(ReviewManageView())
-
-    if not birthday_check.is_running():
-        birthday_check.start()
-
     if not lottery_checker.is_running():
         lottery_checker.start()
 
@@ -2685,6 +2665,7 @@ async def set_admin_channel(
 # ==========================
 # 🌙 每日簽到提醒
 # ==========================
+
 
 @tasks.loop(seconds=10)
 async def checkin_reminder():
