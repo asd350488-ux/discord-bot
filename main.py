@@ -921,7 +921,7 @@ class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
         # -------------------------
 
         message = await interaction.channel.send(
-            content=f"<@&{MEMBER_ROLE}>",
+            content=f"<@&{LOTTERY_PING_ROLE}>",
             embed=embed,
             view=LotteryView(),
         )
