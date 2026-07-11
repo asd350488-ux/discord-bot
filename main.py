@@ -2686,8 +2686,7 @@ async def set_admin_channel(
 # 🌙 每日簽到提醒
 # ==========================
 
-
-@tasks.loop(time=time(hour=23, minute=0, tzinfo=tz))
+@tasks.loop(seconds=10)
 async def checkin_reminder():
 
     channel = bot.get_channel(EVENT_CHANNEL)
