@@ -838,6 +838,14 @@ class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
         required=True,
         max_length=1,
     )
+    
+    note = discord.ui.TextInput(
+        label="📝 備註（選填）",
+        placeholder="例如：快閃抽獎、限定哪位媽咪角色等...",
+        required=False,
+        style=discord.TextStyle.paragraph,
+        max_length=500,
+    )
 
     # ==========================
     # 🌙 建立抽獎
@@ -863,6 +871,7 @@ class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
             return
 
         unit = self.unit.value.upper()
+        note = self.note.value.strip()
 
         end_time = get_lottery_end_time(time_amount, unit)
 
@@ -890,7 +899,14 @@ class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
             value="💕 與喜愛角色合照",
             inline=False,
         )
-
+        
+        if note:
+            embed.add_field(
+                name="📝 備註",
+                value=note,
+                inline=False,
+            )
+ 
         embed.add_field(
             name="👥 中獎人數",
             value=f"{winners} 人",
