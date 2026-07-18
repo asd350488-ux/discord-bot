@@ -1004,7 +1004,6 @@ class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
 # 🌙 自訂抽獎 Modal
 # ==========================
 
-
 class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
 
     prize = discord.ui.TextInput(
@@ -1034,7 +1033,7 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
         required=True,
         max_length=1,
     )
-    
+
     message = discord.ui.TextInput(
         label="📩 中獎通知（選填）",
         placeholder="這段文字將私訊給中獎者...",
@@ -1043,6 +1042,45 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
         max_length=1000,
     )
 
+    async def on_submit(self, interaction: discord.Interaction):
+
+        # -------------------------
+        # 取得輸入資料
+        # -------------------------
+
+        try:
+            winners = int(self.winners.value)
+            duration = int(self.time.value)
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ 中獎人數與時間必須是數字！",
+                ephemeral=True,
+            )
+            return
+
+        unit = self.unit.value.upper()
+        custom_message = self.message.value.strip()
+
+        # -------------------------
+        # 計算結束時間
+        # -------------------------
+
+        if unit == "S":
+            end_time = datetime.utcnow() + timedelta(seconds=duration)
+        elif unit == "M":
+            end_time = datetime.utcnow() + timedelta(minutes=duration)
+        elif unit == "H":
+            end_time = datetime.utcnow() + timedelta(hours=duration)
+        elif unit == "D":
+            end_time = datetime.utcnow() + timedelta(days=duration)
+        else:
+            await interaction.response.send_message(
+                "❌ 時間單位只能輸入 S、M、H、D！",
+                ephemeral=True,
+            )
+            return
+
+        timestamp = int(end_time.timestamp())
 
         # -------------------------
         # 建立 Embed
@@ -1089,9 +1127,7 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
         # 發送抽獎
         # -------------------------
 
-        custom_message = self.message.value.strip()
-
-        message = await interaction.channel.send(
+        lottery_message = await interaction.channel.send(
             content=f"<@&{LOTTERY_PING_ROLE}>",
             embed=embed,
             view=LotteryView(),
@@ -1118,7 +1154,7 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                str(message.id),
+                str(lottery_message.id),
                 str(interaction.channel.id),
                 str(interaction.user.id),
                 "custom",
@@ -1141,7 +1177,6 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
             "✅ 自訂抽獎建立成功！",
             ephemeral=True,
         )
-
 
 class DuelView(discord.ui.View):
 
