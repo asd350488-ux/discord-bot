@@ -1021,6 +1021,14 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
         required=True,
         max_length=1,
     )
+    
+    note = discord.ui.TextInput(
+        label="📝 備註（選填）",
+        placeholder="例如：限本伺服器使用、領獎方式、注意事項...",
+        required=False,
+        style=discord.TextStyle.paragraph,
+        max_length=500,
+    )
 
     # ==========================
     # 🌙 建立抽獎
@@ -1046,6 +1054,7 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
             return
 
         unit = self.unit.value.upper()
+        note = self.note.value.strip()
 
         end_time = get_lottery_end_time(time_amount, unit)
 
@@ -1071,6 +1080,13 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
         embed.add_field(
             name="🎁 獎品",
             value=self.prize.value,
+            inline=False,
+        )
+
+        if note:
+            embed.add_field(
+            name="📝 備註",
+            value=note,
             inline=False,
         )
 
