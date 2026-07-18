@@ -156,9 +156,13 @@ CREATE TABLE IF NOT EXISTS lotteries (
 
     host_id TEXT NOT NULL,
 
-    prize_type TEXT NOT NULL,
-
     prize_value TEXT NOT NULL,
+
+    note TEXT,
+
+    message TEXT,
+
+    winner_count INTEGER NOT NULL,
 
     winner_count INTEGER NOT NULL,
 
@@ -185,7 +189,16 @@ CREATE TABLE IF NOT EXISTS lottery_entries (
 
 )
 """)
+try:
+    c.execute("ALTER TABLE lotteries ADD COLUMN note TEXT")
+except sqlite3.OperationalError:
+    pass
 
+try:
+    c.execute("ALTER TABLE lotteries ADD COLUMN message TEXT")
+except sqlite3.OperationalError:
+    pass
+    
 conn.commit()
 
 # =========================
@@ -1024,10 +1037,18 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
     
     note = discord.ui.TextInput(
         label="📝 備註（選填）",
-        placeholder="例如：限本伺服器使用、領獎方式、注意事項...",
+        placeholder="例如：領獎方式、注意事項...",
         required=False,
         style=discord.TextStyle.paragraph,
         max_length=500,
+    )
+    
+    message = discord.ui.TextInput(
+        label="📩 中獎通知（選填）",
+        placeholder="這段文字將私訊給中獎者...",
+        required=False,
+        style=discord.TextStyle.paragraph,
+        max_length=1000,
     )
 
     # ==========================
@@ -1055,6 +1076,7 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
 
         unit = self.unit.value.upper()
         note = self.note.value.strip()
+        message = self.message.value.strip()
 
         end_time = get_lottery_end_time(time_amount, unit)
 
@@ -3023,6 +3045,7 @@ async def lottery_checker():
             host_id,
             prize_type,
             prize_value,
+            message,
             winner_count,
             end_time
         FROM lotteries
@@ -3037,6 +3060,7 @@ async def lottery_checker():
         host_id,
         prize_type,
         prize_value,
+        custom_message,
         winner_count,
         end_time,
     ) in lotteries:
@@ -3114,8 +3138,8 @@ async def lottery_checker():
                     host_id,
                     prize_type,
                     prize_value,
+                    custom_message,
                 )
-
             # -------------------------
             # 標記抽獎結束
             # -------------------------
@@ -3251,7 +3275,7 @@ async def lottery_checker():
 # ==========================
 
 
-async def send_lottery_dm(user_id, host_id, prize_type, prize_value):
+async def send_lottery_dm(user_id, host_id, prize_type, prize_value,custom_message=None,):
 
     try:
 
@@ -3352,15 +3376,27 @@ async def send_lottery_dm(user_id, host_id, prize_type, prize_value):
                 inline=False,
             )
 
-            embed.description += (
-                "\n\n━━━━━━━━━━━━━━━━━━\n\n"
-                "請私訊主辦人，並提供：\n\n"
-                "💬 請提供主辦人要求的品項私訊主辦人\n\n"
-                "💌 溫馨提醒 💌\n"
-                "📌 在任何公開平台發布與角色相關的圖片或影片時，請加上浮水印。\n"
-                "📌 若需發布影片，請先私訊角色創作者確認內容，經創作者同意後再公開發布。\n"
-                "📌 若不知道如何製作浮水印，可請管理員協助處理。"
-            )
+            if custom_message:
+
+                embed.description += (
+                    "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                    f"{custom_message}\n\n"
+                    "💌 溫馨提醒 💌\n"
+                    "📌 在任何公開平台發布與角色相關的圖片或影片時，請加上浮水印。\n"
+                    "📌 若需發布影片，請先私訊角色創作者確認內容，經創作者同意後再公開發布。\n"
+                    "📌 若不知道如何製作浮水印，可請管理員協助處理。"
+                )
+
+            else:
+
+                embed.description += (
+                    "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                    "請私訊主辦人領取本次抽獎獎品。\n\n"
+                    "💌 溫馨提醒 💌\n"
+                    "📌 在任何公開平台發布與角色相關的圖片或影片時，請加上浮水印。\n"
+                    "📌 若需發布影片，請先私訊角色創作者確認內容，經創作者同意後再公開發布。\n"
+                    "📌 若不知道如何製作浮水印，可請管理員協助處理。"
+                )
 
         embed.set_footer(text="🌙 本訊息由 Moon Bot 自動發送")
 
