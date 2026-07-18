@@ -1043,43 +1043,6 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
         max_length=1000,
     )
 
-    # ==========================
-    # 🌙 建立抽獎
-    # ==========================
-
-    async def on_submit(self, interaction: discord.Interaction):
-
-        # -------------------------
-        # 驗證資料
-        # -------------------------
-
-        try:
-
-            winners = int(self.winners.value)
-            time_amount = int(self.time.value)
-
-        except ValueError:
-
-            await interaction.response.send_message(
-                "❌ 請輸入正確的數字。",
-                ephemeral=True,
-            )
-            return
-
-        unit = self.unit.value.upper()
-        message = self.message.value.strip()
-
-        end_time = get_lottery_end_time(time_amount, unit)
-
-        if end_time is None:
-
-            await interaction.response.send_message(
-                "❌ 時間單位只能輸入 S、M、H、D。",
-                ephemeral=True,
-            )
-            return
-
-        timestamp = int(end_time.timestamp())
 
         # -------------------------
         # 建立 Embed
@@ -1126,6 +1089,8 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
         # 發送抽獎
         # -------------------------
 
+        custom_message = self.message.value.strip()
+
         message = await interaction.channel.send(
             content=f"<@&{LOTTERY_PING_ROLE}>",
             embed=embed,
@@ -1144,12 +1109,13 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
                 host_id,
                 prize_type,
                 prize_value,
+                message,
                 winner_count,
                 end_time,
                 status,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(message.id),
@@ -1157,6 +1123,7 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
                 str(interaction.user.id),
                 "custom",
                 self.prize.value,
+                custom_message,
                 winners,
                 end_time.isoformat(),
                 "running",
