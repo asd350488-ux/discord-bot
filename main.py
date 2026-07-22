@@ -1915,7 +1915,7 @@ async def review_panel(interaction: discord.Interaction):
 
             "════════════════════\n\n"
 
-            "📱 **追蹤媽咪們的 Instagram（四位都要追蹤哦）追蹤截圖**\n\n"
+            "📱 **追蹤媽咪們的 Instagram（四位都要追蹤哦）請提供已追蹤的截圖**\n\n"
 
             "<a:emoji_16:1506410360335372299> "
             "[韓馨媽咪的 𝕀𝔾](https://www.instagram.com/hanxin_0410_?igsh=czBnczRwbXdnNmht&utm_source=qr)\n\n"
