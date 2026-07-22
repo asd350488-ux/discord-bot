@@ -1886,7 +1886,7 @@ async def review_panel(interaction: discord.Interaction):
             "❌ 只有管理員可以使用此指令。",
             ephemeral=True,
         )
-    return
+        return
     embed = discord.Embed(
         title="🌙 極曜月葵｜新成員審核",
         description=(
@@ -3476,14 +3476,10 @@ async def on_member_join(member):
 
 <a:emoji_1:1506013957905846372> 請 {member.mention} 寶寶至 <#1506198162724094074>
 
-提供與角色聊天的截圖。
-
-📌 **C 台角色等級需達到 30 等**
-
-📌 **T 台角色等級需達到 2 等**
+提供與需要的截圖。
 
 我們進行審核通過後，
-會再人工修改身分組唷<a:emoji_2:1506043914115879014>
+會再修改身分組唷<a:emoji_2:1506043914115879014>
 """
 
     embed.set_footer(text="極曜月葵 ✦ Welcome")
