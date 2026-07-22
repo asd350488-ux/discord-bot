@@ -1687,7 +1687,8 @@ async def send_review_message(channel: discord.TextChannel, member: discord.Memb
         "════════════════════\n\n"
         "📤 **請將以下資料上傳至此頻道**\n\n"
         "📸 四位媽咪其中一位角色聊天截圖\n\n"
-        "📸 C 台 **30 等** 或 T 台 **2 等** 角色聊天截圖\n\n"
+        "📸 C 台 **15 等** 或 T 台 **2 等** 角色聊天截圖\n\n"
+        "📸 四位媽咪IG的「已追蹤截圖」，請注意四位都要追蹤哦！\n\n"
         "════════════════════\n\n"
         "📌 上傳完成後，\n"
         "請耐心等待管理員審核即可。"
@@ -1892,22 +1893,49 @@ async def review_panel(interaction: discord.Interaction):
             "歡迎加入 **極曜月葵 Discord**！\n\n"
             "為了維護社群品質，請先確認符合以下條件後，"
             "再點擊下方按鈕開始申請。\n\n"
+
             "════════════════════\n\n"
+
             "📸 **請提供以下四位媽咪其中一位角色的聊天截圖：**\n\n"
+
             "🌸 星弦媽咪\n"
             "🌸 韓馨媽咪\n"
             "🌸 小貓媽咪\n"
             "🌸 若曦璃媽咪\n\n"
+
             "════════════════════\n\n"
+
             "🎮 **角色等級需求**\n\n"
-            "✅ C 台角色需達 **30 等**\n"
+
+            "✅ C 台角色需達 **15 等**\n"
             "✅ T 台角色需達 **2 等**\n\n"
+
             "📌 **符合其中一項即可，**\n"
             "請提供符合條件角色的聊天截圖。\n\n"
+
             "════════════════════\n\n"
+
+            "📱 **追蹤媽咪們的 Instagram（四位都要追蹤哦）追蹤截圖**\n\n"
+
+            "<a:emoji_16:1506410360335372299> "
+            "[韓馨媽咪的 𝕀𝔾](https://www.instagram.com/hanxin_0410_?igsh=czBnczRwbXdnNmht&utm_source=qr)\n\n"
+
+            "<a:emoji_16:1506410360335372299> "
+            "[星弦媽咪的 𝕀𝔾](https://www.instagram.com/xingxian1226?igsh=bTV5NTUzZ3Q0bHFr&utm_source=qr)\n\n"
+
+            "<a:emoji_16:1506410360335372299> "
+            "[小小貓媽咪的 𝕀𝔾](https://www.instagram.com/ha.na_999?igsh=bDBvc24zbW82dWF1&utm_source=qr)\n\n"
+
+            "<a:emoji_16:1506410360335372299> "
+            "[若曦璃媽咪的 𝕀𝔾](https://www.instagram.com/cixli042?igsh=MTkweDQ5cTgxMWg2MQ%3D%3D&utm_source=qr)\n\n"
+
+            "════════════════════\n\n"
+
             "⚠️ **為維護審核公平性**\n\n"
+
             "請勿提供不實資訊或使用他人截圖，\n"
             "經查證屬實將取消審核資格。\n\n"
+
             "審核通過後，\n"
             "將由管理員協助修改正式身分組。"
         ),
