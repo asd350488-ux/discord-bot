@@ -8,6 +8,7 @@ import random
 
 from discord.ext import commands
 from discord import app_commands
+from discord import FFmpegPCMAudio
 
 # ==========================
 # 🎵 yt-dlp 設定
@@ -258,6 +259,29 @@ class MusicQueue:
         return self.songs[0]
 
 # ==========================
+# 🎵 播放來源
+# ==========================
+
+class MusicSource:
+
+    def __init__(
+        self,
+        song: Song,
+    ):
+
+        self.song = song
+
+    def create_audio(self):
+
+        return FFmpegPCMAudio(
+
+            self.song.stream_url,
+
+            **FFMPEG_OPTIONS,
+
+        )
+
+# ==========================
 # 🎵 音樂播放器
 # ==========================
 
@@ -272,7 +296,9 @@ class MusicPlayer:
         self.current = None
 
         self.voice_client = None
-
+        
+        self.source = None
+        
         self.panel_message = None
 
         self.text_channel = None
@@ -502,6 +528,82 @@ async def clear_current_song(
 
     await update_music_panel(player)
         
+# ==========================
+# ▶️ 播放歌曲
+# ==========================
+
+async def play_song(
+
+    player: MusicPlayer,
+
+    song: Song,
+
+):
+
+    if player.voice_client is None:
+
+        return False
+
+    player.source = MusicSource(
+        song
+    )
+
+    player.voice_client.play(
+
+        player.source.create_audio(),
+
+    )
+
+    await set_current_song(
+
+        player,
+
+        song,
+
+    )
+
+    return True
+    
+# ==========================
+# ▶️ 啟動播放器
+# ==========================
+
+async def start_player(
+
+    player: MusicPlayer,
+
+):
+
+    if player.voice_client is None:
+
+        return
+
+    if player.voice_client.is_playing():
+
+        return
+
+    if player.voice_client.is_paused():
+
+        return
+
+    song = player.queue.next()
+
+    if song is None:
+
+        await clear_current_song(
+            player
+        )
+
+        return
+
+    await play_song(
+
+        player,
+
+        song,
+
+    )
+
 # ==========================
 # 🌙 建立音樂控制面板
 # ==========================
