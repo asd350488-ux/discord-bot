@@ -4,9 +4,258 @@
 
 import discord
 import asyncio
+import random
 
 from discord.ext import commands
 from discord import app_commands
+
+# ==========================
+# 🎵 yt-dlp 設定
+# ==========================
+
+import yt_dlp
+
+YTDL_OPTIONS = {
+
+    "format": "bestaudio/best",
+
+    "noplaylist": True,
+
+    "quiet": True,
+
+    "no_warnings": True,
+
+    "default_search": "ytsearch",
+
+    "source_address": "0.0.0.0",
+
+}
+
+FFMPEG_OPTIONS = {
+
+    "before_options": (
+        "-reconnect 1 "
+        "-reconnect_streamed 1 "
+        "-reconnect_delay_max 5"
+    ),
+
+    "options": "-vn",
+
+}
+
+# ==========================
+# 🎵 YouTube 資訊解析
+# ==========================
+
+ytdl = yt_dlp.YoutubeDL(
+    YTDL_OPTIONS
+)
+
+# ==========================
+# 🎵 取得 YouTube 資料
+# ==========================
+
+async def get_youtube_data(
+    keyword: str,
+):
+
+    loop = asyncio.get_running_loop()
+
+    return await loop.run_in_executor(
+
+        None,
+
+        lambda: ytdl.extract_info(
+
+            keyword,
+
+            download=False,
+
+        ),
+
+    )
+    
+# ==========================
+# 🎵 建立 Song
+# ==========================
+
+async def extract_song_info(
+
+    keyword: str,
+
+    requester=None,
+
+):
+
+    data = await get_youtube_data(
+        keyword
+    )
+
+    if data is None:
+
+        return None
+
+    if "entries" in data:
+
+        entries = data.get(
+            "entries",
+            [],
+        )
+
+        if not entries:
+
+            return None
+
+        data = entries[0]
+
+    return Song(
+
+        title=data.get(
+            "title",
+            "未知歌曲",
+        ),
+
+        url=data.get(
+            "webpage_url",
+            "",
+        ),
+
+        stream_url=data.get(
+            "url",
+            "",
+        ),
+
+        duration=data.get(
+            "duration",
+            0,
+        ),
+
+        thumbnail=data.get(
+            "thumbnail",
+            "",
+        ),
+
+        uploader=data.get(
+            "uploader",
+            "未知作者",
+        ),
+
+        webpage_url=data.get(
+            "webpage_url",
+            "",
+        ),
+
+        requester=requester,
+
+    )
+
+# ==========================
+# 🎵 歌曲資料
+# ==========================
+
+class Song:
+
+    def __init__(
+        self,
+        title: str,
+        url: str,
+        stream_url: str = "",
+        duration: int = 0,
+        thumbnail: str = "",
+        uploader: str = "",
+        webpage_url: str = "",
+        requester: discord.Member | None = None,
+    ):
+
+        self.title = title
+
+        self.url = url
+
+        self.stream_url = stream_url
+
+        self.duration = duration
+
+        self.thumbnail = thumbnail
+
+        self.uploader = uploader
+
+        self.webpage_url = webpage_url
+
+        self.requester = requester
+
+    @property
+    def duration_text(self):
+
+        minutes = self.duration // 60
+
+        seconds = self.duration % 60
+
+        return f"{minutes:02}:{seconds:02}"
+
+    @property
+    def requester_name(self):
+
+        if self.requester:
+
+            return self.requester.display_name
+
+        return "未知"
+
+    @property
+    def requester_avatar(self):
+
+        if self.requester:
+
+            return self.requester.display_avatar.url
+
+        return None
+
+# ==========================
+# 📋 播放清單
+# ==========================
+
+class MusicQueue:
+
+    def __init__(self):
+
+        self.songs = []
+
+    def add(
+        self,
+        song: Song,
+    ):
+
+        self.songs.append(song)
+
+    def next(self):
+
+        if not self.songs:
+            return None
+
+        return self.songs.pop(0)
+
+    def clear(self):
+
+        self.songs.clear()
+
+    def shuffle(self):
+
+        random.shuffle(self.songs)
+
+    def __len__(self):
+
+        return len(self.songs)
+
+    def __iter__(self):
+
+        return iter(self.songs)
+
+    def peek(self):
+
+        if not self.songs:
+            return None
+
+        return self.songs[0]
 
 # ==========================
 # 🎵 音樂播放器
@@ -16,11 +265,11 @@ class MusicPlayer:
 
     def __init__(self):
 
-        self.queue = []
+        self.guild_id = None
+
+        self.queue = MusicQueue()
 
         self.current = None
-
-        self.volume = 50
 
         self.voice_client = None
 
@@ -28,8 +277,19 @@ class MusicPlayer:
 
         self.text_channel = None
 
+        self.volume = 50
+
         self.is_playing = False
 
+        self.is_paused = False
+
+        self.loop_one = False
+
+        self.loop_queue = False
+
+        self.shuffle = False
+
+        self.now_playing_task = None
 
 music_players = {}
 
@@ -129,19 +389,24 @@ def create_music_embed(player: MusicPlayer):
 
     if player.current:
 
-        embed.add_field(
-            name="🎵 目前播放",
-            value=player.current,
-            inline=False,
-        )
-
-    else:
+        song = player.current
 
         embed.add_field(
             name="🎵 目前播放",
-            value="尚未播放任何歌曲",
+            value=(
+                f"**{song.title}**\n"
+                f"👤 {song.uploader}\n"
+                f"⏱️ {song.duration_text}\n"
+                f"❤️ 點歌者：{song.requester_name}"
+            ),
             inline=False,
         )
+
+        if song.thumbnail:
+
+            embed.set_thumbnail(
+                url=song.thumbnail
+            )
 
     embed.add_field(
         name="📋 播放清單",
@@ -205,6 +470,39 @@ async def update_music_panel(player: MusicPlayer):
         pass
         
 # ==========================
+# 🎵 設定目前播放歌曲
+# ==========================
+
+async def set_current_song(
+    player: MusicPlayer,
+    song: Song,
+):
+
+    player.current = song
+
+    player.is_playing = True
+
+    player.is_paused = False
+
+    await update_music_panel(player)
+    
+# ==========================
+# ⏹️ 清除目前播放
+# ==========================
+
+async def clear_current_song(
+    player: MusicPlayer,
+):
+
+    player.current = None
+
+    player.is_playing = False
+
+    player.is_paused = False
+
+    await update_music_panel(player)
+        
+# ==========================
 # 🌙 建立音樂控制面板
 # ==========================
 
@@ -240,46 +538,3 @@ async def music_panel(
         ephemeral=True,
     )
     
-# ==========================
-# 🌙 Moon Music Cog
-# ==========================
-
-class Music(commands.Cog):
-
-    def __init__(
-        self,
-        bot: commands.Bot,
-    ):
-        self.bot = bot
-
-    @app_commands.command(
-        name="音樂面板",
-        description="建立 Moon Music 控制面板",
-    )
-    async def music_panel(
-        self,
-        interaction: discord.Interaction,
-    ):
-
-        guild_id = interaction.guild.id
-
-        if guild_id not in music_players:
-            music_players[guild_id] = MusicPlayer()
-
-        player = music_players[guild_id]
-
-        player.text_channel = interaction.channel
-
-        embed = create_music_embed(player)
-
-        message = await interaction.channel.send(
-            embed=embed,
-            view=MusicPanelView(),
-        )
-
-        player.panel_message = message
-
-        await interaction.response.send_message(
-            "✅ Moon Music 控制面板建立完成！",
-            ephemeral=True,
-        )
