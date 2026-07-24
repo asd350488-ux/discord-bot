@@ -198,7 +198,7 @@ try:
     c.execute("ALTER TABLE lotteries ADD COLUMN message TEXT")
 except sqlite3.OperationalError:
     pass
-    
+
 conn.commit()
 
 # =========================
@@ -851,7 +851,7 @@ class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
         required=True,
         max_length=1,
     )
-    
+
     note = discord.ui.TextInput(
         label="📝 備註（選填）",
         placeholder="例如：快閃抽獎、限定哪位媽咪角色等...",
@@ -912,14 +912,14 @@ class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
             value="💕 與喜愛角色合照",
             inline=False,
         )
-        
+
         if note:
             embed.add_field(
                 name="📝 備註",
                 value=note,
                 inline=False,
             )
- 
+
         embed.add_field(
             name="👥 中獎人數",
             value=f"{winners} 人",
@@ -1003,6 +1003,7 @@ class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
 # ==========================
 # 🌙 自訂抽獎 Modal
 # ==========================
+
 
 class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
 
@@ -1177,6 +1178,30 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
             "✅ 自訂抽獎建立成功！",
             ephemeral=True,
         )
+
+
+# ==========================
+# 🌙 星月盲盒面板
+# ==========================
+
+
+class BlindBoxPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="🎁 開啟星月盲盒",
+        style=discord.ButtonStyle.success,
+        custom_id="blindbox_open",
+    )
+    async def open_blindbox(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+
+        await interaction.response.send_message(
+            "🌙 星月盲盒功能開發中...", ephemeral=True
+        )
+
 
 class DuelView(discord.ui.View):
 
@@ -1412,6 +1437,8 @@ husband_list = [
     "藍書禾",
     "席靖宥",
     "閔孝杰",
+    "赫野",
+    "玄隸",
 ]
 
 for husband in husband_list:
@@ -1893,49 +1920,32 @@ async def review_panel(interaction: discord.Interaction):
             "歡迎加入 **極曜月葵 Discord**！\n\n"
             "為了維護社群品質，請先確認符合以下條件後，"
             "再點擊下方按鈕開始申請。\n\n"
-
             "════════════════════\n\n"
-
             "📸 **請提供以下四位媽咪其中一位角色的聊天截圖：**\n\n"
-
             "🌸 星弦媽咪\n"
             "🌸 韓馨媽咪\n"
             "🌸 小貓媽咪\n"
             "🌸 若曦璃媽咪\n\n"
-
             "════════════════════\n\n"
-
             "🎮 **角色等級需求**\n\n"
-
             "✅ C 台角色需達 **15 等**\n"
             "✅ T 台角色需達 **2 等**\n\n"
-
             "📌 **符合其中一項即可，**\n"
             "請提供符合條件角色的聊天截圖。\n\n"
-
             "════════════════════\n\n"
-
             "📱 **追蹤媽咪們的 Instagram（四位都要追蹤哦）請提供已追蹤的截圖**\n\n"
-
             "<a:emoji_16:1506410360335372299> "
             "[韓馨媽咪的 𝕀𝔾](https://www.instagram.com/hanxin_0410_?igsh=czBnczRwbXdnNmht&utm_source=qr)\n\n"
-
             "<a:emoji_16:1506410360335372299> "
             "[星弦媽咪的 𝕀𝔾](https://www.instagram.com/xingxian1226?igsh=bTV5NTUzZ3Q0bHFr&utm_source=qr)\n\n"
-
             "<a:emoji_16:1506410360335372299> "
             "[小小貓媽咪的 𝕀𝔾](https://www.instagram.com/ha.na_999?igsh=bDBvc24zbW82dWF1&utm_source=qr)\n\n"
-
             "<a:emoji_16:1506410360335372299> "
             "[若曦璃媽咪的 𝕀𝔾](https://www.instagram.com/cixli042?igsh=MTkweDQ5cTgxMWg2MQ%3D%3D&utm_source=qr)\n\n"
-
             "════════════════════\n\n"
-
             "⚠️ **為維護審核公平性**\n\n"
-
             "請勿提供不實資訊或使用他人截圖，\n"
             "經查證屬實將取消審核資格。\n\n"
-
             "審核通過後，\n"
             "將由管理員協助修改正式身分組。"
         ),
@@ -3289,7 +3299,13 @@ async def lottery_checker():
 # ==========================
 
 
-async def send_lottery_dm(user_id, host_id, prize_type, prize_value,custom_message=None,):
+async def send_lottery_dm(
+    user_id,
+    host_id,
+    prize_type,
+    prize_value,
+    custom_message=None,
+):
 
     try:
 
@@ -6557,6 +6573,64 @@ async def lottery_create(interaction: discord.Interaction):
     await interaction.response.send_message(
         embed=embed, view=PrizeSelectView(), ephemeral=True
     )
+
+
+# ==========================
+# 🌙 建立星月盲盒面板
+# ==========================
+
+
+@bot.tree.command(name="建立盲盒面板", description="建立星月盲盒面板")
+async def create_blindbox_panel(interaction: discord.Interaction):
+
+    # 只有 BOT 管理員可使用
+    if interaction.user.id not in BOT_ADMINS:
+        await interaction.response.send_message(
+            "❌ 你沒有權限使用此指令！", ephemeral=True
+        )
+        return
+
+    embed = discord.Embed(
+        title="🌙 星月盲盒中心",
+        description=(
+            "歡迎來到 **星月盲盒中心**！\n\n"
+            f"💰 **開啟價格：{BLINDBOX_PRICE:,} 努努幣**"
+        ),
+        color=discord.Color.purple(),
+    )
+
+    embed.add_field(
+        name="🎁 可獲得獎勵",
+        value=(
+            "📹 影片合集\n"
+            "📸 照片合集\n"
+            "💍 結婚證書\n"
+            "🏅 雙人徽章\n\n"
+            "💰 努努幣100萬\n"
+            "💰 努努幣200萬\n"
+            "💰 努努幣300萬\n"
+            "💰 努努幣400萬\n"
+            "💰 努努幣500萬"
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="📜 抽獎規則",
+        value=(
+            "① 每次開啟需消耗 500 萬努努幣。\n"
+            "② 特殊獎勵將進入第二階段角色抽選。\n"
+            "③ 努努幣獎勵將立即發放。\n"
+            "④ 抽獎期間不可重複開啟。"
+        ),
+        inline=False,
+    )
+
+    embed.set_footer(text="🌙 Moon Bot v2｜星月盲盒中心")
+
+    await interaction.channel.send(embed=embed, view=BlindBoxPanelView())
+
+    await interaction.response.send_message("✅ 星月盲盒面板建立完成！", ephemeral=True)
 
 
 # 🌐 保活
