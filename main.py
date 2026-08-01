@@ -1901,7 +1901,10 @@ async def on_ready():
     # 🎁 抽獎系統
     if not lottery_checker.is_running():
         lottery_checker.start()
-
+        
+    # 🎞️ 人設圖公告系統
+    if not photo_event_check.is_running():
+        photo_event_check.start()
 
 @bot.tree.command(name="審核面板", description="發送入群審核面板")
 async def review_panel(interaction: discord.Interaction):
@@ -2781,6 +2784,51 @@ async def checkin_reminder():
         embed=embed,
     )
 
+# ==========================
+# 🌸 角色合照活動系統
+# ==========================
+
+@tasks.loop(minutes=1)
+async def photo_event_check():
+
+    now = datetime.now(tz)
+
+    month = now.month
+    day = now.day
+    hour = now.hour
+    minute = now.minute
+
+    # ==========================
+    # 🌸 開放活動（測試）
+    # ==========================
+
+    if (
+        day == 1
+        and hour == 11
+        and minute == 50
+    ):
+        print("🌸 角色合照活動：開放事件觸發")
+    # ==========================
+    # 🔒 活動結束公告（測試）
+    # ==========================
+
+    if (
+        day == 1
+        and hour == 11
+        and minute == 51
+    ):
+        print("🔒 角色合照活動：結束公告事件觸發")
+
+    # ==========================
+    # 🚫 關閉角色合照許願區（測試）
+    # ==========================
+
+    if (
+        day == 1
+        and hour == 11
+        and minute == 51
+    ):
+        print("🚫 角色合照活動：關閉頻道事件觸發")
 
 # ==========================
 # 🎂 生日系統（Birthday v2）
