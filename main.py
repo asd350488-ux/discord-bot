@@ -2800,8 +2800,14 @@ async def photo_event_check():
     minute = now.minute
 
     # ==========================
-    # 🌸 開放活動（測試）
+    # 🌸 開放活動
     # ==========================
+    
+    if (
+        day in [2, 16]
+        and hour == 0
+        and minute == 0
+    ):
         today = now.strftime("%Y-%m-%d")
 
         c.execute(
@@ -2812,12 +2818,6 @@ async def photo_event_check():
 
         if row and row["value"] == today:
             return
-
-    if (
-        day in [2, 16]
-        and hour == 0
-        and minute == 0
-    ):
 
         channel = bot.get_channel(1504815515795853432)
 
@@ -2856,8 +2856,14 @@ async def photo_event_check():
         conn.commit()
         
     # ==========================
-    # 🔒 活動即將結束（測試）
+    # 🔒 活動即將結束
     # ==========================
+
+    if (
+        day in [2, 16]
+        and hour == 23
+        and minute == 30
+    ):
     
         today = now.strftime("%Y-%m-%d")
 
@@ -2869,12 +2875,6 @@ async def photo_event_check():
 
         if row and row["value"] == today:
             return
-
-    if (
-        day in [2, 16]
-        and hour == 23
-        and minute == 30
-    ):
 
         channel = bot.get_channel(1504815515795853432)
 
@@ -2896,8 +2896,14 @@ async def photo_event_check():
         conn.commit()
         
     # ==========================
-    # 🚫 關閉角色合照許願區（測試）
+    # 🚫 關閉角色合照許願區
     # ==========================
+
+    if (
+        day in [3, 17]
+        and hour == 0
+        and minute == 0
+    ):
         today = now.strftime("%Y-%m-%d")
 
         c.execute(
@@ -2908,12 +2914,6 @@ async def photo_event_check():
 
         if row and row["value"] == today:
             return
-
-    if (
-        day in [3, 17]
-        and hour == 0
-        and minute == 0
-    ):
 
         photo_channel = bot.get_channel(1504820063344267305)
 
