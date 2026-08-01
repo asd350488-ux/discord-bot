@@ -2802,14 +2802,24 @@ async def photo_event_check():
     # ==========================
     # 🌸 開放活動（測試）
     # ==========================
+        today = now.strftime("%Y-%m-%d")
+
+        c.execute(
+            "SELECT value FROM settings WHERE key=?",
+            ("photo_open",)
+        )
+        row = c.fetchone()
+
+        if row and row["value"] == today:
+            return
 
     if (
-        day == 1
-        and hour == 13
-        and minute == 43
+        day in [2, 16]
+        and hour == 0
+        and minute == 0
     ):
 
-        channel = bot.get_channel(1530174213418123326)
+        channel = bot.get_channel(1504815515795853432)
 
         if channel is None:
             return
@@ -2838,17 +2848,35 @@ async def photo_event_check():
                 photo_role,
                 overwrite=overwrite
             )
+            
+        c.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("photo_open", today)
+        )
+        conn.commit()
+        
     # ==========================
     # 🔒 活動即將結束（測試）
     # ==========================
+    
+        today = now.strftime("%Y-%m-%d")
+
+        c.execute(
+            "SELECT value FROM settings WHERE key=?",
+            ("photo_notice",)
+        )
+        row = c.fetchone()
+
+        if row and row["value"] == today:
+            return
 
     if (
-        day == 1
-        and hour == 13
-        and minute == 45
+        day in [2, 16]
+        and hour == 23
+        and minute == 30
     ):
 
-        channel = bot.get_channel(1530174213418123326)
+        channel = bot.get_channel(1504815515795853432)
 
         if channel is None:
             return
@@ -2860,14 +2888,31 @@ async def photo_event_check():
             "✨ **尚未許願的成員請把握最後機會！**\n\n"
             "🔒 角色合照許願區將於今日 **00:00** 準時關閉。"
         )
+        
+        c.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("photo_notice", today)
+        )
+        conn.commit()
+        
     # ==========================
     # 🚫 關閉角色合照許願區（測試）
     # ==========================
+        today = now.strftime("%Y-%m-%d")
+
+        c.execute(
+            "SELECT value FROM settings WHERE key=?",
+            ("photo_close",)
+        )
+        row = c.fetchone()
+
+        if row and row["value"] == today:
+            return
 
     if (
-        day == 1
-        and hour == 13
-        and minute == 49
+        day in [3, 17]
+        and hour == 0
+        and minute == 0
     ):
 
         photo_channel = bot.get_channel(1504820063344267305)
@@ -2887,6 +2932,12 @@ async def photo_event_check():
             photo_role,
             overwrite=overwrite
         )
+
+        c.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("photo_close", today)
+        )
+        conn.commit()
 
 # ==========================
 # 🎂 生日系統（Birthday v2）
