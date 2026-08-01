@@ -1905,6 +1905,7 @@ async def on_ready():
     # 🎞️ 人設圖公告系統
     if not photo_event_check.is_running():
         photo_event_check.start()
+        print("✅ photo_event_check 已啟動")
 
 @bot.tree.command(name="審核面板", description="發送入群審核面板")
 async def review_panel(interaction: discord.Interaction):
