@@ -2806,7 +2806,7 @@ async def photo_event_check():
     if (
         day == 1
         and hour == 13
-        and minute == 18
+        and minute == 43
     ):
 
         channel = bot.get_channel(1530174213418123326)
@@ -2845,7 +2845,7 @@ async def photo_event_check():
     if (
         day == 1
         and hour == 13
-        and minute == 19
+        and minute == 45
     ):
 
         channel = bot.get_channel(1530174213418123326)
@@ -2867,7 +2867,7 @@ async def photo_event_check():
     if (
         day == 1
         and hour == 13
-        and minute == 19
+        and minute == 49
     ):
 
         photo_channel = bot.get_channel(1504820063344267305)
