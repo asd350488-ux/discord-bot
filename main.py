@@ -2805,8 +2805,8 @@ async def photo_event_check():
 
     if (
         day == 1
-        and hour == 12
-        and minute == 9
+        and hour == 13
+        and minute == 18
     ):
 
         channel = bot.get_channel(1530174213418123326)
@@ -2825,27 +2825,68 @@ async def photo_event_check():
             "・其餘許願規則皆與之前相同。\n\n"
             "⏰ **本次活動將於隔日 00:00 關閉許願區。**"
         )
+        # 開放角色合照許願區
+        photo_channel = bot.get_channel(1504820063344267305)
+        photo_role = photo_channel.guild.get_role(1504854895826698392)
+
+        if photo_channel and photo_role:
+
+            overwrite = photo_channel.overwrites_for(photo_role)
+            overwrite.view_channel = True
+
+            await photo_channel.set_permissions(
+                photo_role,
+                overwrite=overwrite
+            )
     # ==========================
-    # 🔒 活動結束公告（測試）
+    # 🔒 活動即將結束（測試）
     # ==========================
 
     if (
         day == 1
-        and hour == 11
-        and minute == 51
+        and hour == 13
+        and minute == 19
     ):
-        print("🔒 角色合照活動：結束公告事件觸發")
 
+        channel = bot.get_channel(1530174213418123326)
+
+        if channel is None:
+            return
+
+        await channel.send(
+            "⏰ **角色合照許願活動即將結束！**\n\n"
+            "<@&1504854895826698392>\n\n"
+            "距離本次角色合照許願活動結束還有 **30 分鐘**。\n\n"
+            "✨ **尚未許願的成員請把握最後機會！**\n\n"
+            "🔒 角色合照許願區將於今日 **00:00** 準時關閉。"
+        )
     # ==========================
     # 🚫 關閉角色合照許願區（測試）
     # ==========================
 
     if (
         day == 1
-        and hour == 11
-        and minute == 51
+        and hour == 13
+        and minute == 19
     ):
-        print("🚫 角色合照活動：關閉頻道事件觸發")
+
+        photo_channel = bot.get_channel(1504820063344267305)
+
+        if photo_channel is None:
+            return
+
+        photo_role = photo_channel.guild.get_role(1504854895826698392)
+
+        if photo_role is None:
+            return
+
+        overwrite = photo_channel.overwrites_for(photo_role)
+        overwrite.view_channel = False
+
+        await photo_channel.set_permissions(
+            photo_role,
+            overwrite=overwrite
+        )
 
 # ==========================
 # 🎂 生日系統（Birthday v2）
