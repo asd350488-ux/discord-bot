@@ -5741,20 +5741,20 @@ async def give_money(
         await interaction.followup.send("❌ 請到管理員頻道使用", ephemeral=True)
         return
 
-    # 🔒 管理員權限
-    ALLOWED_ROLES = [
+    # 🔒 指定管理員使用者 ID
+    ALLOWED_USERS = [
         1153640526063607820,  # 韓馨
         1218542666879598613,  # 星弦
         1301905168094335028,  # 曦兒
-        806960151578804275,  # 菜菜
-        873202145367846942,  # 洛欣
-        558168958327586827,  # 小貓
+        806960151578804275,   # 菜菜
+        873202145367846942,   # 洛欣
+        558168958327586827,   # 小貓
     ]
 
-    if not any(r.id in ALLOWED_ROLES for r in interaction.user.roles):
+    if interaction.user.id not in ALLOWED_USERS:
         await interaction.followup.send("❌ 你沒有權限", ephemeral=True)
         return
-
+    
     # 🔒 至少選一個對象
     if not member and not role and not everyone:
         await interaction.followup.send("❌ 請選擇發送對象", ephemeral=True)
