@@ -673,7 +673,7 @@ async def send_limited_lottery_panel(channel):
 # ==========================
 
 @app_commands.command(
-    name="七夕盲盒測試",
+    name="qixi_test",
     description="🌙 發送七夕限定盲盒測試面板",
 )
 async def limited_lottery_test(
@@ -724,6 +724,7 @@ def setup_limited_lottery(bot):
     # 🧪 註冊管理員測試指令
     # -------------------------
 
-    bot.tree.add_command(limited_lottery_test)
+    if bot.tree.get_command("qixi_test") is None:
+        bot.tree.add_command(limited_lottery_test)
 
     print("✅ 七夕限定盲盒系統已載入")
