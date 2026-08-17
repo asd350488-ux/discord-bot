@@ -5719,9 +5719,7 @@ async def give_item(
 
 # ⚙️ 增加努努幣
 
-
 @bot.tree.command(name="發努努幣")
-@app_commands.default_permissions(administrator=True)
 @app_commands.rename(amount="金額", member="成員", role="身分組", everyone="發送全體")
 @app_commands.describe(
     amount="發送金額", member="指定成員", role="指定身分組", everyone="是否發送給全體"
