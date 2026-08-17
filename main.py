@@ -1,5 +1,5 @@
 import discord
-from limited_lottery import setup_limited_lottery
+from systems.limited_lottery import setup_limited_lottery
 from config import EXCLUDED_USERS
 from discord import app_commands
 from discord.ext import commands, tasks
