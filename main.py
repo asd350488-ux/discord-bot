@@ -1,4 +1,5 @@
 import discord
+from limited_lottery import setup_limited_lottery
 from config import EXCLUDED_USERS
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -1889,7 +1890,10 @@ async def on_ready():
 
     bot.add_view(ReviewPanelView())
     bot.add_view(ReviewManageView())
-
+    
+    # 🌙 七夕限定盲盒
+    setup_limited_lottery(bot)
+    
     # 🎂 生日系統
     if not birthday_check.is_running():
         birthday_check.start()
