@@ -127,3 +127,213 @@ def setup_limited_lottery(bot):
     init_limited_lottery_database()
 
     print("✅ 七夕限定盲盒系統已載入")
+    
+
+# ==========================
+# 🌙 七夕限定盲盒面板
+# ==========================
+
+
+class LimitedLotteryView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    # ==========================
+    # 🎟️ 第一次抽獎
+    # ==========================
+
+    @discord.ui.button(
+        label="🎁 第一次抽獎｜500 努努幣",
+        style=discord.ButtonStyle.primary,
+        custom_id="limited_lottery_first",
+        row=0,
+    )
+    async def first_draw(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        # -------------------------
+        # 🌙 活動日期檢查
+        # -------------------------
+
+        if not is_qixi_day():
+
+            await interaction.response.send_message(
+                "🌙 七夕限定盲盒目前沒有開放喔！\n"
+                "本活動僅限 **2026/8/19** 當日參與。",
+                ephemeral=True,
+            )
+
+            return
+
+        # -------------------------
+        # 🌙 查詢參與次數
+        # -------------------------
+
+        count = get_limited_lottery_count(interaction.user.id)
+
+        if count >= LIMITED_LOTTERY_MAX_TIMES:
+
+            await interaction.response.send_message(
+                "❌ 你已經完成本次七夕限定盲盒的 **2 次抽獎**。",
+                ephemeral=True,
+            )
+
+            return
+
+        # -------------------------
+        # 🌙 確認是否為第一次
+        # -------------------------
+
+        if count != 0:
+
+            await interaction.response.send_message(
+                "⚠️ 你已經使用過第一次抽獎機會了。\n"
+                "如果還有剩餘次數，請使用 **第二次抽獎｜5,000 努努幣**。",
+                ephemeral=True,
+            )
+
+            return
+
+        # -------------------------
+        # 🌙 暫時顯示確認訊息
+        # -------------------------
+
+        await interaction.response.send_message(
+            "🎁 **七夕限定盲盒｜第一次抽獎**\n\n"
+            "💰 參與費用：**500 努努幣**\n"
+            "🎟️ 使用次數：**第 1 次／共 2 次**\n\n"
+            "下一部分會接上真正的扣款與開盲盒。",
+            ephemeral=True,
+        )
+
+
+    # ==========================
+    # 🎟️ 第二次抽獎
+    # ==========================
+
+    @discord.ui.button(
+        label="🌙 第二次抽獎｜5,000 努努幣",
+        style=discord.ButtonStyle.success,
+        custom_id="limited_lottery_second",
+        row=1,
+    )
+    async def second_draw(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        # -------------------------
+        # 🌙 活動日期檢查
+        # -------------------------
+
+        if not is_qixi_day():
+
+            await interaction.response.send_message(
+                "🌙 七夕限定盲盒目前沒有開放喔！\n"
+                "本活動僅限 **2026/8/19** 當日參與。",
+                ephemeral=True,
+            )
+
+            return
+
+        # -------------------------
+        # 🌙 查詢參與次數
+        # -------------------------
+
+        count = get_limited_lottery_count(interaction.user.id)
+
+        # -------------------------
+        # 🌙 尚未完成第一次
+        # -------------------------
+
+        if count == 0:
+
+            await interaction.response.send_message(
+                "❌ 你還沒有進行第一次抽獎。\n\n"
+                "請先完成 **第一次抽獎｜500 努努幣**，"
+                "才能進行第二次抽獎。",
+                ephemeral=True,
+            )
+
+            return
+
+        # -------------------------
+        # 🌙 已經完成兩次
+        # -------------------------
+
+        if count >= LIMITED_LOTTERY_MAX_TIMES:
+
+            await interaction.response.send_message(
+                "❌ 你已經完成本次七夕限定盲盒的 **2 次抽獎**。",
+                ephemeral=True,
+            )
+
+            return
+
+        # -------------------------
+        # 🌙 暫時顯示確認訊息
+        # -------------------------
+
+        await interaction.response.send_message(
+            "🌙 **七夕限定盲盒｜第二次抽獎**\n\n"
+            "💰 參與費用：**5,000 努努幣**\n"
+            "🎟️ 使用次數：**第 2 次／共 2 次**\n\n"
+            "下一部分會接上真正的扣款與開盲盒。",
+            ephemeral=True,
+        )
+
+
+# ==========================
+# 🌙 七夕限定盲盒 Embed
+# ==========================
+
+
+def create_limited_lottery_embed():
+
+    embed = discord.Embed(
+        title="🌙 七夕限定盲盒",
+        description=(
+            "💫 **一年一度的七夕限定活動！**\n\n"
+            "8/19 七夕當日限定開放，\n"
+            "每位成員最多可以參與 **2 次**。\n\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "🎁 **盲盒獎品**\n\n"
+            "💰 努努幣 5,000　｜　40%\n"
+            "💰 努努幣 8,000　｜　30%\n"
+            "🎨 角色 Q 版貼圖 ×1　｜　20%\n"
+            "💕 角色合照 ×1　｜　10%\n\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "🎟️ **抽獎費用**\n\n"
+            "第一次　→　💰 **500 努努幣**\n"
+            "第二次　→　💰 **5,000 努努幣**\n\n"
+            "每人最多 **2 次**，每次皆為獨立抽獎。\n\n"
+            "💌 **七夕限定，只有一天！**"
+        ),
+        color=0xE91E63,
+    )
+
+    embed.set_footer(
+        text="🌙 Moon Bot｜七夕限定盲盒｜2026/8/19"
+    )
+
+    return embed
+
+
+# ==========================
+# 🌙 發送七夕限定盲盒面板
+# ==========================
+
+
+async def send_limited_lottery_panel(channel):
+
+    embed = create_limited_lottery_embed()
+
+    await channel.send(
+        embed=embed,
+        view=LimitedLotteryView(),
+    )
