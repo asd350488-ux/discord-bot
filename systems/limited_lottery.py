@@ -64,6 +64,11 @@ LIMITED_LOTTERY_PRIZES = [
     },
 ]
 
+# ==========================
+# 🌙 正在開盲盒的玩家
+# ==========================
+
+limited_lottery_running = set()
 
 # ==========================
 # 🌙 判斷是否為七夕活動日
@@ -121,196 +126,303 @@ async def run_limited_lottery(
     is_test = interaction.user.id in BOT_ADMINS
 
     # -------------------------
-    # 💰 查詢努努幣
+    # 🔒 防止重複抽獎
     # -------------------------
 
-    c.execute(
-        """
-        SELECT money
-        FROM users
-        WHERE user_id = ?
-        """,
-        (user_id,),
-    )
-
-    data = c.fetchone()
-
-    if not data:
+    if interaction.user.id in limited_lottery_running:
 
         await interaction.response.send_message(
-            "❌ 找不到你的努努幣帳戶資料。",
+            "🌙 你的七夕盲盒正在開啟中，\n"
+            "請稍等一下再操作喔！",
             ephemeral=True,
         )
 
         return
 
-    money = data["money"]
+    limited_lottery_running.add(interaction.user.id)
 
-    # -------------------------
-    # 💰 檢查餘額
-    # -------------------------
+    try:
 
-    if money < price:
+        # ==========================
+        # 💰 查詢努努幣
+        # ==========================
+
+        c.execute(
+            """
+            SELECT money
+            FROM users
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+
+        data = c.fetchone()
+
+        if not data:
+
+            await interaction.response.send_message(
+                "❌ 找不到你的努努幣帳戶資料。",
+                ephemeral=True,
+            )
+
+            return
+
+        money = data["money"]
+
+        # ==========================
+        # 💰 檢查餘額
+        # ==========================
+
+        if money < price:
+
+            await interaction.response.send_message(
+                "❌ 你的努努幣不足！\n\n"
+                f"💰 本次需要：**{price:,} 努努幣**\n"
+                f"💰 目前餘額：**{money:,} 努努幣**",
+                ephemeral=True,
+            )
+
+            return
+
+        # ==========================
+        # 🎲 抽取獎品
+        # ==========================
+
+        prizes = []
+
+        for prize in LIMITED_LOTTERY_PRIZES:
+
+            prizes.extend(
+                [prize] * prize["weight"]
+            )
+
+        prize = random.choice(prizes)
+
+        prize_type = prize["type"]
+        prize_name = prize["name"]
+        prize_value = prize["value"]
+
+        # ==========================
+        # 💰 扣除參與費
+        # ==========================
+
+        money -= price
+
+        # ==========================
+        # 💰 努努幣獎品
+        # ==========================
+
+        if prize_type == "money":
+
+            money += int(prize_value)
+
+        # ==========================
+        # 💾 更新玩家餘額
+        # ==========================
+
+        c.execute(
+            """
+            UPDATE users
+            SET money = ?
+            WHERE user_id = ?
+            """,
+            (
+                money,
+                user_id,
+            ),
+        )
+
+        # ==========================
+        # 💾 記錄抽獎結果
+        # ==========================
+
+        c.execute(
+            """
+            INSERT INTO limited_lottery_entries (
+                user_id,
+                draw_number,
+                price,
+                prize_type,
+                prize_value,
+                is_test,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                draw_number,
+                price,
+                prize_type,
+                str(prize_value),
+                1 if is_test else 0,
+                datetime.now().isoformat(),
+            ),
+        )
+
+        conn.commit()
+
+        # ==========================
+        # 🌙 開始盲盒動畫
+        # ==========================
 
         await interaction.response.send_message(
-            "❌ 你的努努幣不足！\n\n"
-            f"本次需要：**{price:,} 努努幣**\n"
-            f"目前餘額：**{money:,} 努努幣**",
+            "🌙 **七夕限定盲盒**\n\n"
+            "🎁 你的盲盒正在準備中……",
             ephemeral=True,
         )
 
-        return
+        # -------------------------
+        # ✨ 第一階段
+        # -------------------------
 
-    # -------------------------
-    # 🎲 隨機抽取獎品
-    # -------------------------
+        await asyncio.sleep(1)
 
-    prizes = []
-
-    for prize in LIMITED_LOTTERY_PRIZES:
-
-        prizes.extend(
-            [prize] * prize["weight"]
+        await interaction.edit_original_response(
+            content=(
+                "🌙 **七夕限定盲盒**\n\n"
+                "🎁 盲盒正在晃動……\n"
+                "✨ 裡面好像有東西！"
+            ),
+            embed=None,
         )
 
-    prize = random.choice(prizes)
+        # -------------------------
+        # ✨ 第二階段
+        # -------------------------
 
-    prize_type = prize["type"]
-    prize_name = prize["name"]
-    prize_value = prize["value"]
+        await asyncio.sleep(1)
 
-    # -------------------------
-    # 💰 扣除盲盒費用
-    # -------------------------
-
-    money -= price
-
-    # -------------------------
-    # 💰 努努幣獎品
-    # -------------------------
-
-    if prize_type == "money":
-
-        money += int(prize_value)
-
-    # -------------------------
-    # 💾 更新錢包
-    # -------------------------
-
-    c.execute(
-        """
-        UPDATE users
-        SET money = ?
-        WHERE user_id = ?
-        """,
-        (money, user_id),
-    )
-
-    # -------------------------
-    # 💾 記錄抽獎結果
-    # -------------------------
-
-    c.execute(
-        """
-        INSERT INTO limited_lottery_entries (
-            user_id,
-            draw_number,
-            price,
-            prize_type,
-            prize_value,
-            is_test,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            user_id,
-            draw_number,
-            price,
-            prize_type,
-            str(prize_value),
-            1 if is_test else 0,
-            datetime.now().isoformat(),
-        ),
-    )
-
-    conn.commit()
-
-    # -------------------------
-    # 🎁 建立結果 Embed
-    # -------------------------
-
-    if prize_type == "money":
-
-        result_description = (
-            f"🎉 恭喜你抽中了！\n\n"
-            f"## {prize_name}\n\n"
-            f"💰 獎勵已經自動加入你的錢包！"
+        await interaction.edit_original_response(
+            content=(
+                "🌙 **七夕限定盲盒**\n\n"
+                "✨✨✨\n"
+                "命運正在揭曉……"
+            ),
+            embed=None,
         )
 
-    elif prize_type == "sticker":
+        # -------------------------
+        # ✨ 第三階段
+        # -------------------------
 
-        result_description = (
-            f"🎉 恭喜你抽中了！\n\n"
-            f"## {prize_name}\n\n"
-            "📩 請等待管理員後續聯繫領取。"
+        await asyncio.sleep(1)
+
+        await interaction.edit_original_response(
+            content=(
+                "🌙 **七夕限定盲盒**\n\n"
+                "💫 **砰！**\n\n"
+                "🎁 盲盒已經打開！"
+            ),
+            embed=None,
         )
 
-    elif prize_type == "couple":
+        # -------------------------
+        # ✨ 最後揭曉
+        # -------------------------
 
-        result_description = (
-            f"🎉 恭喜你抽中了！\n\n"
-            f"## {prize_name}\n\n"
-            "📩 請等待管理員後續聯繫安排。"
+        await asyncio.sleep(1)
+
+        # ==========================
+        # 🎁 建立最終結果
+        # ==========================
+
+        if prize_type == "money":
+
+            result_description = (
+                "🎉 **恭喜你！**\n\n"
+                f"## {prize_name}\n\n"
+                "💰 獎勵已經自動加入你的錢包！"
+            )
+
+        elif prize_type == "sticker":
+
+            result_description = (
+                "🎉 **恭喜你！**\n\n"
+                f"## {prize_name}\n\n"
+                "📩 請等待管理員後續聯繫領取。"
+            )
+
+        elif prize_type == "couple":
+
+            result_description = (
+                "🎉 **恭喜你！**\n\n"
+                f"## {prize_name}\n\n"
+                "📩 請等待管理員後續聯繫安排。"
+            )
+
+        else:
+
+            result_description = (
+                "🎉 **恭喜你！**\n\n"
+                f"## {prize_name}"
+            )
+
+        # ==========================
+        # 🌙 最終結果 Embed
+        # ==========================
+
+        embed = discord.Embed(
+            title="🌙 七夕限定盲盒",
+            description=result_description,
+            color=0xE91E63,
         )
-
-    else:
-
-        result_description = (
-            f"🎉 恭喜你抽中了！\n\n"
-            f"## {prize_name}"
-        )
-
-    embed = discord.Embed(
-        title="🌙 七夕限定盲盒",
-        description=result_description,
-        color=0xE91E63,
-    )
-
-    embed.add_field(
-        name="🎟️ 本次抽獎",
-        value=f"第 **{draw_number} 次**",
-        inline=True,
-    )
-
-    embed.add_field(
-        name="💸 抽獎費用",
-        value=f"{price:,} 努努幣",
-        inline=True,
-    )
-
-    embed.add_field(
-        name="💰 目前餘額",
-        value=f"{money:,} 努努幣",
-        inline=False,
-    )
-
-    if is_test:
 
         embed.add_field(
-            name="🧪 測試模式",
-            value="👑 管理員測試不計入正式抽獎次數。",
+            name="🎟️ 本次抽獎",
+            value=f"第 **{draw_number} 次**",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="💸 抽獎費用",
+            value=f"{price:,} 努努幣",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="💰 目前餘額",
+            value=f"{money:,} 努努幣",
             inline=False,
         )
 
-    embed.set_footer(
-        text="🌙 Moon Bot｜七夕限定盲盒｜2026/8/19"
-    )
+        # -------------------------
+        # 👑 管理員測試提示
+        # -------------------------
 
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True,
-    )
+        if is_test:
+
+            embed.add_field(
+                name="🧪 測試模式",
+                value=(
+                    "👑 管理員測試\n"
+                    "本次不計入正式抽獎次數。"
+                ),
+                inline=False,
+            )
+
+        embed.set_footer(
+            text="🌙 Moon Bot｜七夕限定盲盒｜2026/8/19"
+        )
+
+        # ==========================
+        # 🎁 顯示最終結果
+        # ==========================
+
+        await interaction.edit_original_response(
+            content=None,
+            embed=embed,
+        )
+
+    finally:
+
+        # ==========================
+        # 🔓 解開玩家抽獎鎖
+        # ==========================
+
+        limited_lottery_running.discard(
+            interaction.user.id
+        )
 
 # ==========================
 # 🌙 建立限定盲盒資料表
