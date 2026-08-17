@@ -463,24 +463,6 @@ def init_limited_lottery_database():
 
     conn.commit()
 
-
-# ==========================
-# 🌙 啟動限定盲盒系統
-# ==========================
-
-def setup_limited_lottery(bot):
-
-    init_limited_lottery_database()
-
-    # -------------------------
-    # 🌙 註冊永久按鈕
-    # -------------------------
-
-    bot.add_view(LimitedLotteryView())
-
-    print("✅ 七夕限定盲盒系統已載入")
-    
-
 # ==========================
 # 🌙 七夕限定盲盒面板
 # ==========================
@@ -723,3 +705,25 @@ async def limited_lottery_test(
         "✅ 七夕限定盲盒測試面板已發送！",
         ephemeral=True,
     )
+    
+# ==========================
+# 🌙 啟動限定盲盒系統
+# ==========================
+
+def setup_limited_lottery(bot):
+
+    init_limited_lottery_database()
+
+    # -------------------------
+    # 🌙 註冊永久按鈕
+    # -------------------------
+
+    bot.add_view(LimitedLotteryView())
+
+    # -------------------------
+    # 🧪 註冊管理員測試指令
+    # -------------------------
+
+    bot.tree.add_command(limited_lottery_test)
+
+    print("✅ 七夕限定盲盒系統已載入")
