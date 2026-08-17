@@ -1887,12 +1887,16 @@ async def on_ready():
 
     # 🌙 七夕限定盲盒
     setup_limited_lottery(bot)
+    # 💌 媽咪專屬身分組
+    setup_mommy_roles(bot)
 
     try:
         synced = await bot.tree.sync()
         print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
     except Exception as e:
         print(f"❌ 指令同步失敗：{e}")
+    
+    
     
     # 🎂 生日系統
     if not birthday_check.is_running():
