@@ -74,18 +74,25 @@ def is_qixi_day():
 
     return now.strftime("%Y-%m-%d") == QIXI_DATE
 
-
 # ==========================
-# 🌙 取得玩家已參與次數
+# 🌙 取得玩家正式參與次數
 # ==========================
 
 def get_limited_lottery_count(user_id):
+
+    # -------------------------
+    # 👑 管理員測試不計入正式次數
+    # -------------------------
+
+    if int(user_id) in BOT_ADMINS:
+        return 0
 
     c.execute(
         """
         SELECT COUNT(*)
         FROM limited_lottery_entries
         WHERE user_id = ?
+        AND is_test = 0
         """,
         (str(user_id),),
     )
@@ -93,7 +100,6 @@ def get_limited_lottery_count(user_id):
     result = c.fetchone()
 
     return result[0] if result else 0
-
 
 # ==========================
 # 🌙 建立限定盲盒資料表
@@ -110,10 +116,28 @@ def init_limited_lottery_database():
             price INTEGER NOT NULL,
             prize_type TEXT NOT NULL,
             prize_value TEXT NOT NULL,
+            is_test INTEGER DEFAULT 0,
             created_at TEXT NOT NULL
         )
         """
     )
+
+    # -------------------------
+    # 🌙 舊資料表補上測試欄位
+    # -------------------------
+
+    try:
+
+        c.execute(
+            """
+            ALTER TABLE limited_lottery_entries
+            ADD COLUMN is_test INTEGER DEFAULT 0
+            """
+        )
+
+    except Exception:
+
+        pass
 
     conn.commit()
 
