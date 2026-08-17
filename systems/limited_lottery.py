@@ -76,10 +76,9 @@ limited_lottery_running = set()
 
 def is_qixi_day():
 
-    now = datetime.now()
-
-    return now.strftime("%Y-%m-%d") == QIXI_DATE
-
+    # 🧪 測試期間暫時不限日期
+    return True
+    
 # ==========================
 # 🌙 取得玩家正式參與次數
 # ==========================
@@ -596,7 +595,7 @@ class LimitedLotteryView(discord.ui.View):
         # 🌙 尚未完成第一次
         # -------------------------
 
-        if count == 0:
+        if count == 0 and interaction.user.id not in BOT_ADMINS:
 
             await interaction.response.send_message(
                 "❌ 你還沒有進行第一次抽獎。\n\n"
