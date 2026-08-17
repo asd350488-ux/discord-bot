@@ -6,7 +6,7 @@ import discord
 import random
 import asyncio
 from datetime import datetime, timedelta
-
+from discord import app_commands
 from discord.ext import commands
 
 from database import conn, c
@@ -472,6 +472,12 @@ def setup_limited_lottery(bot):
 
     init_limited_lottery_database()
 
+    # -------------------------
+    # 🌙 註冊永久按鈕
+    # -------------------------
+
+    bot.add_view(LimitedLotteryView())
+
     print("✅ 七夕限定盲盒系統已載入")
     
 
@@ -678,4 +684,42 @@ async def send_limited_lottery_panel(channel):
     await channel.send(
         embed=embed,
         view=LimitedLotteryView(),
+    )
+    
+# ==========================
+# 🧪 七夕限定盲盒｜管理員測試指令
+# ==========================
+
+@app_commands.command(
+    name="七夕盲盒測試",
+    description="🌙 發送七夕限定盲盒測試面板",
+)
+async def limited_lottery_test(
+    interaction: discord.Interaction,
+):
+
+    # -------------------------
+    # 👑 管理員限定
+    # -------------------------
+
+    if interaction.user.id not in BOT_ADMINS:
+
+        await interaction.response.send_message(
+            "❌ 只有管理員可以使用這個測試指令。",
+            ephemeral=True,
+        )
+
+        return
+
+    # -------------------------
+    # 🌙 發送測試面板
+    # -------------------------
+
+    await send_limited_lottery_panel(
+        interaction.channel
+    )
+
+    await interaction.response.send_message(
+        "✅ 七夕限定盲盒測試面板已發送！",
+        ephemeral=True,
     )
