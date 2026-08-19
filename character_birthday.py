@@ -632,7 +632,7 @@ async def character_birthday_check_loop(bot):
     # 🕗 每天 08:00 檢查
     # ==========================
 
-    if now.hour != 8 or now.minute != 0:
+    if now.hour != 7 or now.minute != 0:
 
         return
 
