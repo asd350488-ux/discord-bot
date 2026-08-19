@@ -1896,24 +1896,28 @@ async def on_ready():
         print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
     except Exception as e:
         print(f"❌ 指令同步失敗：{e}")
-    
-    
-    
-    # 🎂 生日系統
-    if not birthday_check.is_running():
-        birthday_check.start()
 
     # 🎂 角色生日系統
     await setup_character_birthday(bot)
 
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
+    except Exception as e:
+        print(f"❌ 指令同步失敗：{e}")
+
+    # 🎂 生日系統
+    if not birthday_check.is_running():
+        birthday_check.start()
+
     # 🌙 每日簽到提醒
     if not checkin_reminder.is_running():
-        checkin_reminder.start()
+    checkin_reminder.start()
 
     # 🎁 抽獎系統
     if not lottery_checker.is_running():
         lottery_checker.start()
-        
+
     # 🎞️ 人設圖公告系統
     if not photo_event_check.is_running():
         photo_event_check.start()
