@@ -377,11 +377,173 @@ async def setup_character_birthday_commands(bot):
 # ==========================
 # 🔍 查詢角色生日
 # ==========================
+# ==========================
+# 📖 角色生日分頁 View
+# ==========================
+
+
+class CharacterBirthdayPageView(View):
+
+    def __init__(
+        self,
+        interaction_user_id,
+        pages,
+        current_page=0
+    ):
+
+        super().__init__(
+            timeout=180
+        )
+
+        self.interaction_user_id = interaction_user_id
+        self.pages = pages
+        self.current_page = current_page
+
+        # ==========================
+        # ⬅️ 上一頁
+        # ==========================
+
+        self.previous_button.disabled = (
+            self.current_page <= 0
+        )
+
+        # ==========================
+        # ➡️ 下一頁
+        # ==========================
+
+        self.next_button.disabled = (
+            self.current_page >= len(self.pages) - 1
+        )
+
+    # ==========================
+    # 🔐 操作權限
+    # ==========================
+
+    async def interaction_check(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        if interaction.user.id != self.interaction_user_id:
+
+            await interaction.response.send_message(
+                "❌ 這不是你的生日查詢頁面。",
+                ephemeral=True
+            )
+
+            return False
+
+        return True
+
+    # ==========================
+    # ⬅️ 上一頁
+    # ==========================
+
+    @discord.ui.button(
+        label="上一頁",
+        emoji="⬅️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def previous_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        self.current_page -= 1
+
+        await interaction.response.edit_message(
+            embed=create_character_birthday_embed(
+                self.pages,
+                self.current_page
+            ),
+            view=CharacterBirthdayPageView(
+                self.interaction_user_id,
+                self.pages,
+                self.current_page
+            )
+        )
+
+    # ==========================
+    # ➡️ 下一頁
+    # ==========================
+
+    @discord.ui.button(
+        label="下一頁",
+        emoji="➡️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def next_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        self.current_page += 1
+
+        await interaction.response.edit_message(
+            embed=create_character_birthday_embed(
+                self.pages,
+                self.current_page
+            ),
+            view=CharacterBirthdayPageView(
+                self.interaction_user_id,
+                self.pages,
+                self.current_page
+            )
+        )
+
+
+# ==========================
+# 🎂 建立生日 Embed
+# ==========================
+
+
+def create_character_birthday_embed(
+    pages,
+    current_page
+):
+
+    page = pages[current_page]
+
+    birthday_text = ""
+
+    for mommy_name, character_name, month, day in page:
+
+        birthday_text += (
+            f"👑 **{mommy_name}**\n"
+            f"└ 🎭 {character_name}　"
+            f"🎂 {month}月{day}日\n\n"
+        )
+
+    embed = discord.Embed(
+        title="🎂 角色生日一覽",
+        description=birthday_text,
+        color=discord.Color.blurple()
+    )
+
+    embed.set_footer(
+        text=(
+            f"🌙 角色生日紀錄　"
+            f"第 {current_page + 1} / {len(pages)} 頁"
+        )
+    )
+
+    return embed
+
+
+# ==========================
+# 🔍 查詢角色生日
+# ==========================
 
 
 async def show_character_birthdays(
     interaction: discord.Interaction
 ):
+
+    # ==========================
+    # 🗄️ 讀取資料
+    # ==========================
 
     conn = sqlite3.connect(DB_PATH)
 
@@ -391,7 +553,11 @@ async def show_character_birthdays(
         """
         SELECT mommy_name, character_name, month, day
         FROM character_birthdays
-        ORDER BY month ASC, day ASC, mommy_name ASC
+        ORDER BY
+            month ASC,
+            day ASC,
+            mommy_name ASC,
+            character_name ASC
         """
     )
 
@@ -400,7 +566,7 @@ async def show_character_birthdays(
     conn.close()
 
     # ==========================
-    # ❌ 沒有資料
+    # ❌ 尚無資料
     # ==========================
 
     if not rows:
@@ -409,38 +575,40 @@ async def show_character_birthdays(
             "🎂 目前還沒有登記任何角色生日。",
             ephemeral=True
         )
+
         return
 
     # ==========================
-    # 🎂 整理生日資料
+    # 📖 每頁 15 隻角色
     # ==========================
 
-    birthday_text = ""
+    page_size = 15
 
-    for mommy_name, character_name, month, day in rows:
-
-        birthday_text += (
-            f"👑 **{mommy_name}**\n"
-            f"└ 🎭 **{character_name}**　"
-            f"🎂 {month}月{day}日\n\n"
+    pages = [
+        rows[
+            i:i + page_size
+        ]
+        for i in range(
+            0,
+            len(rows),
+            page_size
         )
+    ]
 
     # ==========================
-    # 📋 Embed
+    # 📋 顯示第一頁
     # ==========================
-
-    embed = discord.Embed(
-        title="🎂 角色生日一覽",
-        description=birthday_text,
-        color=discord.Color.blurple()
-    )
-
-    embed.set_footer(
-        text="🌙 角色生日紀錄"
-    )
 
     await interaction.response.send_message(
-        embed=embed
+        embed=create_character_birthday_embed(
+            pages,
+            0
+        ),
+        view=CharacterBirthdayPageView(
+            interaction.user.id,
+            pages,
+            0
+        )
     )
 
 
@@ -629,7 +797,7 @@ async def character_birthday_check_loop(bot):
     now = datetime.now(TIMEZONE)
 
     # ==========================
-    # 🕗 每天 08:00 檢查
+    # 🕗 每天 07:00 檢查
     # ==========================
 
     if now.hour != 7 or now.minute != 0:
