@@ -1,4 +1,5 @@
 import discord
+from character_birthday import setup_character_birthday
 from systems.limited_lottery import setup_limited_lottery
 from systems.mommy_roles import setup_mommy_roles
 from config import EXCLUDED_USERS
@@ -1901,6 +1902,9 @@ async def on_ready():
     # 🎂 生日系統
     if not birthday_check.is_running():
         birthday_check.start()
+
+    # 🎂 角色生日系統
+    await setup_character_birthday(bot)
 
     # 🌙 每日簽到提醒
     if not checkin_reminder.is_running():
