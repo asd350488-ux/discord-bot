@@ -11,6 +11,8 @@ import sqlite3
 from datetime import datetime, timedelta
 import pytz
 
+from database import DB_PATH
+
 
 # ==========================
 # 🎂 角色生日設定
@@ -34,11 +36,8 @@ MOMMY_LIST = {
 
 
 # ==========================
-# 🗄️ 資料庫
+# 🗄️ 角色生日資料表
 # ==========================
-
-DB_PATH = "moonbot.db"
-
 
 def init_character_birthday_db():
 
@@ -66,6 +65,7 @@ def init_character_birthday_db():
 # ==========================
 
 init_character_birthday_db()
+
 # ==========================
 # 🎂 角色生日設定
 # ==========================
