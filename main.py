@@ -1912,7 +1912,7 @@ async def on_ready():
 
     # 🌙 每日簽到提醒
     if not checkin_reminder.is_running():
-    checkin_reminder.start()
+        checkin_reminder.start()
 
     # 🎁 抽獎系統
     if not lottery_checker.is_running():
