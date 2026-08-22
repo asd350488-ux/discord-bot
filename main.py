@@ -1889,8 +1889,12 @@ async def on_ready():
 
     # 🌙 七夕限定盲盒
     setup_limited_lottery(bot)
+
     # 💌 媽咪專屬身分組
     setup_mommy_roles(bot)
+
+    # 📝 角色考試系統
+    setup_character_exam(bot)
 
     try:
         synced = await bot.tree.sync()
@@ -1910,9 +1914,6 @@ async def on_ready():
     # 🎂 生日系統
     if not birthday_check.is_running():
         birthday_check.start()
-        
-    # 📝 角色考試系統
-    setup_character_exam(bot)
 
     # 🌙 每日簽到提醒
     if not checkin_reminder.is_running():
@@ -1926,7 +1927,7 @@ async def on_ready():
     if not photo_event_check.is_running():
         photo_event_check.start()
         print("✅ photo_event_check 已啟動")
-
+        
 @bot.tree.command(name="審核面板", description="發送入群審核面板")
 async def review_panel(interaction: discord.Interaction):
 
