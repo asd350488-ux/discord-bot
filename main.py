@@ -1,7 +1,7 @@
 import discord
 from character_birthday import setup_character_birthday
 from systems.limited_lottery import setup_limited_lottery
-from character_test import setup_character_test
+from systems.character_test import setup_character_test
 from systems.mommy_roles import setup_mommy_roles
 from systems.character_exam import setup_character_exam
 from config import EXCLUDED_USERS
