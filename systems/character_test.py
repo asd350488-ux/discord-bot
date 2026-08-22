@@ -73,11 +73,26 @@ def init_character_test_database():
             user_id TEXT NOT NULL,
             mommy_id TEXT NOT NULL,
             role_id INTEGER NOT NULL,
+            question_count INTEGER NOT NULL DEFAULT 5,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             UNIQUE(round_key, user_id)
         )
     """)
+
+    # 🔄 舊版資料庫自動補上「管理層指定題數」欄位
+    assignment_columns = [
+        row[1]
+        for row in cursor.execute(
+            "PRAGMA table_info(character_test_assignments)"
+        ).fetchall()
+    ]
+
+    if "question_count" not in assignment_columns:
+        cursor.execute("""
+            ALTER TABLE character_test_assignments
+            ADD COLUMN question_count INTEGER NOT NULL DEFAULT 5
+        """)
 
     # ==========================
     # 🎓 進行中的考試
@@ -135,11 +150,6 @@ def get_cycle_round_key():
 
 def is_setup_window():
     """目前不限制設定日期。"""
-    return True
-
-
-def is_exam_day():
-    """目前不限制考試日期。"""
     return True
 
 
@@ -315,7 +325,13 @@ def get_active_session(user_id: int, round_key=None):
     return session
 
 
-def save_assignment(round_key, user_id, mommy_id, role_id):
+def save_assignment(
+    round_key,
+    user_id,
+    mommy_id,
+    role_id,
+    question_count
+):
     now = get_now()
 
     conn = get_db_connection()
@@ -328,20 +344,23 @@ def save_assignment(round_key, user_id, mommy_id, role_id):
             user_id,
             mommy_id,
             role_id,
+            question_count,
             created_at,
             updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(round_key, user_id)
         DO UPDATE SET
             mommy_id = excluded.mommy_id,
             role_id = excluded.role_id,
+            question_count = excluded.question_count,
             updated_at = excluded.updated_at
     """, (
         round_key,
         str(user_id),
         str(mommy_id),
         role_id,
+        question_count,
         now,
         now
     ))
@@ -513,8 +532,8 @@ def create_setup_embed(round_key):
         description=(
             f"📅 **本輪考試：{format_round(round_key)}**\n\n"
             "📋 每月 **20 號**開始設定下一輪考試。\n"
-            "🎓 每月 **1 號**進行正式考試。\n"
-            "⏰ 考試不設定倒數與時長，由管理層手動開始。\n\n"
+            "🎓 考試日期不綁定，由管理層手動安排與開始。\n"
+            "⏰ 不設定倒數與考試時長。\n\n"
             f"{'🟢 目前可以設定與修改。' if setup_available else '🔒 目前不是設定期間，僅可查看。'}"
         ),
         color=discord.Color.blurple()
@@ -617,7 +636,8 @@ def create_assignment_list_embed(guild, round_key, page=0):
                 name=f"{index}. 👤 {display_name}",
                 value=(
                     f"👩‍👧 **{mommy_name}**\n"
-                    f"🎭 **{role_name}**"
+                    f"🎭 **{role_name}**\n"
+                    f"📝 **題數：{assignment['question_count']} 題**"
                 ),
                 inline=False
             )
@@ -783,18 +803,63 @@ class ExamCandidateSelect(UserSelect):
 
 
 # ==========================
+# 📝 管理中心｜選擇考試題數
+# ==========================
+
+class ExamQuestionCountSelect(Select):
+
+    def __init__(self, parent_view):
+        self.parent_view = parent_view
+
+        options = [
+            discord.SelectOption(
+                label=f"{count} 題",
+                description="本次考試固定使用此題數",
+                value=str(count),
+                emoji="📝"
+            )
+            for count in range(
+                EXAM_MIN_QUESTIONS,
+                EXAM_MAX_QUESTIONS + 1
+            )
+        ]
+
+        super().__init__(
+            placeholder="📝 管理層指定本次考試題數",
+            options=options,
+            row=3
+        )
+
+    async def callback(self, interaction):
+        if not is_exam_manager(interaction.user.id):
+            await interaction.response.send_message(
+                "❌ 只有六位管理層可以使用此設定。",
+                ephemeral=True
+            )
+            return
+
+        self.parent_view.selected_question_count = int(self.values[0])
+
+        await interaction.response.edit_message(
+            embed=self.parent_view.create_embed(),
+            view=self.parent_view
+        )
+
+
+# ==========================
 # 👑 管理中心 View
 # ==========================
 
 class ExamSetupView(View):
 
     def __init__(self, manager_id):
-        super().__init__(timeout=600)
+        super().__init__(timeout=None)
 
         self.manager_id = manager_id
         self.selected_mommy_id = None
         self.selected_role_id = None
         self.selected_candidate_ids = []
+        self.selected_question_count = None
         self.role_page = 0
 
         self.refresh_items()
@@ -831,6 +896,12 @@ class ExamSetupView(View):
             else "尚未選擇"
         )
 
+        selected_question_count = (
+            f"{self.selected_question_count} 題"
+            if self.selected_question_count
+            else "尚未選擇"
+        )
+
         embed.add_field(
             name="👩‍👧 本次選擇媽咪",
             value=f"**{selected_mommy}**",
@@ -846,6 +917,12 @@ class ExamSetupView(View):
         embed.add_field(
             name="👤 本次選擇考生",
             value=f"**{selected_candidates}**",
+            inline=True
+        )
+
+        embed.add_field(
+            name="📝 本次考試題數",
+            value=f"**{selected_question_count}**",
             inline=True
         )
 
@@ -866,11 +943,15 @@ class ExamSetupView(View):
             ExamCandidateSelect(self)
         )
 
+        self.add_item(
+            ExamQuestionCountSelect(self)
+        )
+
         save_button = Button(
             label="儲存設定",
             emoji="💾",
             style=discord.ButtonStyle.success,
-            row=3,
+            row=4,
             disabled=not is_setup_window()
         )
 
@@ -878,7 +959,7 @@ class ExamSetupView(View):
             label="查看本輪設定",
             emoji="📋",
             style=discord.ButtonStyle.primary,
-            row=3
+            row=4
         )
 
         reset_button = Button(
@@ -939,8 +1020,7 @@ class ExamSetupView(View):
 
         if not is_setup_window():
             await interaction.response.send_message(
-                "🔒 目前不是報考設定期間。\n\n"
-                "📅 每月 20 號開始下一輪設定，1 號正式考試。",
+                "🔒 目前無法修改本輪設定。",
                 ephemeral=True
             )
             return
@@ -966,6 +1046,13 @@ class ExamSetupView(View):
             )
             return
 
+        if not self.selected_question_count:
+            await interaction.response.send_message(
+                "❌ 請先指定本次考試題數（5～10 題）。",
+                ephemeral=True
+            )
+            return
+
         round_key = get_cycle_round_key()
         cleanup_old_rounds(round_key)
 
@@ -986,7 +1073,8 @@ class ExamSetupView(View):
                 round_key,
                 user_id,
                 self.selected_mommy_id,
-                self.selected_role_id
+                self.selected_role_id,
+                self.selected_question_count
             )
             saved.append(user_id)
 
@@ -1002,6 +1090,7 @@ class ExamSetupView(View):
             "",
             f"👩‍👧 媽咪：**{get_mommy_name(self.selected_mommy_id)}**",
             f"🎭 角色：**{role_name}**",
+            f"📝 題數：**{self.selected_question_count} 題**",
             f"📅 考試月份：**{format_round(round_key)}**",
             ""
         ]
@@ -1021,6 +1110,7 @@ class ExamSetupView(View):
         )
 
         self.selected_candidate_ids = []
+        self.selected_question_count = None
         self.refresh_items()
 
     async def view_assignments(self, interaction):
@@ -1048,6 +1138,7 @@ class ExamSetupView(View):
         self.selected_mommy_id = None
         self.selected_role_id = None
         self.selected_candidate_ids = []
+        self.selected_question_count = None
         self.role_page = 0
         self.refresh_items()
 
@@ -1065,6 +1156,7 @@ class ExamSetupView(View):
 
         self.selected_role_id = None
         self.selected_candidate_ids = []
+        self.selected_question_count = None
         self.refresh_items()
 
         await interaction.response.edit_message(
@@ -1081,6 +1173,7 @@ class ExamSetupView(View):
 
         self.selected_role_id = None
         self.selected_candidate_ids = []
+        self.selected_question_count = None
         self.refresh_items()
 
         await interaction.response.edit_message(
@@ -1137,7 +1230,7 @@ class AssignmentSelect(Select):
             options.append(
                 discord.SelectOption(
                     label=display_name[:100],
-                    description=role_name[:100],
+                    description=f"{role_name}｜{assignment['question_count']} 題"[:100],
                     value=str(assignment["user_id"]),
                     emoji="👤"
                 )
@@ -1406,14 +1499,12 @@ class StartExamConfirmView(View):
             )
             return
 
-        await interaction.response.edit_message(
-            content="🎓 **請選擇本次考試題數。**\n\n"
-                    "題目會由系統自動隨機抽取。",
-            embed=None,
-            view=ExamCountView(
-                self.assignment,
-                self.entry_channel
-            )
+        question_count = int(self.assignment["question_count"])
+
+        await start_assigned_exam(
+            interaction,
+            self.assignment,
+            question_count
         )
 
     @discord.ui.button(
@@ -1431,135 +1522,125 @@ class StartExamConfirmView(View):
 
 
 # ==========================
-# 🔢 題數選擇
+# 🎓 依管理層設定開始考試
 # ==========================
 
-class ExamCountView(View):
+async def start_assigned_exam(interaction, assignment, count):
+    if interaction.user.id != int(assignment["user_id"]):
+        await interaction.response.send_message(
+            "❌ 這不是你的考試。",
+            ephemeral=True
+        )
+        return
 
-    def __init__(self, assignment, entry_channel):
-        super().__init__(timeout=180)
-        self.assignment = assignment
-        self.entry_channel = entry_channel
+    if count < EXAM_MIN_QUESTIONS or count > EXAM_MAX_QUESTIONS:
+        await interaction.response.send_message(
+            "❌ 考試題數設定無效，請聯絡管理層。",
+            ephemeral=True
+        )
+        return
 
-        for count in range(
-            EXAM_MIN_QUESTIONS,
-            EXAM_MAX_QUESTIONS + 1
-        ):
-            button = Button(
-                label=f"{count} 題",
-                emoji="📝",
-                style=discord.ButtonStyle.primary,
-                row=0 if count <= 7 else 1
-            )
+    round_key = assignment["round_key"]
+    user_id = int(assignment["user_id"])
 
-            async def callback(
-                interaction,
-                selected_count=count
-            ):
-                await self.start_exam(
-                    interaction,
-                    selected_count
-                )
+    existing = get_active_session(
+        user_id,
+        round_key
+    )
 
-            button.callback = callback
-            self.add_item(button)
+    if existing:
+        channel = interaction.guild.get_channel(
+            int(existing["channel_id"])
+        ) if interaction.guild else None
 
-    async def start_exam(self, interaction, count):
-        if interaction.user.id != int(self.assignment["user_id"]):
-            await interaction.response.send_message(
-                "❌ 這不是你的考試。",
-                ephemeral=True
-            )
-            return
-
-        if not is_exam_day():
+        if channel:
             await interaction.response.edit_message(
-                content="❌ 目前不是每月 1 號的正式考試日。",
+                content=(
+                    "⚠️ **你目前已有一場進行中的角色考試。**\n\n"
+                    f"🎓 考場：{channel.mention}"
+                ),
+                embed=None,
                 view=None
             )
-            return
+        else:
+            delete_session(existing["session_id"])
+            await interaction.response.edit_message(
+                content="⚠️ 原本的考場已不存在，請重新按「開始考試」。",
+                embed=None,
+                view=None
+            )
+        return
 
-        round_key = self.assignment["round_key"]
-        user_id = int(self.assignment["user_id"])
+    if user_id in ACTIVE_EXAM_USERS:
+        await interaction.response.edit_message(
+            content="⚠️ 你的考試正在建立中，請稍候。",
+            embed=None,
+            view=None
+        )
+        return
 
-        existing = get_active_session(
-            user_id,
-            round_key
+    ACTIVE_EXAM_USERS.add(user_id)
+
+    try:
+        role = get_role(
+            int(assignment["role_id"])
         )
 
-        if existing:
+        if role is None:
             await interaction.response.edit_message(
-                content="⚠️ 你目前已有一場進行中的角色考試。",
+                content="❌ 找不到你的報考角色，請聯絡管理層。",
+                embed=None,
                 view=None
             )
             return
 
-        if user_id in ACTIVE_EXAM_USERS:
+        questions = draw_exam_questions(
+            int(assignment["role_id"]),
+            count
+        )
+
+        if not questions:
             await interaction.response.edit_message(
-                content="⚠️ 你的考試正在建立中，請稍候。",
+                content=(
+                    "❌ 題庫不足，無法建立本次考試。\n\n"
+                    "請管理層補充題庫後再重新開始。"
+                ),
+                embed=None,
                 view=None
             )
             return
 
-        ACTIVE_EXAM_USERS.add(user_id)
+        await interaction.response.defer(
+            ephemeral=True
+        )
 
-        try:
-            role = get_role(
-                int(self.assignment["role_id"])
-            )
+        channel = await create_exam_channel(
+            interaction,
+            assignment,
+            role,
+            questions
+        )
 
-            if role is None:
-                await interaction.response.edit_message(
-                    content="❌ 找不到你的報考角色，請聯絡管理層。",
-                    view=None
-                )
-                return
-
-            questions = draw_exam_questions(
-                int(self.assignment["role_id"]),
-                count
-            )
-
-            if not questions:
-                await interaction.response.edit_message(
-                    content=(
-                        "❌ 題庫不足，無法建立本次考試。\n\n"
-                        "請管理層補充題庫後再重新開始。"
-                    ),
-                    view=None
-                )
-                return
-
-            await interaction.response.defer(
+        if channel is None:
+            await interaction.followup.send(
+                "❌ 建立考試頻道失敗，請確認 Bot 有建立頻道與管理權限。",
                 ephemeral=True
             )
+            return
 
-            channel = await create_exam_channel(
-                interaction,
-                self.assignment,
-                role,
-                questions
-            )
+        await interaction.followup.edit_message(
+            interaction.message.id,
+            content=(
+                f"✅ **考試頻道已建立！**\n\n"
+                f"🎓 {channel.mention}\n"
+                f"📝 本次考試：**{count} 題**\n\n"
+                "請進入考試頻道開始作答。"
+            ),
+            view=None
+        )
 
-            if channel is None:
-                await interaction.followup.send(
-                    "❌ 建立考試頻道失敗，請確認 Bot 有建立頻道與管理權限。",
-                    ephemeral=True
-                )
-                return
-
-            await interaction.followup.edit_message(
-                interaction.message.id,
-                content=(
-                    f"✅ **考試頻道已建立！**\n\n"
-                    f"🎓 {channel.mention}\n\n"
-                    "請進入考試頻道開始作答。"
-                ),
-                view=None
-            )
-
-        finally:
-            ACTIVE_EXAM_USERS.discard(user_id)
+    finally:
+        ACTIVE_EXAM_USERS.discard(user_id)
 
 
 # ==========================
@@ -2087,9 +2168,8 @@ def create_exam_entry_embed():
         title="🎓 角色考試入口",
         description=(
             "歡迎來到 **Moon Bot｜角色考試**。\n\n"
-            "📅 每月 **1 號**進行正式考試。\n"
-            "🎭 系統會自動取得你事前綁定的報考角色。\n"
-            "📝 考試題數：**5～10 題**。\n"
+            "🎭 系統會自動取得管理層事前綁定的報考角色。\n"
+            "📝 考試題數由管理層事前指定（5～10 題）。\n"
             "🎲 題目由系統隨機抽取。\n"
             "✏️ 所有題目皆為簡答題，請直接在考試頻道作答。\n\n"
             "⚠️ 考生不能自行選擇角色。\n"
@@ -2115,14 +2195,6 @@ class ExamEntryView(View):
         custom_id="character_test_start_exam"
     )
     async def start(self, interaction, button):
-        if not is_exam_day():
-            await interaction.response.send_message(
-                "📅 目前不是考試日。\n\n"
-                "角色考試固定於每月 **1 號**進行。",
-                ephemeral=True
-            )
-            return
-
         round_key = get_cycle_round_key()
 
         assignment = get_assignment(
@@ -2215,7 +2287,7 @@ def setup_character_test(bot):
 
     @bot.tree.command(
         name="考試設定",
-        description="🎓 管理本月考生與報考角色"
+        description="🎓 管理本輪媽咪、角色、考生與考試題數"
     )
     async def character_test_setup(interaction: discord.Interaction):
         if not is_exam_manager(interaction.user.id):
