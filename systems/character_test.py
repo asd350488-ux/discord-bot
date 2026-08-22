@@ -134,14 +134,13 @@ def get_cycle_round_key():
 
 
 def is_setup_window():
-    """20 號～月底，以及 1 號可以設定。"""
-
-    day = datetime.now(TIMEZONE).day
-    return day >= 20 or day == 1
+    """目前不限制設定日期。"""
+    return True
 
 
 def is_exam_day():
-    return datetime.now(TIMEZONE).day == 1
+    """目前不限制考試日期。"""
+    return True
 
 
 def format_round(round_key):
@@ -2215,7 +2214,7 @@ def setup_character_test(bot):
     # ==========================
 
     @bot.tree.command(
-        name="角色考試設定",
+        name="考試設定",
         description="🎓 管理本月考生與報考角色"
     )
     async def character_test_setup(interaction: discord.Interaction):
