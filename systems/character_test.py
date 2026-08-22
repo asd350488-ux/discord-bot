@@ -1214,7 +1214,7 @@ class AssignmentSelect(Select):
 class AssignmentListView(View):
 
     def __init__(self, guild, round_key, page=0):
-        super().__init__(timeout=300)
+        super().__init__(timeout=None)
         self.guild = guild
         self.round_key = round_key
         self.page = page
@@ -2107,12 +2107,13 @@ def create_exam_entry_embed():
 class ExamEntryView(View):
 
     def __init__(self):
-        super().__init__(timeout=300)
+        super().__init__(timeout=None)
 
     @discord.ui.button(
         label="開始考試",
         emoji="🎓",
-        style=discord.ButtonStyle.success
+        style=discord.ButtonStyle.success,
+        custom_id="character_test_start_exam"
     )
     async def start(self, interaction, button):
         if not is_exam_day():
@@ -2205,6 +2206,9 @@ def setup_character_test(bot):
         return
 
     _SETUP_DONE = True
+    
+    # 🎓 永久註冊角色考試入口按鈕
+    bot.add_view(ExamEntryView())
 
     # ==========================
     # 🎓 /角色考試設定
@@ -2247,6 +2251,5 @@ def setup_character_test(bot):
     async def character_test_entry(interaction: discord.Interaction):
         await interaction.response.send_message(
             embed=create_exam_entry_embed(),
-            view=ExamEntryView(),
-            ephemeral=True
+            view=ExamEntryView()
         )
