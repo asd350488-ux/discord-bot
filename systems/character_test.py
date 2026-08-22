@@ -2320,7 +2320,17 @@ def setup_character_test(bot):
         description="🎓 開啟角色考試入口"
     )
     async def character_test_entry(interaction: discord.Interaction):
+
+        # 🔐 只有 6 位管理層可以使用
+        if not is_exam_manager(interaction.user.id):
+            await interaction.response.send_message(
+                "❌ 你沒有權限使用此指令。",
+                ephemeral=True
+            )
+            return
+
         await interaction.response.send_message(
             embed=create_exam_entry_embed(),
             view=ExamEntryView()
         )
+ 
