@@ -741,6 +741,192 @@ class RoleManageView(View):
             self.role_id
         )
 
+    # ==========================
+    # 🗑️ 刪除角色
+    # ==========================
+
+    @discord.ui.button(
+        label="刪除角色",
+        emoji="🗑️",
+        style=discord.ButtonStyle.danger,
+        row=2
+    )
+    async def delete_role(
+        self,
+        interaction: discord.Interaction,
+        button: Button
+    ):
+
+        if not await self.check_owner(interaction):
+            return
+
+        role = get_role(
+            self.role_id,
+            self.mommy_id
+        )
+
+        if role is None:
+            await interaction.response.send_message(
+                "❌ 找不到這隻角色，或你沒有管理權限。",
+                ephemeral=True
+            )
+            return
+
+        simple_questions = get_role_questions(
+            self.role_id,
+            "simple"
+        )
+
+        hard_questions = get_role_questions(
+            self.role_id,
+            "hard"
+        )
+
+        total_questions = (
+            len(simple_questions)
+            + len(hard_questions)
+        )
+
+        embed = discord.Embed(
+            title="🗑️ 確認刪除角色",
+            description=(
+                f"🎭 **角色：** {role['role_name']}\n\n"
+                f"📚 **目前題目：** {total_questions} 題\n\n"
+                "⚠️ **刪除後將永久移除：**\n"
+                "• 這隻角色\n"
+                "• 🟢 所有簡單題\n"
+                "• 🔴 所有困難題\n\n"
+                "❗ 此操作無法復原。\n\n"
+                "確定要刪除這隻角色嗎？"
+            ),
+            color=discord.Color.red()
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=DeleteCharacterConfirmView(
+                self.mommy_id,
+                self.role_id
+            ),
+            ephemeral=True
+        )
+
+# ==========================
+# 🗑️ 刪除角色確認
+# ==========================
+
+class DeleteCharacterConfirmView(View):
+
+    def __init__(
+        self,
+        mommy_id: int,
+        role_id: int
+    ):
+
+        super().__init__(timeout=60)
+
+        self.mommy_id = mommy_id
+        self.role_id = role_id
+
+    # ==========================
+    # 🗑️ 確認刪除
+    # ==========================
+
+    @discord.ui.button(
+        label="確認刪除",
+        emoji="🗑️",
+        style=discord.ButtonStyle.danger
+    )
+    async def confirm_delete(
+        self,
+        interaction: discord.Interaction,
+        button: Button
+    ):
+
+        if not is_owner(
+            interaction,
+            self.mommy_id
+        ):
+            await reject_not_owner(interaction)
+            return
+
+        role = get_role(
+            self.role_id,
+            self.mommy_id
+        )
+
+        if role is None:
+            await interaction.response.edit_message(
+                content="❌ 這隻角色已不存在。",
+                embed=None,
+                view=None
+            )
+            return
+
+        role_name = role["role_name"]
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # ==========================
+        # 🗑️ 刪除角色
+        # ==========================
+
+        cursor.execute(
+            """
+            DELETE FROM character_exam_roles
+            WHERE id = ?
+            AND mommy_id = ?
+            """,
+            (
+                self.role_id,
+                str(self.mommy_id)
+            )
+        )
+
+        conn.commit()
+        conn.close()
+
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="✅ 角色刪除成功",
+                description=(
+                    f"🎭 角色 **{role_name}** 已成功刪除。\n\n"
+                    "🗑️ 角色資料已移除\n"
+                    "📝 相關考試題目也已一併刪除。"
+                ),
+                color=discord.Color.green()
+            ),
+            view=None
+        )
+
+    # ==========================
+    # ↩️ 取消
+    # ==========================
+
+    @discord.ui.button(
+        label="取消",
+        emoji="↩️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def cancel_delete(
+        self,
+        interaction: discord.Interaction,
+        button: Button
+    ):
+
+        if not is_owner(
+            interaction,
+            self.mommy_id
+        ):
+            await reject_not_owner(interaction)
+            return
+
+        await interaction.response.edit_message(
+            content="↩️ 已取消刪除角色。",
+            embed=None,
+            view=None
+        )
 
 # ==========================
 # 📝 題庫管理 View
