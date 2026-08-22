@@ -2,6 +2,7 @@ import discord
 from character_birthday import setup_character_birthday
 from systems.limited_lottery import setup_limited_lottery
 from systems.mommy_roles import setup_mommy_roles
+from systems.character_exam import setup_character_exam
 from config import EXCLUDED_USERS
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -1909,6 +1910,9 @@ async def on_ready():
     # 🎂 生日系統
     if not birthday_check.is_running():
         birthday_check.start()
+        
+    # 📝 角色考試系統
+    setup_character_exam(bot)
 
     # 🌙 每日簽到提醒
     if not checkin_reminder.is_running():
