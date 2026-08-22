@@ -917,10 +917,8 @@ class AddQuestionsModal(
         label="📝 題目與標準答案",
         placeholder=(
             "每一行一題，格式：\n"
-            "問題｜標準答案\n\n"
-            "例如：\n"
-            "小月牙的生日？｜6月16日\n"
-            "小月牙最喜歡什麼？｜月亮"
+            "問題｜標準答案\n"
+            "例如：小月牙的生日？｜6月16日\n"
         ),
         style=discord.TextStyle.paragraph,
         required=True,
