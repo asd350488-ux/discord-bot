@@ -1856,8 +1856,13 @@ class SubmitExamView(View):
             return
 
         await interaction.response.send_message(
-            "⚠️ **確認完成作答？**\n\n"
-            "確認後將立即離開本次考試頻道，之後無法再修改答案。",
+            "⚠️ **交卷前請確認**\n\n"
+            "📌 請確認所有題目皆已完成作答。\n"
+            "✏️ **錯字、漏字、少字將不視為正確答案。**\n"
+            "📝 答案需符合題目要求，角色名稱及專有名詞請確認拼寫。\n"
+            "🚫 **確認交卷後將無法修改答案。**\n"
+            "🔍 交卷後將由管理層進行人工核對。\n\n"
+            "⚠️ **確定要交卷嗎？**",
             view=ConfirmSubmitView(
                 session["session_id"]
             ),
