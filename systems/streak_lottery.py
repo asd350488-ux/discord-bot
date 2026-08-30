@@ -752,6 +752,58 @@ class EndedStreakLotteryView(
     ):
         pass
 
+    @discord.ui.button(
+        label="👥 查看抽獎人",
+        style=discord.ButtonStyle.secondary,
+        custom_id="streak_lottery_view_entries_ended",
+    )
+    async def view_entries_after_end(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        message_id = str(interaction.message.id)
+
+        entries = get_streak_lottery_entries(
+            message_id
+        )
+
+        if entries:
+
+            entry_mentions = "\n".join(
+                f"• <@{user_id}>"
+                for user_id in entries
+            )
+
+            if len(entry_mentions) > 3900:
+
+                entry_mentions = (
+                    entry_mentions[:3850]
+                    + "\n……名單過長，部分未顯示"
+                )
+
+        else:
+
+            entry_mentions = (
+                "📭 本次抽獎沒有任何玩家參加。"
+            )
+
+        embed = discord.Embed(
+            title="👥 本次抽獎參加名單",
+            description=entry_mentions,
+            color=0xF1C40F,
+        )
+
+        embed.set_footer(
+            text=f"本次共有 {len(entries)} 人參加"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True,
+        )
+
 
 # ==========================
 # 📝 建立抽獎 Modal
