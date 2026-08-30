@@ -168,6 +168,15 @@ def get_streak_lottery_entries(message_id):
 
 
 # ==========================
+# 👑 檢查抽獎管理權限
+# ==========================
+
+def is_streak_lottery_manager(user_id):
+
+    return user_id in LOTTERY_MANAGERS
+
+
+# ==========================
 # 🎨 建立抽獎 Embed
 # ==========================
 
@@ -248,17 +257,6 @@ def create_streak_lottery_embed(
         inline=False,
     )
 
-    # ==========================
-    # 📋 額外條件
-    # ==========================
-
-    if lottery["extra_condition"]:
-
-        embed.add_field(
-            name="📋 額外條件",
-            value=lottery["extra_condition"],
-            inline=False,
-        )
 
     # ==========================
     # ⏰ 抽獎截止
@@ -375,7 +373,7 @@ def create_streak_lottery_embed(
 
 
 # ==========================
-# 🎉 參加抽獎 View
+# 🎉 進行中抽獎 View
 # ==========================
 
 class StreakLotteryView(
@@ -399,18 +397,11 @@ class StreakLotteryView(
         button: discord.ui.Button,
     ):
 
-        message_id = str(
-            interaction.message.id
-        )
-
-        # ==========================
-        # 🔍 取得抽獎資料
-        # ==========================
+        message_id = str(interaction.message.id)
 
         c.execute(
             f"""
-            SELECT *
-            FROM {STREAK_LOTTERY_TABLE}
+            SELECT * FROM {STREAK_LOTTERY_TABLE}
             WHERE message_id=?
             """,
             (message_id,),
@@ -419,30 +410,18 @@ class StreakLotteryView(
         lottery = c.fetchone()
 
         if not lottery:
-
             await interaction.response.send_message(
                 "❌ 找不到本次抽獎資料。",
                 ephemeral=True,
             )
-
             return
 
-        # ==========================
-        # 🔒 是否已結束
-        # ==========================
-
         if lottery["status"] != "running":
-
             await interaction.response.send_message(
                 "🔒 本次抽獎已結束。",
                 ephemeral=True,
             )
-
             return
-
-        # ==========================
-        # ⛔ 是否已參加
-        # ==========================
 
         c.execute(
             f"""
@@ -458,31 +437,17 @@ class StreakLotteryView(
         )
 
         if c.fetchone():
-
             await interaction.response.send_message(
                 "⚠️ 你已經參加過本次抽獎了！",
                 ephemeral=True,
             )
-
             return
 
-        # ==========================
-        # 📊 取得簽到資料
-        # ==========================
-
-        checkin_total, checkin_streak = (
-            get_user_checkin_data(
-                interaction.user.id
-            )
+        checkin_total, checkin_streak = get_user_checkin_data(
+            interaction.user.id
         )
 
-        required_days = lottery[
-            "required_days"
-        ]
-
-        # ==========================
-        # 🔥 連續簽到
-        # ==========================
+        required_days = lottery["required_days"]
 
         if lottery["check_type"] == "streak":
 
@@ -490,10 +455,7 @@ class StreakLotteryView(
 
             if current_days < required_days:
 
-                missing = (
-                    required_days
-                    - current_days
-                )
+                missing = required_days - current_days
 
                 await interaction.response.send_message(
                     (
@@ -504,12 +466,7 @@ class StreakLotteryView(
                     ),
                     ephemeral=True,
                 )
-
                 return
-
-        # ==========================
-        # 📅 總簽到
-        # ==========================
 
         elif lottery["check_type"] == "total":
 
@@ -517,10 +474,7 @@ class StreakLotteryView(
 
             if current_days < required_days:
 
-                missing = (
-                    required_days
-                    - current_days
-                )
+                missing = required_days - current_days
 
                 await interaction.response.send_message(
                     (
@@ -531,12 +485,7 @@ class StreakLotteryView(
                     ),
                     ephemeral=True,
                 )
-
                 return
-
-        # ==========================
-        # ✅ 加入抽獎
-        # ==========================
 
         c.execute(
             f"""
@@ -557,10 +506,6 @@ class StreakLotteryView(
 
         conn.commit()
 
-        # ==========================
-        # 📊 更新畫面
-        # ==========================
-
         entries = get_streak_lottery_entries(
             message_id
         )
@@ -578,6 +523,205 @@ class StreakLotteryView(
         await interaction.followup.send(
             "🎉 成功參加本次抽獎！祝你好運～",
             ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="👥 查看名單",
+        style=discord.ButtonStyle.secondary,
+        custom_id="streak_lottery_view_entries",
+    )
+    async def view_entries(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        message_id = str(interaction.message.id)
+
+        entries = get_streak_lottery_entries(
+            message_id
+        )
+
+        if entries:
+
+            entry_mentions = "\n".join(
+                f"• <@{user_id}>"
+                for user_id in entries
+            )
+
+            if len(entry_mentions) > 3900:
+
+                entry_mentions = (
+                    entry_mentions[:3850]
+                    + "\n……名單過長，部分未顯示"
+                )
+
+        else:
+
+            entry_mentions = (
+                "📭 目前還沒有玩家參加抽獎。"
+            )
+
+        embed = discord.Embed(
+            title="👥 本次抽獎參加名單",
+            description=entry_mentions,
+            color=0xF1C40F,
+        )
+
+        embed.set_footer(
+            text=f"目前共有 {len(entries)} 人參加"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="🛑 結束抽獎",
+        style=discord.ButtonStyle.danger,
+        custom_id="streak_lottery_manual_end",
+    )
+    async def manual_end(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        if not is_streak_lottery_manager(
+            interaction.user.id
+        ):
+
+            await interaction.response.send_message(
+                "❌ 只有抽獎管理員可以結束抽獎。",
+                ephemeral=True,
+            )
+            return
+
+        message_id = str(interaction.message.id)
+
+        c.execute(
+            f"""
+            SELECT status
+            FROM {STREAK_LOTTERY_TABLE}
+            WHERE message_id=?
+            """,
+            (message_id,),
+        )
+
+        lottery = c.fetchone()
+
+        if not lottery:
+            await interaction.response.send_message(
+                "❌ 找不到本次抽獎資料。",
+                ephemeral=True,
+            )
+            return
+
+        if lottery["status"] != "running":
+            await interaction.response.send_message(
+                "🔒 本次抽獎已經結束。",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            "⚠️ 確定要提前結束本次抽獎嗎？\n"
+            "確認後會立即抽出中獎者，且無法恢復。",
+            view=ConfirmEndStreakLotteryView(
+                message_id
+            ),
+            ephemeral=True,
+        )
+
+
+# ==========================
+# ⚠️ 確認提前結束抽獎
+# ==========================
+
+class ConfirmEndStreakLotteryView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        message_id,
+    ):
+
+        super().__init__(
+            timeout=60
+        )
+
+        self.message_id = str(message_id)
+
+    @discord.ui.button(
+        label="✅ 確認結束抽獎",
+        style=discord.ButtonStyle.danger,
+    )
+    async def confirm_end(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        if not is_streak_lottery_manager(
+            interaction.user.id
+        ):
+
+            await interaction.response.send_message(
+                "❌ 只有抽獎管理員可以結束抽獎。",
+                ephemeral=True,
+            )
+            return
+
+        c.execute(
+            f"""
+            SELECT status
+            FROM {STREAK_LOTTERY_TABLE}
+            WHERE message_id=?
+            """,
+            (self.message_id,),
+        )
+
+        lottery = c.fetchone()
+
+        if not lottery:
+            await interaction.response.edit_message(
+                content="❌ 找不到本次抽獎資料。",
+                view=None,
+            )
+            return
+
+        if lottery["status"] != "running":
+            await interaction.response.edit_message(
+                content="🔒 本次抽獎已經結束。",
+                view=None,
+            )
+            return
+
+        await interaction.response.edit_message(
+            content="⏳ 正在結束抽獎並抽出中獎者……",
+            view=None,
+        )
+
+        await finish_streak_lottery(
+            interaction.client,
+            self.message_id,
+        )
+
+    @discord.ui.button(
+        label="❌ 取消",
+        style=discord.ButtonStyle.secondary,
+    )
+    async def cancel_end(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        await interaction.response.edit_message(
+            content="✅ 已取消結束抽獎。",
+            view=None,
         )
 
 
