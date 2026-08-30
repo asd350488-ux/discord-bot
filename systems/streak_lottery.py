@@ -1334,23 +1334,24 @@ def setup_streak_lottery(
     )
 
     # ==========================
-    # ⏰ 啟動檢查器
+    # ⏰ Bot 準備完成後啟動檢查器
     # ==========================
 
-    async def start_checker():
+    async def start_streak_lottery_checker():
 
-         global _checker_started
+        global _checker_started
 
-         if _checker_started:
-             return
+        if _checker_started:
+            return
 
         asyncio.create_task(
-             streak_lottery_checker(bot)
+            streak_lottery_checker(bot)
         )
 
-         _checker_started = True
+        _checker_started = True
 
 
-    bot.loop.create_task(
-        start_checker()
+    bot.add_listener(
+        start_streak_lottery_checker,
+        "on_ready"
     )
