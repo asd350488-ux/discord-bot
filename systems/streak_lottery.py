@@ -1118,42 +1118,6 @@ async def finish_streak_lottery(
     )
 
     # ==========================
-    # 📢 頻道公布結果
-    # ==========================
-
-    if winners:
-
-        winner_mentions = "\n".join(
-            f"🏆 <@{user_id}>"
-            for user_id in winners
-        )
-
-        result_embed = discord.Embed(
-            title="🎉 抽獎結果公布！",
-            description=(
-                f'🎁 **獎品：** {lottery["prize"]}\n\n'
-                "🏆 **恭喜以下中獎者：**\n\n"
-                f"{winner_mentions}\n\n"
-                "感謝大家參加 🌙💕"
-            ),
-            color=discord.Color.gold(),
-        )
-
-        await channel.send(
-            embed=result_embed
-        )
-
-    else:
-
-        await channel.send(
-            (
-                "📭 **抽獎結果公布！**\n\n"
-                "本次沒有任何玩家參加抽獎，"
-                "因此沒有中獎者。"
-            )
-        )
-
-    # ==========================
     # 💌 私訊中獎者
     # ==========================
 
@@ -1171,19 +1135,36 @@ async def finish_streak_lottery(
                     int(user_id)
                 )
 
+            extra_condition = (
+                lottery["extra_condition"] or ""
+            ).strip()
+
+            if extra_condition:
+
+                provide_text = extra_condition
+
+            else:
+
+                provide_text = (
+                    "請提供主辦人要求的品項私訊主辦人"
+                )
+
             dm_embed = discord.Embed(
                 title="🌙 Moon Bot｜抽獎通知",
                 description=(
                     "🎉 恭喜你在本次抽獎中幸運中獎！\n\n"
-                    f'🎁 **獎品：{lottery["prize"]}**\n\n'
                     "━━━━━━━━━━━━━━━━━━\n\n"
+                    "請私訊主辦人，並提供：\n\n"
+                    f"💬 {provide_text}\n\n"
                     "💌 溫馨提醒 💌\n\n"
                     "📌 在任何公開平台發布與角色相關的圖片或影片時，"
                     "請加上浮水印。\n\n"
                     "📌 若需發布影片，請先私訊角色創作者確認內容，"
                     "經創作者同意後再公開發布。\n\n"
                     "📌 若不知道如何製作浮水印，"
-                    "可請管理員協助處理。"
+                    "可請管理員協助處理。\n\n"
+                    f'🎁 **獎品**\n{lottery["prize"]}\n\n'
+                    f'👤 **主辦人**\n<@{lottery["host_id"]}>'
                 ),
                 color=discord.Color.gold(),
             )
