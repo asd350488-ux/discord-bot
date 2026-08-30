@@ -1,4 +1,5 @@
 import discord
+from systems.streak_lottery import setup_streak_lottery
 from character_birthday import setup_character_birthday
 from systems.limited_lottery import setup_limited_lottery
 from systems.character_test import setup_character_test
@@ -6821,5 +6822,18 @@ def run_web():
 
 
 threading.Thread(target=run_web, daemon=True).start()
+
+
+# ==========================
+# 🌙 簽到條件抽獎系統
+# ==========================
+
+setup_streak_lottery(
+    bot,
+    LOTTERY_CHANNEL,
+    LOTTERY_MANAGERS,
+    LOTTERY_PING_ROLE,
+)
+
 
 bot.run(os.getenv("TOKEN"))
