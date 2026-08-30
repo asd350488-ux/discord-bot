@@ -8,13 +8,12 @@ import random
 from datetime import datetime, timedelta
 
 import discord
-from discord.ext import commands
 
 from database import conn, c
 
 
 # ==========================
-# 🌙 系統資料
+# 🌙 系統設定
 # ==========================
 
 STREAK_LOTTERY_TABLE = "streak_lotteries"
@@ -76,10 +75,13 @@ def setup_streak_lottery_database():
 
 
 # ==========================
-# ⏰ 計算結束時間
+# ⏰ 計算抽獎結束時間
 # ==========================
 
-def get_streak_lottery_end_time(amount, unit):
+def get_streak_lottery_end_time(
+    amount,
+    unit,
+):
 
     unit = unit.upper()
 
@@ -87,16 +89,28 @@ def get_streak_lottery_end_time(amount, unit):
         return None
 
     if unit == "S":
-        return datetime.now() + timedelta(seconds=amount)
+
+        return datetime.now() + timedelta(
+            seconds=amount
+        )
 
     elif unit == "M":
-        return datetime.now() + timedelta(minutes=amount)
+
+        return datetime.now() + timedelta(
+            minutes=amount
+        )
 
     elif unit == "H":
-        return datetime.now() + timedelta(hours=amount)
+
+        return datetime.now() + timedelta(
+            hours=amount
+        )
 
     elif unit == "D":
-        return datetime.now() + timedelta(days=amount)
+
+        return datetime.now() + timedelta(
+            days=amount
+        )
 
     return None
 
@@ -109,7 +123,9 @@ def get_user_checkin_data(user_id):
 
     c.execute(
         """
-        SELECT checkin_total, checkin_streak
+        SELECT
+            checkin_total,
+            checkin_streak
         FROM users
         WHERE user_id=?
         """,
@@ -286,7 +302,7 @@ def create_streak_lottery_embed(
     else:
 
         # -------------------------
-        # 👥 參加者名單
+        # 👥 參加者
         # -------------------------
 
         if entries:
@@ -302,8 +318,9 @@ def create_streak_lottery_embed(
                 "📭 本次沒有玩家參加抽獎。"
             )
 
-        # Discord Embed 單一欄位限制
+        # Discord Embed 欄位限制
         if len(entry_mentions) > 1000:
+
             entry_mentions = (
                 entry_mentions[:950]
                 + "\n……參加者過多，部分未顯示"
@@ -361,7 +378,9 @@ def create_streak_lottery_embed(
 # 🎉 參加抽獎 View
 # ==========================
 
-class StreakLotteryView(discord.ui.View):
+class StreakLotteryView(
+    discord.ui.View
+):
 
     def __init__(self):
 
@@ -542,10 +561,8 @@ class StreakLotteryView(discord.ui.View):
         # 📊 更新畫面
         # ==========================
 
-        entries = (
-            get_streak_lottery_entries(
-                message_id
-            )
+        entries = get_streak_lottery_entries(
+            message_id
         )
 
         embed = create_streak_lottery_embed(
@@ -615,18 +632,11 @@ class StreakLotteryModal(
         max_length=3,
     )
 
-    time_amount = discord.ui.TextInput(
+    lottery_time = discord.ui.TextInput(
         label="⏰ 抽獎時間",
-        placeholder="例如：10",
+        placeholder="例如：10 D、30 M、2 H",
         required=True,
-        max_length=6,
-    )
-
-    unit = discord.ui.TextInput(
-        label="🕒 時間單位",
-        placeholder="請輸入 S、M、H、D",
-        required=True,
-        max_length=1,
+        max_length=10,
     )
 
     required_days = discord.ui.TextInput(
@@ -636,11 +646,20 @@ class StreakLotteryModal(
         max_length=6,
     )
 
+    extra_condition = discord.ui.TextInput(
+        label="📋 額外條件／需要的東西",
+        placeholder="沒有可留空",
+        required=False,
+        style=discord.TextStyle.paragraph,
+        max_length=1000,
+    )
+
     def __init__(self, check_type):
 
         super().__init__()
 
         self.check_type = check_type
+
 
     async def on_submit(
         self,
@@ -657,10 +676,6 @@ class StreakLotteryModal(
                 self.winners.value
             )
 
-            time_amount = int(
-                self.time_amount.value
-            )
-
             required_days = int(
                 self.required_days.value
             )
@@ -668,11 +683,53 @@ class StreakLotteryModal(
         except ValueError:
 
             await interaction.response.send_message(
-                "❌ 中獎人數、抽獎時間與簽到天數必須輸入數字。",
+                "❌ 中獎人數與需要簽到天數必須輸入數字。",
                 ephemeral=True,
             )
 
             return
+
+        # ==========================
+        # 🔍 驗證時間
+        # ==========================
+
+        try:
+
+            time_parts = (
+                self.lottery_time.value
+                .strip()
+                .upper()
+                .split()
+            )
+
+            if len(time_parts) != 2:
+                raise ValueError
+
+            time_amount = int(
+                time_parts[0]
+            )
+
+            time_unit = time_parts[1]
+
+        except ValueError:
+
+            await interaction.response.send_message(
+                (
+                    "❌ 抽獎時間格式錯誤！\n\n"
+                    "請使用例如：\n"
+                    "`10 D` = 10 天\n"
+                    "`30 M` = 30 分鐘\n"
+                    "`2 H` = 2 小時\n"
+                    "`60 S` = 60 秒"
+                ),
+                ephemeral=True,
+            )
+
+            return
+
+        # ==========================
+        # 🔢 數值檢查
+        # ==========================
 
         if winner_count <= 0:
 
@@ -702,102 +759,71 @@ class StreakLotteryModal(
             return
 
         # ==========================
-        # ⏰ 計算時間
+        # ⏰ 計算結束時間
         # ==========================
 
         end_time = (
             get_streak_lottery_end_time(
                 time_amount,
-                self.unit.value.strip(),
+                time_unit,
             )
         )
 
         if end_time is None:
 
             await interaction.response.send_message(
-                "❌ 時間單位只能輸入 S、M、H、D。",
+                (
+                    "❌ 時間單位只能使用：\n\n"
+                    "`S` = 秒\n"
+                    "`M` = 分鐘\n"
+                    "`H` = 小時\n"
+                    "`D` = 天"
+                ),
                 ephemeral=True,
             )
 
             return
 
         # ==========================
-        # 📋 下一步
+        # 📋 額外條件
         # ==========================
-
-        await interaction.response.send_modal(
-            ExtraConditionModal(
-                prize=self.prize.value.strip(),
-                winner_count=winner_count,
-                end_time=end_time,
-                check_type=self.check_type,
-                required_days=required_days,
-            )
-        )
-
-
-# ==========================
-# 📋 額外條件 Modal
-# ==========================
-
-class ExtraConditionModal(
-    discord.ui.Modal,
-    title="📋 額外抽獎條件",
-):
-
-    extra_condition = discord.ui.TextInput(
-        label="📋 額外條件／需要的東西",
-        placeholder="例如：需要擁有活動資格",
-        required=False,
-        style=discord.TextStyle.paragraph,
-        max_length=1000,
-    )
-
-    def __init__(
-        self,
-        prize,
-        winner_count,
-        end_time,
-        check_type,
-        required_days,
-    ):
-
-        super().__init__()
-
-        self.prize = prize
-        self.winner_count = winner_count
-        self.end_time = end_time
-        self.check_type = check_type
-        self.required_days = required_days
-
-    async def on_submit(
-        self,
-        interaction: discord.Interaction,
-    ):
 
         extra_condition = (
-            self.extra_condition.value.strip()
-        )
+            self.extra_condition.value or ""
+        ).strip()
 
         # ==========================
-        # 📨 先建立抽獎訊息
+        # 🎨 建立抽獎資料
         # ==========================
 
         temporary_lottery = {
 
-            "prize": self.prize,
-            "winner_count": self.winner_count,
+            "prize": (
+                self.prize.value.strip()
+            ),
+
+            "winner_count": winner_count,
+
             "host_id": str(
                 interaction.user.id
             ),
+
             "end_time": (
-                self.end_time.isoformat()
+                end_time.isoformat()
             ),
+
             "check_type": self.check_type,
-            "required_days": self.required_days,
+
+            "required_days": required_days,
+
             "extra_condition": extra_condition,
+
             "status": "running",
         }
+
+        # ==========================
+        # 🎨 建立 Embed
+        # ==========================
 
         embed = create_streak_lottery_embed(
             temporary_lottery,
@@ -846,17 +872,20 @@ class ExtraConditionModal(
                 str(interaction.channel.id),
                 str(interaction.user.id),
 
-                self.prize,
-                self.winner_count,
+                self.prize.value.strip(),
 
-                self.end_time.isoformat(),
+                winner_count,
+
+                end_time.isoformat(),
 
                 self.check_type,
-                self.required_days,
+
+                required_days,
 
                 extra_condition,
 
                 "running",
+
                 "",
 
                 datetime.now().isoformat(),
@@ -870,12 +899,13 @@ class ExtraConditionModal(
         # ==========================
 
         timestamp = int(
-            self.end_time.timestamp()
+            end_time.timestamp()
         )
 
         await interaction.response.send_message(
             (
                 "✅ 簽到條件抽獎建立成功！\n\n"
+                f"🎁 獎品：{self.prize.value}\n"
                 f"⏰ 抽獎截止：<t:{timestamp}:F>"
             ),
             ephemeral=True,
@@ -947,7 +977,7 @@ async def finish_streak_lottery(
 ):
 
     # ==========================
-    # 🔍 重新取得資料
+    # 🔍 取得抽獎資料
     # ==========================
 
     c.execute(
@@ -971,10 +1001,8 @@ async def finish_streak_lottery(
     # 👥 取得參加者
     # ==========================
 
-    entries = (
-        get_streak_lottery_entries(
-            message_id
-        )
+    entries = get_streak_lottery_entries(
+        message_id
     )
 
     # ==========================
@@ -1064,7 +1092,7 @@ async def finish_streak_lottery(
         return
 
     # ==========================
-    # 🎨 更新結束畫面
+    # 🎨 重新取得結束資料
     # ==========================
 
     c.execute(
@@ -1090,7 +1118,7 @@ async def finish_streak_lottery(
     )
 
     # ==========================
-    # 📢 頻道公布
+    # 📢 頻道公布結果
     # ==========================
 
     if winners:
@@ -1120,7 +1148,8 @@ async def finish_streak_lottery(
         await channel.send(
             (
                 "📭 **抽獎結果公布！**\n\n"
-                "本次沒有任何玩家參加抽獎，因此沒有中獎者。"
+                "本次沒有任何玩家參加抽獎，"
+                "因此沒有中獎者。"
             )
         )
 
@@ -1149,9 +1178,12 @@ async def finish_streak_lottery(
                     f'🎁 **獎品：{lottery["prize"]}**\n\n'
                     "━━━━━━━━━━━━━━━━━━\n\n"
                     "💌 溫馨提醒 💌\n\n"
-                    "📌 在任何公開平台發布與角色相關的圖片或影片時，請加上浮水印。\n\n"
-                    "📌 若需發布影片，請先私訊角色創作者確認內容，經創作者同意後再公開發布。\n\n"
-                    "📌 若不知道如何製作浮水印，可請管理員協助處理。"
+                    "📌 在任何公開平台發布與角色相關的圖片或影片時，"
+                    "請加上浮水印。\n\n"
+                    "📌 若需發布影片，請先私訊角色創作者確認內容，"
+                    "經創作者同意後再公開發布。\n\n"
+                    "📌 若不知道如何製作浮水印，"
+                    "可請管理員協助處理。"
                 ),
                 color=discord.Color.gold(),
             )
@@ -1167,7 +1199,7 @@ async def finish_streak_lottery(
         except discord.Forbidden:
 
             print(
-                f"⚠️ 無法私訊中獎者 {user_id}，對方可能已關閉私訊。"
+                f"⚠️ 無法私訊中獎者 {user_id}"
             )
 
         except Exception as e:
@@ -1195,7 +1227,9 @@ async def streak_lottery_checker(
 
             c.execute(
                 f"""
-                SELECT message_id, end_time
+                SELECT
+                    message_id,
+                    end_time
                 FROM {STREAK_LOTTERY_TABLE}
                 WHERE status='running'
                 """
@@ -1265,9 +1299,9 @@ def setup_streak_lottery(
         interaction: discord.Interaction,
     ):
 
-        # -------------------------
+        # ==========================
         # 📍 頻道限制
-        # -------------------------
+        # ==========================
 
         if (
             interaction.channel.id
@@ -1281,9 +1315,9 @@ def setup_streak_lottery(
 
             return
 
-        # -------------------------
+        # ==========================
         # 👑 管理員限制
-        # -------------------------
+        # ==========================
 
         if (
             interaction.user.id
@@ -1350,8 +1384,11 @@ def setup_streak_lottery(
 
         _checker_started = True
 
-
     bot.add_listener(
         start_streak_lottery_checker,
         "on_ready"
+    )
+
+    print(
+        "✅ 簽到條件抽獎系統已啟動"
     )
