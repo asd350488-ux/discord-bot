@@ -1337,14 +1337,20 @@ def setup_streak_lottery(
     # ⏰ 啟動檢查器
     # ==========================
 
-    if not _checker_started:
+    async def start_checker():
+
+         global _checker_started
+
+         if _checker_started:
+             return
 
         asyncio.create_task(
-            streak_lottery_checker(bot)
+             streak_lottery_checker(bot)
         )
 
-        _checker_started = True
+         _checker_started = True
 
-    print(
-        "✅ 簽到條件抽獎系統已啟動"
+
+    bot.loop.create_task(
+        start_checker()
     )
