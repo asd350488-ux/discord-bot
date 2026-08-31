@@ -6786,14 +6786,31 @@ async def create_blindbox_panel(interaction: discord.Interaction):
     await interaction.response.send_message("✅ 星月盲盒面板建立完成！", ephemeral=True)
 
 
-# 🌐 保活
+# ==========================
+# 🌐 Render 保活服務
+# ==========================
+
+class ReusableTCPServer(TCPServer):
+    allow_reuse_address = True
+
+
 def run_web():
     port = int(os.environ.get("PORT", 10000))
-    with TCPServer(("", port), SimpleHTTPRequestHandler) as httpd:
+
+    with ReusableTCPServer(
+        ("0.0.0.0", port),
+        SimpleHTTPRequestHandler
+    ) as httpd:
+
+        print(f"🌐 Web Server 已啟動，Port：{port}")
+
         httpd.serve_forever()
 
 
-threading.Thread(target=run_web, daemon=True).start()
+threading.Thread(
+    target=run_web,
+    daemon=True
+).start()
 
 
 # ==========================
