@@ -1,4 +1,4 @@
-
+import discord
 from systems.streak_lottery import setup_streak_lottery
 from character_birthday import setup_character_birthday
 from systems.limited_lottery import setup_limited_lottery
