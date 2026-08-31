@@ -1,4 +1,4 @@
-import discord
+
 from systems.streak_lottery import setup_streak_lottery
 from character_birthday import setup_character_birthday
 from systems.limited_lottery import setup_limited_lottery
@@ -589,6 +589,97 @@ class LotteryView(discord.ui.View):
         embed.set_footer(text="Moon Bot Lottery")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+    # ==========================
+    # 🛑 結束抽獎（僅管理員）
+    # ==========================
+
+    @discord.ui.button(
+        label="🛑 結束抽獎",
+        style=discord.ButtonStyle.danger,
+        custom_id="lottery_manual_end",
+    )
+    async def manual_end_lottery(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+
+        if interaction.user.id not in LOTTERY_MANAGERS:
+            await interaction.response.send_message(
+                "❌ 只有抽獎管理員可以結束抽獎。", ephemeral=True
+            )
+            return
+
+        message_id = str(interaction.message.id)
+
+        c.execute(
+            "SELECT status FROM lotteries WHERE message_id=?",
+            (message_id,),
+        )
+        lottery = c.fetchone()
+
+        if not lottery:
+            await interaction.response.send_message(
+                "❌ 找不到本次抽獎資料。", ephemeral=True
+            )
+            return
+
+        if lottery[0] != "running":
+            await interaction.response.send_message(
+                "🔒 本次抽獎已經結束。", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "⚠️ 確定要提前結束本次抽獎嗎？\n"
+            "確認後會立即抽出中獎者，且無法恢復。",
+            view=ConfirmManualLotteryEndView(message_id),
+            ephemeral=True,
+        )
+
+
+# ==========================
+# ⚠️ 確認提前結束抽獎
+# ==========================
+
+class ConfirmManualLotteryEndView(discord.ui.View):
+
+    def __init__(self, message_id):
+        super().__init__(timeout=60)
+        self.message_id = str(message_id)
+
+    @discord.ui.button(label="✅ 確認結束並開獎", style=discord.ButtonStyle.danger)
+    async def confirm_end(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if interaction.user.id not in LOTTERY_MANAGERS:
+            await interaction.response.send_message(
+                "❌ 只有抽獎管理員可以結束抽獎。", ephemeral=True
+            )
+            return
+
+        c.execute(
+            "SELECT status FROM lotteries WHERE message_id=?",
+            (self.message_id,),
+        )
+        lottery = c.fetchone()
+
+        if not lottery or lottery[0] != "running":
+            await interaction.response.edit_message(
+                content="🔒 本次抽獎已經結束或不存在。", view=None
+            )
+            return
+
+        await interaction.response.edit_message(
+            content="⏳ 正在提前結束抽獎並開獎……", view=None
+        )
+
+        await finish_lottery(self.message_id)
+
+    @discord.ui.button(label="❌ 取消", style=discord.ButtonStyle.secondary)
+    async def cancel_end(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(
+            content="✅ 已取消結束抽獎。", view=None
+        )
 
 
 # ==========================
@@ -1888,6 +1979,7 @@ async def on_ready():
 
     bot.add_view(ReviewPanelView())
     bot.add_view(ReviewManageView())
+    bot.add_view(LotteryView())
 
     # 🌙 七夕限定盲盒
     setup_limited_lottery(bot)
@@ -3238,243 +3330,123 @@ async def birthday_check():
 # ==========================
 
 
+async def finish_lottery(message_id):
+
+    c.execute(
+        """
+        SELECT channel_id, host_id, prize_type, prize_value, message, winner_count, end_time
+        FROM lotteries
+        WHERE message_id=? AND status='running'
+        """,
+        (str(message_id),),
+    )
+
+    lottery = c.fetchone()
+
+    if not lottery:
+        return False
+
+    (channel_id, host_id, prize_type, prize_value, custom_message, winner_count, end_time) = lottery
+    end_time = datetime.fromisoformat(end_time)
+
+    c.execute(
+        "SELECT user_id FROM lottery_entries WHERE message_id=?",
+        (str(message_id),),
+    )
+    rows = c.fetchall()
+
+    if len(rows) == 0:
+        winners = []
+    elif len(rows) <= winner_count:
+        winners = rows
+    else:
+        winners = random.sample(rows, winner_count)
+
+    winner_mentions = []
+
+    for (winner_id,) in winners:
+        winner_id = str(winner_id)
+        winner_mentions.append(f"<@{winner_id}>")
+
+        if prize_type == "money":
+            add_money(winner_id, int(prize_value))
+
+        await send_lottery_dm(
+            winner_id, host_id, prize_type, prize_value, custom_message
+        )
+
+    # 先標記結束，避免背景檢查與手動結束重複開獎
+    c.execute(
+        "UPDATE lotteries SET status='ended' WHERE message_id=? AND status='running'",
+        (str(message_id),),
+    )
+    conn.commit()
+
+    channel = bot.get_channel(int(channel_id))
+    if channel is None:
+        return True
+
+    try:
+        message = await channel.fetch_message(int(message_id))
+    except (discord.NotFound, discord.Forbidden):
+        return True
+
+    if prize_type == "money":
+        prize_text = f"💰 努努幣 {int(prize_value):,}"
+    elif prize_type == "image":
+        prize_text = "🎨 隨機風格人設圖"
+    elif prize_type == "couple":
+        prize_text = "💕 與喜愛角色合照"
+    else:
+        prize_text = f"📝 {prize_value}"
+
+    timestamp = int(end_time.timestamp())
+
+    embed = discord.Embed(title="🎉 Moon Bot 抽獎", color=0xF1C40F)
+    embed.add_field(name="🎁 獎品", value=prize_text, inline=False)
+    embed.add_field(name="👥 中獎人數", value=f"{winner_count} 人", inline=True)
+    embed.add_field(name="👤 主辦人", value=f"<@{host_id}>", inline=True)
+    embed.add_field(name="⏰ 抽獎截止", value=f"<t:{timestamp}:F>", inline=False)
+    embed.add_field(
+        name="🏆 中獎者",
+        value="\n".join(winner_mentions) if winner_mentions else "📭 本次抽獎無人參加",
+        inline=False,
+    )
+    embed.add_field(name="📌 狀態", value="🔴 已結束", inline=False)
+    embed.set_footer(text="🎉 本次抽獎已結束，感謝大家參與！")
+
+    ended_view = LotteryView()
+    c.execute("SELECT COUNT(*) FROM lottery_entries WHERE message_id=?", (str(message_id),))
+    total = c.fetchone()[0]
+    ended_view.children[0].label = f"🎉 參加抽獎（{total}）"
+    ended_view.children[0].disabled = True
+    # 查看名單保留可使用；結束抽獎按鈕鎖定
+    for child in ended_view.children:
+        if getattr(child, "custom_id", None) == "lottery_manual_end":
+            child.disabled = True
+
+    await message.edit(embed=embed, view=ended_view)
+    return True
+
+
+# ==========================
+# 🌙 抽獎背景檢查
+# ==========================
+
 @tasks.loop(seconds=10)
 async def lottery_checker():
 
-    print("🌙 lottery_checker 執行中")
-
     now = datetime.now()
 
-    c.execute("""
-        SELECT
-            message_id,
-            channel_id,
-            host_id,
-            prize_type,
-            prize_value,
-            message,
-            winner_count,
-            end_time
-        FROM lotteries
-        WHERE status='running'
-    """)
+    c.execute(
+        "SELECT message_id, end_time FROM lotteries WHERE status='running'"
+    )
 
     lotteries = c.fetchall()
 
-    for (
-        message_id,
-        channel_id,
-        host_id,
-        prize_type,
-        prize_value,
-        custom_message,
-        winner_count,
-        end_time,
-    ) in lotteries:
-
-        end_time = datetime.fromisoformat(end_time)
-
-        if end_time <= now:
-
-            # -------------------------
-            # 查詢參加者
-            # -------------------------
-
-            c.execute(
-                """
-                SELECT user_id
-                FROM lottery_entries
-                WHERE message_id = ?
-                """,
-                (message_id,),
-            )
-
-            rows = c.fetchall()
-
-            print(f"抽獎 {message_id}")
-
-            print(f"參加人數：{len(rows)}")
-
-            # -------------------------
-            # 沒有人參加
-            # -------------------------
-
-            if len(rows) == 0:
-
-                winners = []
-
-            # -------------------------
-            # 人數不足，全中
-            # -------------------------
-
-            elif len(rows) <= winner_count:
-
-                winners = rows
-
-            # -------------------------
-            # 正常抽獎
-            # -------------------------
-
-            else:
-
-                winners = random.sample(rows, winner_count)
-
-            print(f"中獎人數：{len(winners)}")
-            # -------------------------
-            # 發放獎勵
-            # -------------------------
-
-            winner_mentions = []
-
-            for (winner_id,) in winners:
-
-                winner_id = str(winner_id)
-
-                winner_mentions.append(f"<@{winner_id}>")
-
-                # 💰 努努幣
-                if prize_type == "money":
-
-                    add_money(winner_id, int(prize_value))
-
-                # -------------------------
-                # 私訊中獎者
-                # -------------------------
-                await send_lottery_dm(
-                    winner_id,
-                    host_id,
-                    prize_type,
-                    prize_value,
-                    custom_message,
-                )
-            # -------------------------
-            # 標記抽獎結束
-            # -------------------------
-
-            c.execute(
-                """
-                UPDATE lotteries
-                SET status='ended'
-                WHERE message_id=?
-                """,
-                (message_id,),
-            )
-
-            conn.commit()
-
-            # -------------------------
-            # 取得抽獎訊息
-            # -------------------------
-
-            channel = bot.get_channel(int(channel_id))
-
-            if channel is None:
-                continue
-
-            try:
-                message = await channel.fetch_message(int(message_id))
-
-            except discord.NotFound:
-                continue
-
-            except discord.Forbidden:
-                continue
-
-            # -------------------------
-            # 更新抽獎畫面
-            # -------------------------
-
-            # 根據獎品類型顯示內容
-            if prize_type == "money":
-                prize_text = f"💰 努努幣 {int(prize_value):,}"
-
-            elif prize_type == "image":
-                prize_text = "🎨 隨機風格人設圖"
-
-            elif prize_type == "couple":
-                prize_text = "💕 與喜愛角色合照"
-
-            else:
-                prize_text = f"📝 {prize_value}"
-
-            timestamp = int(end_time.timestamp())
-
-            embed = discord.Embed(
-                title="🎉 Moon Bot 抽獎",
-                color=0xF1C40F,
-            )
-
-            embed.add_field(
-                name="🎁 獎品",
-                value=prize_text,
-                inline=False,
-            )
-
-            embed.add_field(
-                name="👥 中獎人數",
-                value=f"{winner_count} 人",
-                inline=True,
-            )
-
-            embed.add_field(
-                name="👤 主辦人",
-                value=f"<@{host_id}>",
-                inline=True,
-            )
-
-            embed.add_field(
-                name="⏰ 抽獎截止",
-                value=f"<t:{timestamp}:F>",
-                inline=False,
-            )
-
-            embed.add_field(
-                name="🏆 中獎者",
-                value=(
-                    "\n".join(winner_mentions)
-                    if winner_mentions
-                    else "📭 本次抽獎無人參加"
-                ),
-                inline=False,
-            )
-
-            embed.add_field(
-                name="📌 狀態",
-                value="🔴 已結束",
-                inline=False,
-            )
-
-            embed.set_footer(text="🎉 本次抽獎已結束，感謝大家參與！")
-
-            # -------------------------
-            # 關閉按鈕
-            # -------------------------
-
-            ended_view = LotteryView()
-
-            # 保留最後參加人數
-            c.execute(
-                """
-                SELECT COUNT(*)
-                FROM lottery_entries
-                WHERE message_id = ?
-                """,
-                (message_id,),
-            )
-
-            total = c.fetchone()[0]
-
-            ended_view.children[0].label = f"🎉 參加抽獎（{total}）"
-            ended_view.children[0].disabled = True
-
-            # -------------------------
-            # 更新抽獎訊息
-            # -------------------------
-
-            await message.edit(
-                embed=embed,
-                view=ended_view,
-            )
+    for message_id, end_time in lotteries:
+        if datetime.fromisoformat(end_time) <= now:
+            await finish_lottery(str(message_id))
 
 
 # ==========================
