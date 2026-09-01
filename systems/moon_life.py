@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # ==========================================================
 # 🌙 Moon Club｜男模會館
-# V14｜三選一隨機新人招募正式版
+# V15｜自訂新人＋購買／送禮數量版
 # 已保留成人男模養成核心，並正式加入三選一隨機新人招募。
 # 招募候選人的普通／優秀／稀有度完全隱藏。
 # ==========================================================
@@ -428,85 +428,257 @@ def build_shop_embed(user_id):
         color=MOONCLUB_COLOR,
     )
 
+class PurchaseQuantityModal(discord.ui.Modal, title="🛒 設定購買數量"):
+    quantity = discord.ui.TextInput(
+        label="購買數量",
+        placeholder="請輸入 1 以上的整數",
+        default="1",
+        max_length=6,
+    )
+
+    def __init__(self, item_key):
+        super().__init__()
+        self.item_key = item_key
+
+    async def on_submit(self, interaction):
+        user_id = str(interaction.user.id)
+        data = SHOP_ITEMS[self.item_key]
+        try:
+            quantity = int(self.quantity.value.strip())
+        except ValueError:
+            await interaction.response.send_message("❌ 購買數量必須是整數。", ephemeral=True)
+            return
+        if quantity < 1:
+            await interaction.response.send_message("❌ 購買數量至少要 1 個。", ephemeral=True)
+            return
+
+        total_price = data["price"] * quantity
+        ok, _, testing = spend_for_action(user_id, total_price)
+        if not ok:
+            await interaction.response.send_message(
+                f"❌ 努努幣不足。\n📦 購買：**{data['name']} ×{quantity}**\n"
+                f"💰 總價：**{total_price:,} 努努幣**\n"
+                f"💳 目前：**{get_money(user_id):,} 努努幣**",
+                ephemeral=True,
+            )
+            return
+
+        add_inventory(user_id, self.item_key, quantity)
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="🛒 購買成功",
+                description=(
+                    f"獲得 **{data['name']} ×{quantity}**\n"
+                    f"💰 {'測試免費' if testing else f'努努幣 -{total_price:,}'}\n"
+                    f"🎒 已放入背包，目前共有 **{inventory_amount(user_id, self.item_key)} 個**。"
+                ),
+                color=MOONCLUB_COLOR,
+            ),
+            ephemeral=True,
+        )
+
+
 class ShopItemSelect(discord.ui.Select):
     def __init__(self, category):
-        self.category=category
-        keys=[k for k,v in SHOP_ITEMS.items() if ("stamina" in v if category=="energy" else "gift" in v)]
-        options=[]
+        self.category = category
+        keys = [k for k, v in SHOP_ITEMS.items() if ("stamina" in v if category == "energy" else "gift" in v)]
+        options = []
         for k in keys:
-            data=SHOP_ITEMS[k]
+            data = SHOP_ITEMS[k]
             if "stamina" in data:
-                desc=f"{data['price']:,} 努努幣｜恢復 {data['stamina']} 點體力"
+                desc = f"{data['price']:,} 努努幣｜恢復 {data['stamina']} 點體力"
             else:
-                desc=f"{data['price']:,} 努努幣｜{data['desc']}"
+                desc = f"{data['price']:,} 努努幣｜{data['desc']}"
             options.append(discord.SelectOption(label=data["name"], value=k, description=desc[:100]))
-        super().__init__(placeholder="選擇要購買的物品…",options=options)
-    async def callback(self,interaction):
-        user_id=str(interaction.user.id); key=self.values[0]; data=SHOP_ITEMS[key]
-        ok,_,testing=spend_for_action(user_id,data["price"])
-        if not ok:
-            await interaction.response.send_message(f"❌ 努努幣不足，需要 **{data['price']:,}**，目前 **{get_money(user_id):,}**。",ephemeral=True); return
-        add_inventory(user_id,key,1)
-        await interaction.response.edit_message(
-            embed=discord.Embed(title="🛒 購買成功",description=f"獲得 **{data['name']} ×1**\n💰 {'測試免費' if testing else f'努努幣 -{data['price']:,}'}\n🎒 已放入背包。",color=MOONCLUB_COLOR),
-            view=ShopView())
+        super().__init__(placeholder="選擇要購買的物品…", options=options)
+
+    async def callback(self, interaction):
+        await interaction.response.send_modal(PurchaseQuantityModal(self.values[0]))
+
+
+def consume_inventory_amount(user_id, item_key, amount):
+    amount = int(amount)
+    if amount < 1:
+        return False
+    qty = inventory_amount(user_id, item_key)
+    if qty < amount:
+        return False
+    remaining = qty - amount
+    if remaining == 0:
+        c.execute("DELETE FROM moonclub_inventory WHERE user_id=? AND item_name=?", (str(user_id), item_key))
+    else:
+        c.execute(
+            "UPDATE moonclub_inventory SET quantity=? WHERE user_id=? AND item_name=?",
+            (remaining, str(user_id), item_key),
+        )
+    conn.commit()
+    return True
+
+
+class GiftQuantityModal(discord.ui.Modal, title="🎁 設定送禮數量"):
+    quantity = discord.ui.TextInput(
+        label="送禮數量",
+        placeholder="請輸入要送幾個",
+        default="1",
+        max_length=6,
+    )
+
+    def __init__(self, item_key, available_quantity):
+        super().__init__()
+        self.item_key = item_key
+        self.available_quantity = int(available_quantity)
+
+    async def on_submit(self, interaction):
+        user_id = str(interaction.user.id)
+        data = SHOP_ITEMS[self.item_key]
+        model = model_dict(get_model(user_id))
+        if not model:
+            await interaction.response.send_message("❌ 目前沒有可送禮的男模。", ephemeral=True)
+            return
+
+        try:
+            quantity = int(self.quantity.value.strip())
+        except ValueError:
+            await interaction.response.send_message("❌ 送禮數量必須是整數。", ephemeral=True)
+            return
+        if quantity < 1:
+            await interaction.response.send_message("❌ 送禮數量至少要 1 個。", ephemeral=True)
+            return
+
+        current_qty = inventory_amount(user_id, self.item_key)
+        if quantity > current_qty:
+            await interaction.response.send_message(f"❌ 背包數量不足，目前只有 **{current_qty} 個**。", ephemeral=True)
+            return
+        if not consume_inventory_amount(user_id, self.item_key, quantity):
+            await interaction.response.send_message("❌ 扣除背包物品時發生問題，請再試一次。", ephemeral=True)
+            return
+
+        before = int(model.get("affection", 0))
+        affection_gain = int(data["gift"]) * quantity
+        after = clamp(before + affection_gain, 0, 1000)
+        updates = {"affection": after}
+        bonus_lines = []
+        for stat, amount in data.get("bonus", {}).items():
+            old_value = int(model.get(stat, 0))
+            total_bonus = int(amount) * quantity
+            new_value = clamp(old_value + total_bonus, 0, 1000)
+            updates[stat] = new_value
+            bonus_lines.append(f"✨ {stat}：**{old_value} → {new_value}**（+{total_bonus}）")
+
+        change_model(model["model_id"], **updates)
+        text = (
+            f"🎁 送出：**{data['name']} ×{quantity}**\n"
+            f"❤️ 好感度：**{before} → {after} / 1000**（+{affection_gain}）"
+        )
+        if bonus_lines:
+            text += "\n" + "\n".join(bonus_lines)
+        text += f"\n🎒 剩餘：**{inventory_amount(user_id, self.item_key)} 個**"
+
+        add_memory(user_id, model["model_id"], f"🎁 贈送 {data['name']} ×{quantity}", text)
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="🎁 送禮成功",
+                description=f"👤 **{model['name']}**\n{text}",
+                color=MOONCLUB_COLOR,
+            ),
+            ephemeral=True,
+        )
+
 
 class InventorySelect(discord.ui.Select):
-    def __init__(self,user_id):
-        options=[]
-        for key,data in SHOP_ITEMS.items():
-            qty=inventory_amount(user_id,key)
-            if qty>0:
-                options.append(discord.SelectOption(label=f"{data['name']} ×{qty}",value=key))
-        super().__init__(placeholder="選擇要使用的物品…",options=options)
-    async def callback(self,interaction):
-        user_id=str(interaction.user.id); key=self.values[0]; data=SHOP_ITEMS[key]
-        model=model_dict(get_model(user_id))
-        if not consume_inventory(user_id,key):
-            await interaction.response.send_message("❌ 背包中沒有這個物品。",ephemeral=True); return
-        if "stamina" in data:
-            before=model.get("model_stamina",100); after=clamp(before+data["stamina"],0,100)
-            change_model(model["model_id"],model_stamina=after)
-            text=f"⚡ 體力：**{before} → {after} / 100**"
-        else:
-            before=model.get("affection",0); after=clamp(before+data["gift"],0,1000)
-            updates={"affection": after}; bonus_text=""
-            for stat, amount in data.get("bonus", {}).items():
-                old_value=int(model.get(stat,0)); new_value=clamp(old_value+int(amount),0,1000)
-                updates[stat]=new_value
-                bonus_text += f"\n✨ {stat}：**{old_value} → {new_value}**"
-            change_model(model["model_id"], **updates)
-            text=f"❤️ 好感度：**{before} → {after} / 1000**" + bonus_text
-        add_memory(user_id,model["model_id"],f"🎁 使用 {data['name']}",text)
-        await interaction.response.edit_message(embed=discord.Embed(title=data["name"],description=f"👤 **{model['name']}**\n{text}",color=MOONCLUB_COLOR),view=ShopView())
+    def __init__(self, user_id):
+        options = []
+        for key, data in SHOP_ITEMS.items():
+            qty = inventory_amount(user_id, key)
+            if qty > 0:
+                action = "送禮" if "gift" in data else "使用"
+                options.append(discord.SelectOption(
+                    label=f"{data['name']} ×{qty}",
+                    value=key,
+                    description=f"選擇後{action}",
+                ))
+        super().__init__(placeholder="選擇要使用／送出的物品…", options=options)
+
+    async def callback(self, interaction):
+        user_id = str(interaction.user.id)
+        key = self.values[0]
+        data = SHOP_ITEMS[key]
+        qty = inventory_amount(user_id, key)
+        if qty <= 0:
+            await interaction.response.send_message("❌ 背包中沒有這個物品。", ephemeral=True)
+            return
+
+        if "gift" in data:
+            await interaction.response.send_modal(GiftQuantityModal(key, qty))
+            return
+
+        model = model_dict(get_model(user_id))
+        if not consume_inventory(user_id, key):
+            await interaction.response.send_message("❌ 背包中沒有這個物品。", ephemeral=True)
+            return
+        before = model.get("model_stamina", 100)
+        after = clamp(before + data["stamina"], 0, 100)
+        change_model(model["model_id"], model_stamina=after)
+        text = f"⚡ 體力：**{before} → {after} / 100**\n🎒 剩餘：**{inventory_amount(user_id, key)} 個**"
+        add_memory(user_id, model["model_id"], f"⚡ 使用 {data['name']}", text)
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title=data["name"],
+                description=f"👤 **{model['name']}**\n{text}",
+                color=MOONCLUB_COLOR,
+            ),
+            view=ShopView(),
+        )
+
 
 class ShopView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=300)
-    @discord.ui.button(label="🧃 體力用品",style=discord.ButtonStyle.success,row=0)
-    async def energy(self,interaction,button):
-        v=discord.ui.View(timeout=180); v.add_item(ShopItemSelect("energy")); v.add_item(ShopBackButton())
-        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)),view=v)
-    @discord.ui.button(label="🎁 禮物",style=discord.ButtonStyle.primary,row=0)
-    async def gifts(self,interaction,button):
-        v=discord.ui.View(timeout=180); v.add_item(ShopItemSelect("gift")); v.add_item(ShopBackButton())
-        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)),view=v)
-    @discord.ui.button(label="🎒 背包",style=discord.ButtonStyle.secondary,row=1)
-    async def inventory(self,interaction,button):
-        user_id=str(interaction.user.id)
-        opts=[k for k in SHOP_ITEMS if inventory_amount(user_id,k)>0]
+
+    @discord.ui.button(label="🧃 體力用品", style=discord.ButtonStyle.success, row=0)
+    async def energy(self, interaction, button):
+        v = discord.ui.View(timeout=180)
+        v.add_item(ShopItemSelect("energy"))
+        v.add_item(ShopBackButton())
+        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)), view=v)
+
+    @discord.ui.button(label="🎁 禮物", style=discord.ButtonStyle.primary, row=0)
+    async def gifts(self, interaction, button):
+        v = discord.ui.View(timeout=180)
+        v.add_item(ShopItemSelect("gift"))
+        v.add_item(ShopBackButton())
+        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)), view=v)
+
+    @discord.ui.button(label="🎒 背包", style=discord.ButtonStyle.secondary, row=1)
+    async def inventory(self, interaction, button):
+        user_id = str(interaction.user.id)
+        opts = [k for k in SHOP_ITEMS if inventory_amount(user_id, k) > 0]
         if not opts:
-            await interaction.response.send_message("🎒 背包目前是空的。",ephemeral=True); return
-        v=discord.ui.View(timeout=180); v.add_item(InventorySelect(user_id)); v.add_item(ShopBackButton())
-        await interaction.response.edit_message(embed=discord.Embed(title="🎒 Moon Club｜背包",description="選擇物品後立即使用。",color=MOONCLUB_COLOR),view=v)
-    @discord.ui.button(label="⬅️ 回主畫面",style=discord.ButtonStyle.secondary,row=1)
-    async def back(self,interaction,button):
+            await interaction.response.send_message("🎒 背包目前是空的。", ephemeral=True)
+            return
+        v = discord.ui.View(timeout=180)
+        v.add_item(InventorySelect(user_id))
+        v.add_item(ShopBackButton())
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🎒 Moon Club｜背包",
+                description="選擇體力用品後立即使用；選擇禮物後可以自行輸入送禮數量。",
+                color=MOONCLUB_COLOR,
+            ),
+            view=v,
+        )
+
+    @discord.ui.button(label="⬅️ 回主畫面", style=discord.ButtonStyle.secondary, row=1)
+    async def back(self, interaction, button):
         await refresh_home(interaction)
 
+
 class ShopBackButton(discord.ui.Button):
-    def __init__(self): super().__init__(label="⬅️ 回商店",style=discord.ButtonStyle.secondary)
-    async def callback(self,interaction):
-        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)),view=ShopView())
+    def __init__(self):
+        super().__init__(label="⬅️ 回商店", style=discord.ButtonStyle.secondary)
+
+    async def callback(self, interaction):
+        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)), view=ShopView())
 
 # ==========================================================
 # 🌙 初始建立
@@ -1317,7 +1489,7 @@ async def start_recruitment(interaction):
         st = candidate["stats"]
         lines.append(
             f"**候選人 {index}**\n"
-            f"🎂 {candidate['age']} 歲｜😈 {candidate['personality']}｜🎭 {candidate['potential']}\n"
+            f"🎭 {candidate['potential']}｜🎂 年齡、😈 性格可於領取時自行設定\n"
             f"🧠 {st['intelligence']}｜❤️ {st['emotion']}｜💪 {st['fitness']}｜🎨 {st['creativity']}｜✨ {st['social']}\n"
             f"📖 {candidate['background']}"
         )
@@ -1355,8 +1527,18 @@ class RecruitCandidatesView(discord.ui.View):
     async def third(self, interaction, button): await self.pick(interaction, 2)
 
 
-class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
+class RecruitNameModal(discord.ui.Modal, title="✏️ 設定新人男模資料"):
     name = discord.ui.TextInput(label="新人男模名字", max_length=30)
+    age = discord.ui.TextInput(
+        label="年齡（必須 18 歲以上）",
+        placeholder="例如：25",
+        max_length=3,
+    )
+    personality = discord.ui.TextInput(
+        label="性格（自行設定）",
+        placeholder="例如：溫柔、黏人、成熟穩重",
+        max_length=50,
+    )
 
     def __init__(self, candidate, owner_user_id=None):
         super().__init__()
@@ -1367,6 +1549,7 @@ class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
         if self.owner_user_id is not None and interaction.user.id != self.owner_user_id:
             await interaction.response.send_message("❌ 這不是你的招募流程。", ephemeral=True)
             return
+
         user_id = str(interaction.user.id)
         player = get_player(user_id)
         if not player:
@@ -1379,8 +1562,22 @@ class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
             return
 
         name = self.name.value.strip()
-        if not name:
-            await interaction.response.send_message("❌ 請輸入名字。", ephemeral=True)
+        personality = self.personality.value.strip()
+        if not name or not personality:
+            await interaction.response.send_message("❌ 請完整填寫名字、年齡與性格。", ephemeral=True)
+            return
+
+        try:
+            age = int(self.age.value.strip())
+        except ValueError:
+            await interaction.response.send_message("❌ 年齡只能輸入數字。", ephemeral=True)
+            return
+
+        if age < 18:
+            await interaction.response.send_message("🔞 年齡必須滿 **18 歲以上** 才能招募成人男模。", ephemeral=True)
+            return
+        if age > 120:
+            await interaction.response.send_message("❌ 請輸入合理的年齡。", ephemeral=True)
             return
 
         c.execute("SELECT 1 FROM moonclub_modelren WHERE user_id=? AND name=?", (user_id, name))
@@ -1389,7 +1586,7 @@ class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
             return
 
         scores = {p: random.randint(0, 8) for p in PERSONALITY_EMOJIS}
-        scores[self.candidate["personality"]] += 8
+        scores[personality] = scores.get(personality, 0) + 16
         stats = self.candidate["stats"]
 
         c.execute("""
@@ -1399,16 +1596,21 @@ class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
              model_stamina,personality_scores,personalities,interests,
              interest_progress,experiences,hidden_rarity,potential_direction,
              background_story,created_at)
-            VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,'[]','[]','{}','{}',?,?,?,?)
+            VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','{}','{}',?,?,?,?)
         """, (
-            user_id, player[1], "會館老闆", name, self.candidate["age"],
+            user_id, player[1], "會館老闆", name, age,
             stats["intelligence"], stats["emotion"], stats["fitness"],
             stats["creativity"], stats["social"],
-            dump_json(scores), self.candidate["rarity"],
+            dump_json(scores), dump_json([personality]), self.candidate["rarity"],
             self.candidate["potential"], self.candidate["background"], now_iso(),
         ))
         model_id = c.lastrowid
-        add_memory(user_id, model_id, "✨ 新人加入", f"{name} 正式加入 Moon Club。")
+        add_memory(
+            user_id,
+            model_id,
+            "✨ 新人加入",
+            f"{name} 正式加入 Moon Club。🎂 年齡 {age} 歲｜😈 性格：{personality}。",
+        )
         conn.commit()
 
         await interaction.response.send_message(
@@ -1416,8 +1618,8 @@ class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
                 title="🎉 招募成功！",
                 description=(
                     f"{MODEL_ICON} **{name}** 正式加入 Moon Club！\n"
-                    f"🎂 {self.candidate['age']} 歲\n"
-                    f"😈 {self.candidate['personality']}\n"
+                    f"🎂 **{age} 歲**\n"
+                    f"😈 **{personality}**\n"
                     f"🎭 {self.candidate['potential']}\n\n"
                     f"🌱 他將和其他人一樣，從頭開始培養。"
                 ),
@@ -1585,7 +1787,7 @@ def setup_moon_club(bot):
             view=MoonClubEntranceView(),
         )
 
-    print("🌙 Moon Club V14｜三選一隨機新人招募正式版已載入")
+    print("🌙 Moon Club V15｜自訂新人＋購買／送禮數量版已載入")
 
 
 # ==========================================================
