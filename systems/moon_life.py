@@ -1332,63 +1332,6 @@ def get_moonclub_bond_event_candidates(model_data, flags=None):
             result.append(event)
     return result
 
-def setup_moon_club(bot):
-    init_moonclub_tables()
-
-    # 防止 on_ready 因重新連線再次執行時重複註冊指令
-    if getattr(bot, "_moon_life_loaded", False):
-        return
-    bot._moon_club_loaded = True
-
-    @bot.tree.command(name="moonclub清空紀錄", description="清空自己的 Moon Club｜男模會館 測試紀錄")
-    async def moonclub_clear_record(interaction: discord.Interaction):
-        user_id = interaction.user.id
-
-        # 正式上線後只有 BOT_ADMINS 可以使用；測試階段也允許 Moon Club｜男模會館 測試員自行重置。
-        if user_id not in BOT_ADMINS and not is_moonclub_tester(user_id):
-            await interaction.response.send_message(
-                "❌ 這個功能目前只開放 Moon Club｜男模會館 測試人員與管理員。",
-                ephemeral=True
-            )
-            return
-
-        await interaction.response.send_message(
-            "⚠️ **確定要清空自己的 Moon Club｜男模會館 測試紀錄嗎？**\n\n"
-            "這會刪除你的男模、背包、職涯紀錄、遊戲天數與 Moon Club｜男模會館 體力資料。\n"
-            "💰 **不會刪除努努幣，也不會影響其他系統。**",
-            view=MoonClubClearConfirmView(user_id),
-            ephemeral=True
-        )
-
-
-    @bot.tree.command(name="moonclub", description="進入 Moon Club｜男模會館")
-    async def moonclub(interaction: discord.Interaction):
-        user_id = str(interaction.user.id)
-        player = get_player(user_id)
-        model = get_model(user_id)
-
-        if not player or not model:
-            embed = discord.Embed(
-                title="🌙 Moon Club｜男模會館",
-                description=(
-                    "你接手了一間剛起步的小型男模會館。\n\n"
-                    "👑 你的身份是會館老闆\n"
-                    "👥 開始時會有兩位新人男模加入\n"
-                    "🌟 培養能力、性格與專長\n"
-                    "💕 提升與旗下男模的老闆默契\n"
-                    "📖 所有重要經歷都會留下職涯紀錄\n\n"
-                    "✨ 現在，讓 Moon Club 正式開幕吧！"
-                ),
-                color=MOONCLUB_COLOR
-            )
-            await interaction.response.send_message(embed=embed, view=StartMoonClubView(), ephemeral=True)
-            return
-
-        embed = await build_home_embed(user_id)
-        await interaction.response.send_message(embed=embed, view=MoonClubFullHomeView(), ephemeral=True)
-
-    print("🌙 Moon Club｜男模會館 正式完整版已載入")
-
 # ==========================================================
 # 🎲 Moon Club｜特殊事件系統 v2
 # 🏋️ 第二批：培訓事件 11～20
@@ -1708,3 +1651,11 @@ def get_moonclub_event_detail(event_id):
     return MOONCLUB_FULL_EVENT_DETAILS.get(event_id, {})
 
 MOONCLUB_ALL_EVENTS = [{'id': 'bond_01', 'name': '💬 第一次真正的聊天', 'bond': 50, 'requires': ['chat_once'], 'once': True}, {'id': 'bond_02', 'name': '☕ 主動邀請喝咖啡', 'bond': 150, 'requires': ['bond_01', 'meal_twice'], 'once': True}, {'id': 'bond_03', 'name': '📱 第一次私人訊息', 'bond': 250, 'requires': ['bond_02', 'recent_interaction'], 'once': True}, {'id': 'bond_04', 'name': '🌧️ 情緒低落時找你', 'bond': 350, 'requires': ['recent_training_or_work', 'low_stamina_or_setback'], 'once': True}, {'id': 'bond_05', 'name': '🌙 深夜談心', 'bond': 450, 'requires': ['bond_04', 'chat_today'], 'once': True}, {'id': 'bond_06', 'name': '🤍 分享自己的秘密', 'bond': 550, 'requires': ['bond_05', 'multiple_chats'], 'once': True}, {'id': 'bond_07', 'name': '🥹 主動尋求你的意見', 'bond': 650, 'requires': ['bond_05', 'training_done', 'work_done'], 'once': True}, {'id': 'bond_08', 'name': '🎁 意外準備的小禮物', 'bond': 750, 'requires': ['gift_received', 'multiple_interactions'], 'once': True}, {'id': 'bond_09', 'name': '❤️ 關鍵時刻的信任', 'bond': 850, 'requires': ['bond_events_6', 'important_career_event'], 'once': True}, {'id': 'bond_10', 'name': '👑 靈魂搭檔', 'bond': 1000, 'requires': ['bond_milestones', 'career_experience'], 'once': True}, {'id': 'training_11', 'name': '💇 意外成功的形象改造', 'requires': ['image_training_multiple', 'high_looks', 'last_training_image'], 'once': True}, {'id': 'training_12', 'name': '📸 攝影師注意到他', 'requires': ['image_training_or_promo', 'high_looks'], 'once': True}, {'id': 'training_13', 'name': '🗣️ 克服舞台緊張', 'requires': ['speech_training_multiple', 'recent_speech_training'], 'once': True}, {'id': 'training_14', 'name': '🎭 發現新的潛力', 'requires': ['same_training_multiple', 'related_stat_growth', 'no_formal_specialty'], 'once': True}, {'id': 'training_15', 'name': '🎓 培訓老師的特別評價', 'requires': ['training_count_threshold', 'two_stats_grown', 'recent_training'], 'once': True}, {'id': 'training_16', 'name': '💪 突破訓練瓶頸', 'requires': ['stat_plateau', 'continued_related_training'], 'once': True}, {'id': 'training_17', 'name': '😮 遇到培訓挫折', 'requires': ['continuous_training', 'low_stamina_or_poor_result'], 'once': True}, {'id': 'training_18', 'name': '🌟 獲得外部推薦', 'requires': ['training_multiple', 'high_related_stat', 'positive_teacher_review'], 'once': True}, {'id': 'training_19', 'name': '✉️ 收到特殊培訓邀請', 'requires': ['continuous_stat_growth', 'high_specialty_exposure', 'training_events_progress'], 'once': True}, {'id': 'training_20', 'name': '💥 一次重大的能力突破', 'requires': ['high_stat_threshold', 'long_term_related_training', 'breakthrough_or_special_training'], 'once': True}, {'id': 'specialty_21', 'name': '🎤 第一次被稱讚歌聲', 'requires': ['talent_training_multiple', 'singing_exposure', 'talent_threshold']}, {'id': 'specialty_22', 'name': '💃 舞蹈訓練的邀請', 'requires': ['dance_exposure', 'talent_training_multiple', 'talent_threshold']}, {'id': 'specialty_23', 'name': '🏋️ 健身成果受到注意', 'requires': ['fitness_training_multiple', 'appearance_or_charm_threshold']}, {'id': 'specialty_24', 'name': '🗣️ 意外成為氣氛中心', 'requires': ['speech_training_multiple', 'speech_threshold', 'social_interaction_history']}, {'id': 'specialty_25', 'name': '🎹 接觸新的樂器', 'requires': ['talent_training_multiple', 'talent_threshold', 'specialty_slots_available']}, {'id': 'specialty_26', 'name': '🎭 小型演出的機會', 'requires': ['talent_threshold', 'related_specialty_exposure', 'related_training_event']}, {'id': 'specialty_27', 'name': '🌟 專長正式形成', 'requires': ['specialty_progress_threshold', 'related_stat_threshold', 'related_event_completed', 'specialty_slots_available']}, {'id': 'specialty_28', 'name': '📈 專長能力突破', 'requires': ['official_specialty', 'related_activity_history', 'related_stat_growth']}, {'id': 'specialty_29', 'name': '🏆 因專長獲得肯定', 'requires': ['official_specialty', 'high_related_stat', 'related_work_history']}, {'id': 'specialty_30', 'name': '👑 專長帶來重大機會', 'requires': ['mature_specialty', 'high_related_stat', 'specialty_29_completed', 'work_or_activity_experience']}, {'id': 'personality_31', 'name': '❄️ 高冷的距離感', 'requires': ['cold_tendency_high', 'distance_choices_multiple']}, {'id': 'personality_32', 'name': '🐶 忠犬般的陪伴', 'requires': ['loyal_tendency_high', 'bond_threshold']}, {'id': 'personality_33', 'name': '🐱 傲嬌的關心', 'requires': ['tsundere_tendency_high', 'bond_medium']}, {'id': 'personality_34', 'name': '🥹 溫柔的安慰', 'requires': ['gentle_tendency_high', 'interaction_history']}, {'id': 'personality_35', 'name': '🔥 主動的邀請', 'requires': ['active_tendency_high', 'bond_threshold']}, {'id': 'personality_36', 'name': '😈 腹黑的小心思', 'requires': ['scheming_tendency_high', 'interaction_multiple']}, {'id': 'personality_37', 'name': '👑 自信的選擇', 'requires': ['confidence_tendency_high', 'positive_training_or_work']}, {'id': 'personality_38', 'name': '🌙 不願提起的過去', 'requires': ['mysterious_tendency_high', 'bond_high', 'late_night_talk_completed']}, {'id': 'personality_39', 'name': '⚖️ 性格的重要選擇', 'requires': ['two_personality_tendencies_close', 'important_recent_event']}, {'id': 'personality_40', 'name': '🌟 第二性格形成', 'requires': ['primary_personality_formed', 'second_tendency_high', 'special_event_experience']}, {'id': 'career_41', 'name': '📸 第一個正式工作邀約', 'requires': ['training_count_threshold', 'one_stat_threshold']}, {'id': 'career_42', 'name': '🎤 第一次公開活動', 'requires': ['work_history', 'popularity_basic', 'related_ability']}, {'id': 'career_43', 'name': '🌱 小幅人氣成長', 'requires': ['recent_work_or_activity', 'not_high_popularity']}, {'id': 'career_44', 'name': '📰 開始受到外界注意', 'requires': ['popularity_threshold', 'work_history_multiple']}, {'id': 'career_45', 'name': '😓 工作上的失誤', 'requires': ['work_history_multiple', 'low_energy_or_insufficient_ability']}, {'id': 'career_46', 'name': '🏆 獲得專業肯定', 'requires': ['career_experience', 'high_stat', 'positive_career_event']}, {'id': 'career_47', 'name': '⚖️ 職涯方向的選擇', 'requires': ['popularity_threshold', 'official_specialty', 'work_history_multiple']}, {'id': 'career_48', 'name': '💎 高級工作邀請', 'requires': ['high_popularity', 'high_ability', 'professional_recognition']}, {'id': 'career_49', 'name': '🌪️ 職涯壓力', 'requires': ['recent_work_dense', 'low_energy']}, {'id': 'career_50', 'name': '👑 職涯第一次重大轉折', 'requires': ['career_events_multiple', 'high_popularity', 'mature_specialty']}, {'id': 'life_51', 'name': '😴 過度疲勞', 'requires': ['low_energy', 'recent_training_or_work_multiple']}, {'id': 'life_52', 'name': '🌙 深夜還留在會館', 'requires': ['night_interaction', 'bond_medium']}, {'id': 'life_53', 'name': '📱 一則奇怪的訊息', 'requires': ['public_activity_history', 'popularity_growth']}, {'id': 'life_54', 'name': '🎉 Moon Club 的慶祝活動', 'requires': ['club_milestone_or_special_day']}, {'id': 'life_55', 'name': '✨ 意想不到的訪客', 'requires': ['club_development_threshold', 'rare_random']}, {'id': 'life_56', 'name': '🌧️ 下雨天的偶遇', 'requires': ['outing_or_work_today', 'rare_random']}, {'id': 'life_57', 'name': '🎂 特別的生日', 'requires': ['model_birthday', 'not_completed']}, {'id': 'life_58', 'name': '☕ 偶然的相遇', 'requires': ['outing_history', 'rare_random']}, {'id': 'life_59', 'name': '🎁 突然準備的禮物', 'requires': ['bond_medium_high', 'interaction_multiple']}, {'id': 'life_60', 'name': '🚨 Moon Club 突發事件', 'requires': ['club_development_threshold', 'random_event']}, {'id': 'relation_61', 'name': '🔐 第一次主動說出秘密', 'requires': ['bond_high', 'deep_talk_history']}, {'id': 'relation_62', 'name': '🌙 深夜的電話', 'requires': ['bond_medium_high', 'life_interaction_history']}, {'id': 'relation_63', 'name': '💭 意見不一致', 'requires': ['bond_threshold', 'important_recent_choice']}, {'id': 'relation_64', 'name': '🥀 一個人安靜的時候', 'requires': ['personal_background_event', 'mysterious_or_introvert_tendency']}, {'id': 'relation_65', 'name': '🤝 第一次真正的信任', 'requires': ['bond_high', 'relation_events_multiple']}, {'id': 'relation_66', 'name': '😤 小小的吃醋', 'requires': ['bond_high', 'loyal_or_tsundere_or_active_tendency']}, {'id': 'relation_67', 'name': '🌧️ 雨天的談心', 'requires': ['rain_event_history', 'bond_medium_high']}, {'id': 'relation_68', 'name': '📖 他第一次主動談起過去', 'requires': ['personality_38_completed', 'relation_61_or_64_completed', 'bond_high']}, {'id': 'relation_69', 'name': '🌱 關係的重要轉變', 'requires': ['relation_events_multiple', 'bond_very_high']}, {'id': 'relation_70', 'name': '💫 專屬紀念日', 'requires': ['bond_very_high', 'important_relation_events']}, {'id': 'club_71', 'name': '🏛️ Moon Club 開始有名氣', 'requires': ['multiple_models_popularity', 'club_work_count', 'reputation_100']}, {'id': 'club_72', 'name': '💌 收到合作邀請', 'requires': ['reputation_250', 'club_work_or_activity_count', 'one_model_popularity']}, {'id': 'club_73', 'name': '🎉 第一次大型會館活動', 'requires': ['club_development_threshold', 'multiple_models', 'reputation_300']}, {'id': 'club_74', 'name': '⚡ 男模之間的小競爭', 'requires': ['at_least_two_models', 'ability_gap_small']}, {'id': 'club_75', 'name': '🤝 男模之間建立友誼', 'requires': ['shared_activity_multiple']}, {'id': 'club_76', 'name': '📉 Moon Club 遇到低潮', 'requires': ['work_reduced_or_popularity_down_or_random']}, {'id': 'club_77', 'name': '🌟 一位成員突然爆紅', 'requires': ['rapid_popularity_growth', 'major_work_completed']}, {'id': 'club_78', 'name': '🎭 團體合作活動', 'requires': ['at_least_two_models', 'member_relationship_threshold']}, {'id': 'club_79', 'name': '🚨 會館的重要危機', 'requires': ['club_development_high', 'rare_random', 'reputation_500']}, {'id': 'club_80', 'name': '👑 Moon Club 的重要里程碑', 'requires': ['reputation_750', 'multiple_models_career_results', 'large_event_completed']}, {'id': 'legend_81', 'name': '✨ 意外的大型邀請', 'requires': ['very_high_stat', 'official_specialty', 'high_popularity']}, {'id': 'legend_82', 'name': '🌍 外地大型發展機會', 'requires': ['legend_81_completed', 'mature_career', 'high_popularity']}, {'id': 'legend_83', 'name': '🎯 生涯的重要決定', 'requires': ['major_career_events_multiple', 'mature_specialty', 'high_popularity']}, {'id': 'legend_84', 'name': '🏆 個人代表作', 'requires': ['large_work_success_multiple', 'very_high_specialty']}, {'id': 'legend_85', 'name': '💫 被真正記住的名字', 'requires': ['high_popularity', 'representative_work', 'professional_recognition_multiple']}, {'id': 'legend_86', 'name': '💎 頂級工作邀請', 'requires': ['legend_84_or_85_completed', 'high_popularity', 'high_ability']}, {'id': 'legend_87', 'name': '⚡ 巔峰前的壓力', 'requires': ['major_work_dense', 'low_energy']}, {'id': 'legend_88', 'name': '🥇 頂級評價', 'requires': ['top_work_completed', 'work_success', 'very_high_ability']}, {'id': 'legend_89', 'name': '🌟 職涯巔峰', 'requires': ['top_events_multiple', 'extreme_popularity', 'mature_specialty']}, {'id': 'legend_90', 'name': '👑 頂級男模稱號', 'requires': ['career_peak', 'high_popularity', 'club_development_good']}, {'id': 'legend_91', 'name': '🌟 Moon Club 成為知名會館', 'requires': ['club_reputation_high', 'multiple_models_career_results']}, {'id': 'legend_92', 'name': '🎉 傳奇級大型活動', 'requires': ['club_reputation_high', 'large_events_multiple', 'multiple_models']}, {'id': 'legend_93', 'name': '💎 頂級合作夥伴', 'requires': ['cooperation_success_multiple', 'club_reputation_high', 'club_crisis_handled']}, {'id': 'legend_94', 'name': '🚨 Moon Club 最大危機', 'requires': ['club_development_very_high', 'rare_random']}, {'id': 'legend_95', 'name': '👑 Moon Club 傳奇里程碑', 'requires': ['club_reputation_high', 'multiple_models_success', 'legend_92_or_93_completed']}, {'id': 'legend_96', 'name': '🌌 回到最開始的地方', 'requires': ['special_events_many', 'at_least_one_model_high_achievement']}, {'id': 'legend_97', 'name': '💕 最重要的那句話', 'requires': ['bond_extreme', 'relation_events_many']}, {'id': 'legend_98', 'name': '🌠 傳奇的選擇', 'requires': ['club_legend_stage', 'at_least_one_top_model', 'special_events_many']}, {'id': 'legend_99', 'name': '👑 Moon Club 的名字', 'requires': ['legend_98_completed', 'club_reputation_near_max', 'multiple_models_high_achievement']}, {'id': 'legend_100', 'name': '🌙 最終傳奇紀念', 'requires': ['legend_99_completed', 'major_events_many']}]
+
+
+# ==========================================================
+# 🌙 Moon Life 系統相容入口
+# main.py 使用此名稱載入 Moon Club 系統
+# ==========================================================
+def setup_moon_life(bot):
+    return setup_moon_club(bot)
