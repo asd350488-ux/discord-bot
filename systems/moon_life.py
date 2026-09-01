@@ -585,11 +585,37 @@ class AdoptionModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
         gender = random.choice(["男", "女"])
         gender_text = "男孩 👦" if gender == "男" else "女孩 👧"
 
-        await interaction.response.send_modal(
-            ChildNamingModal(
+        # Modal 提交後不直接再開第二個 Modal。
+        # 部分 Discord API 環境會讓「Modal → Modal」回應出現 Invalid Form Body。
+        # 改成先顯示抽中的性別，再由按鈕開啟命名視窗。
+        await interaction.response.send_message(
+            f"🎉 **抽中了！你的孩子是 {gender_text}**\n\n"
+            "現在你已經知道孩子的性別，可以幫孩子取名字了 ❤️",
+            view=ChildNamingStartView(
                 identity=self.identity,
                 parent_name=parent_name,
                 gender=gender
+            ),
+            ephemeral=True
+        )
+
+
+class ChildNamingStartView(discord.ui.View):
+    """顯示性別後，由新的按鈕互動開啟命名 Modal，避免 Modal→Modal API 問題。"""
+
+    def __init__(self, identity, parent_name, gender):
+        super().__init__(timeout=300)
+        self.identity = identity
+        self.parent_name = parent_name
+        self.gender = gender
+
+    @discord.ui.button(label="✏️ 幫孩子取名字", style=discord.ButtonStyle.primary)
+    async def name_child(self, interaction, button):
+        await interaction.response.send_modal(
+            ChildNamingModal(
+                identity=self.identity,
+                parent_name=self.parent_name,
+                gender=self.gender
             )
         )
 
