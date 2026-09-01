@@ -1,4 +1,5 @@
 import discord
+from systems.moon_life import setup_moon_life
 from systems.streak_lottery import setup_streak_lottery
 from character_birthday import setup_character_birthday
 from systems.limited_lottery import setup_limited_lottery
@@ -1932,6 +1933,8 @@ async def on_ready():
 
     # 📝 角色考試系統
     setup_character_exam(bot)
+    
+    setup_moon_life(bot)
     
     # 🎓 角色考試系統
     setup_character_test(bot)
