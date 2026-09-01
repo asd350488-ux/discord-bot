@@ -2286,6 +2286,12 @@ def setup_character_test(bot):
     # 🎓 永久註冊角色考試入口按鈕
     bot.add_view(ExamEntryView())
 
+    # 📝 永久註冊考試交卷按鈕
+    bot.add_view(SubmitExamView())
+    
+    # 🎓 永久註冊角色考試入口按鈕
+    bot.add_view(ExamEntryView())
+
     # ==========================
     # 🎓 /角色考試設定
     # ==========================
