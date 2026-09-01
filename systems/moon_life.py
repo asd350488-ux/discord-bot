@@ -684,34 +684,108 @@ class ShopBackButton(discord.ui.Button):
 # 🌙 初始建立
 # ==========================================================
 
-class MoonClubSetupModal(discord.ui.Modal, title="🌙 建立 Moon Club"):
+class MoonClubSetupModal(discord.ui.Modal, title="🌙 建立 Moon Club｜第一位男模"):
     owner_name = discord.ui.TextInput(label="會館老闆名字", max_length=30)
-    model1_name = discord.ui.TextInput(label="第一位新人男模名字", max_length=30)
-    model2_name = discord.ui.TextInput(label="第二位新人男模名字", max_length=30)
+    model1_name = discord.ui.TextInput(label="第一位男模名字", max_length=30)
+    model1_age = discord.ui.TextInput(
+        label="第一位男模年齡（必須 18 歲以上）",
+        placeholder="例如：25",
+        max_length=3,
+    )
+    model1_personality = discord.ui.TextInput(
+        label="第一位男模性格（自行設定）",
+        placeholder="例如：溫柔、黏人、成熟穩重",
+        max_length=50,
+    )
+
+    async def on_submit(self, interaction):
+        owner = self.owner_name.value.strip()
+        name = self.model1_name.value.strip()
+        personality = self.model1_personality.value.strip()
+
+        if not owner or not name or not personality:
+            await interaction.response.send_message("❌ 請完整填寫會館老闆、男模名字、年齡與性格。", ephemeral=True)
+            return
+
+        try:
+            age = int(self.model1_age.value.strip())
+        except ValueError:
+            await interaction.response.send_message("❌ 年齡只能輸入數字。", ephemeral=True)
+            return
+
+        if age < 18:
+            await interaction.response.send_message("🔞 男模年齡必須滿 **18 歲以上**。", ephemeral=True)
+            return
+        if age > 120:
+            await interaction.response.send_message("❌ 請輸入合理的年齡。", ephemeral=True)
+            return
+
+        await interaction.response.send_modal(
+            MoonClubSetupSecondModal(owner, name, age, personality)
+        )
+
+
+class MoonClubSetupSecondModal(discord.ui.Modal, title="🌙 建立 Moon Club｜第二位男模"):
+    model2_name = discord.ui.TextInput(label="第二位男模名字", max_length=30)
+    model2_age = discord.ui.TextInput(
+        label="第二位男模年齡（必須 18 歲以上）",
+        placeholder="例如：27",
+        max_length=3,
+    )
+    model2_personality = discord.ui.TextInput(
+        label="第二位男模性格（自行設定）",
+        placeholder="例如：高冷、傲嬌、自信",
+        max_length=50,
+    )
+
+    def __init__(self, owner, model1_name, model1_age, model1_personality):
+        super().__init__()
+        self.owner = owner
+        self.model1_name = model1_name
+        self.model1_age = int(model1_age)
+        self.model1_personality = model1_personality
 
     async def on_submit(self, interaction):
         user_id = str(interaction.user.id)
-        owner = self.owner_name.value.strip()
-        names = [self.model1_name.value.strip(), self.model2_name.value.strip()]
+        name2 = self.model2_name.value.strip()
+        personality2 = self.model2_personality.value.strip()
 
-        if not owner or not all(names):
-            await interaction.response.send_message("❌ 請完整填寫所有名字。", ephemeral=True)
+        if not name2 or not personality2:
+            await interaction.response.send_message("❌ 請完整填寫第二位男模的名字、年齡與性格。", ephemeral=True)
             return
-        if names[0] == names[1]:
-            await interaction.response.send_message("❌ 兩位新人男模的名字不能相同。", ephemeral=True)
+        if name2 == self.model1_name:
+            await interaction.response.send_message("❌ 兩位男模的名字不能相同。", ephemeral=True)
             return
+
+        try:
+            age2 = int(self.model2_age.value.strip())
+        except ValueError:
+            await interaction.response.send_message("❌ 年齡只能輸入數字。", ephemeral=True)
+            return
+
+        if age2 < 18:
+            await interaction.response.send_message("🔞 男模年齡必須滿 **18 歲以上**。", ephemeral=True)
+            return
+        if age2 > 120:
+            await interaction.response.send_message("❌ 請輸入合理的年齡。", ephemeral=True)
+            return
+
+        models = [
+            (self.model1_name, self.model1_age, self.model1_personality),
+            (name2, age2, personality2),
+        ]
 
         c.execute("DELETE FROM moonclub_memories WHERE user_id=?", (user_id,))
         c.execute("DELETE FROM moonclub_model_daily WHERE user_id=?", (user_id,))
         c.execute("DELETE FROM moonclub_modelren WHERE user_id=?", (user_id,))
 
         ids = []
-        # 初始兩位也是成人新人：從基礎開始養成，並各自保有隱藏潛力。
-        for name in names:
+        for name, age, personality in models:
             candidate = generate_candidate()
             scores = {p: random.randint(0, 8) for p in PERSONALITY_EMOJIS}
-            scores[candidate["personality"]] += 8
+            scores[personality] = scores.get(personality, 0) + 16
             stats = candidate["stats"]
+
             c.execute("""
                 INSERT INTO moonclub_modelren
                 (user_id,owner_name,owner_identity,name,gender,age_year,
@@ -719,16 +793,22 @@ class MoonClubSetupModal(discord.ui.Modal, title="🌙 建立 Moon Club"):
                  model_stamina,personality_scores,personalities,interests,
                  interest_progress,experiences,hidden_rarity,potential_direction,
                  background_story,created_at)
-                VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,'[]','[]','{}','{}',?,?,?,?)
+                VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','{}','{}',?,?,?,?)
             """, (
-                user_id, owner, "會館老闆", name, candidate["age"],
+                user_id, self.owner, "會館老闆", name, age,
                 stats["intelligence"], stats["emotion"], stats["fitness"],
-                stats["creativity"], stats["social"], dump_json(scores),
+                stats["creativity"], stats["social"],
+                dump_json(scores), dump_json([personality]),
                 candidate["rarity"], candidate["potential"], candidate["background"], now_iso(),
             ))
             model_id = c.lastrowid
             ids.append(model_id)
-            add_memory(user_id, model_id, "✨ 加入 Moon Club", f"{name} 成為 Moon Club 的首批簽約男模，從新人階段開始培養。")
+            add_memory(
+                user_id,
+                model_id,
+                "✨ 加入 Moon Club",
+                f"{name}（{age} 歲｜{personality}）成為 Moon Club 的首批簽約男模，從新人階段開始培養。",
+            )
 
         c.execute("""
             INSERT INTO moonclub_players
@@ -740,16 +820,16 @@ class MoonClubSetupModal(discord.ui.Modal, title="🌙 建立 Moon Club"):
                 current_model_id=excluded.current_model_id,
                 reputation=0,
                 model_capacity=2
-        """, (user_id, owner, ids[0], now_iso()))
+        """, (user_id, self.owner, ids[0], now_iso()))
         conn.commit()
 
         embed = discord.Embed(
             title="🎉 Moon Club 正式開幕！",
             description=(
-                f"{OWNER_ICON} 會館老闆：**{owner}**\n"
+                f"{OWNER_ICON} 會館老闆：**{self.owner}**\n"
                 f"👥 初始簽約：**2 / 2**\n\n"
-                f"① {MODEL_ICON} **{names[0]}**｜🌱 新人\n"
-                f"② {MODEL_ICON} **{names[1]}**｜🌱 新人"
+                f"① {MODEL_ICON} **{self.model1_name}**｜🎂 {self.model1_age} 歲｜😈 {self.model1_personality}\n"
+                f"② {MODEL_ICON} **{name2}**｜🎂 {age2} 歲｜😈 {personality2}"
             ),
             color=MOONCLUB_COLOR,
         )
