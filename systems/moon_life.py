@@ -1366,6 +1366,145 @@ ACTIVITY_LIBRARY = {
         "min_age": 0,
         "memory": "💬 你們今天好好聊了一會兒。",
     },
+    "抱抱孩子": {
+        "where": "home", "stamina": 1, "relationship": (3, 6),
+        "stats": {"emotion": (2, 4)},
+        "personality": [("溫柔", 2), ("黏人", 1)],
+        "min_age": 0,
+        "memory": "🤗 今天給了孩子一個暖暖的擁抱。",
+    },
+    "唱歌給孩子聽": {
+        "where": "home", "stamina": 1, "relationship": (2, 4),
+        "stats": {"emotion": (1, 3)},
+        "interest": ("音樂", (2, 5)),
+        "personality": [("好奇", 1)],
+        "min_age": 0,
+        "memory": "🎵 今天用歌聲陪著孩子，房間裡多了一點溫柔的旋律。",
+    },
+    "陪玩玩具": {
+        "where": "home", "stamina": 1, "relationship": (2, 5),
+        "stats": {"emotion": (1, 3), "intelligence": (0, 1)},
+        "interest": ("探索", (1, 4)),
+        "personality": [("好奇", 2)],
+        "min_age": 0,
+        "memory": "🧸 今天陪孩子玩了好一會兒玩具。",
+    },
+    "睡前陪伴": {
+        "where": "home", "stamina": 1, "relationship": (2, 5),
+        "stats": {"emotion": (2, 4)},
+        "personality": [("溫柔", 2)],
+        "min_age": 0,
+        "memory": "🌙 睡前安靜陪在孩子身邊，直到他安心下來。",
+    },
+    "看圖畫書": {
+        "where": "home", "stamina": 1, "relationship": (1, 4),
+        "stats": {"intelligence": (1, 2), "emotion": (1, 2)},
+        "interest": ("閱讀", (2, 5)),
+        "personality": [("好奇", 2)],
+        "min_age": 1,
+        "memory": "📖 今天一起翻著圖畫書，孩子對每一頁都很好奇。",
+    },
+    "拍手遊戲": {
+        "where": "home", "stamina": 1, "relationship": (2, 4),
+        "stats": {"emotion": (1, 3), "social": (1, 2)},
+        "personality": [("活潑", 2)],
+        "min_age": 1,
+        "memory": "👏 今天一起玩拍手遊戲，笑聲停不下來。",
+    },
+    "聽音樂跳舞": {
+        "where": "home", "stamina": 2, "relationship": (1, 4),
+        "stats": {"emotion": (1, 3), "fitness": (0, 2)},
+        "interest": ("音樂", (3, 7)),
+        "personality": [("活潑", 2), ("好奇", 1)],
+        "min_age": 1,
+        "memory": "💃 今天跟著音樂搖搖晃晃，跳出了自己的節奏。",
+    },
+    "拼圖遊戲": {
+        "where": "home", "stamina": 2, "relationship": (1, 3),
+        "stats": {"intelligence": (2, 4)},
+        "interest": ("探索", (3, 7)),
+        "personality": [("好奇", 1), ("獨立", 1)],
+        "min_age": 2,
+        "memory": "🧩 今天一起完成了一幅拼圖。",
+    },
+    "角色扮演": {
+        "where": "home", "stamina": 2, "relationship": (1, 4),
+        "stats": {"creativity": (1, 4), "social": (1, 3)},
+        "interest": ("表演", (3, 7)),
+        "personality": [("活潑", 1), ("好奇", 1)],
+        "min_age": 2,
+        "memory": "🎭 今天一起玩角色扮演，孩子創造了一個奇妙的小世界。",
+    },
+    "一起說故事": {
+        "where": "home", "stamina": 1, "relationship": (2, 4),
+        "stats": {"intelligence": (1, 3), "creativity": (1, 3)},
+        "interest": ("閱讀", (3, 7)),
+        "personality": [("好奇", 2)],
+        "min_age": 3,
+        "memory": "📖 今天輪流編故事，最後的結局誰也猜不到。",
+    },
+    "簡單小實驗": {
+        "where": "home", "stamina": 2, "relationship": (1, 3),
+        "stats": {"intelligence": (2, 5), "creativity": (1, 2)},
+        "interest": ("探索", (4, 8)),
+        "personality": [("好奇", 2)],
+        "min_age": 4,
+        "memory": "🔬 今天一起完成了一個簡單的小實驗，孩子對結果充滿驚喜。",
+    },
+    "一起做點心": {
+        "where": "home", "stamina": 2, "relationship": (2, 4),
+        "stats": {"creativity": (1, 3), "intelligence": (0, 2)},
+        "interest": ("料理", (3, 7)),
+        "personality": [("獨立", 1), ("好奇", 1)],
+        "min_age": 4,
+        "memory": "🧁 今天一起做了簡單的小點心，過程比成品還要有趣。",
+    },
+    "整理小房間": {
+        "where": "home", "stamina": 1, "relationship": (1, 3),
+        "stats": {"emotion": (0, 2)},
+        "personality": [("獨立", 2)],
+        "min_age": 5,
+        "memory": "🏠 今天一起整理房間，孩子也開始學習照顧自己的空間。",
+    },
+    "桌遊時間": {
+        "where": "home", "stamina": 2, "relationship": (2, 4),
+        "stats": {"intelligence": (1, 4), "social": (1, 3)},
+        "interest": ("策略", (3, 7)),
+        "personality": [("好奇", 1), ("活潑", 1)],
+        "min_age": 5,
+        "memory": "🎲 今天一起玩桌遊，有輸有贏，但笑得很開心。",
+    },
+    "家庭電影時間": {
+        "where": "home", "stamina": 1, "relationship": (2, 5),
+        "stats": {"emotion": (1, 3)},
+        "interest": ("影視", (2, 5)),
+        "personality": [("溫柔", 1)],
+        "min_age": 7,
+        "memory": "🎬 今天一起看了一部電影，是很平凡卻很溫暖的家庭時光。",
+    },
+    "一起下廚": {
+        "where": "home", "stamina": 2, "relationship": (2, 4),
+        "stats": {"creativity": (1, 3), "intelligence": (1, 3)},
+        "interest": ("料理", (4, 8)),
+        "personality": [("獨立", 2)],
+        "min_age": 7,
+        "memory": "🍳 今天一起下廚，孩子開始能完成一些屬於自己的小任務。",
+    },
+    "認真聊聊": {
+        "where": "home", "stamina": 1, "relationship": (3, 6),
+        "stats": {"emotion": (1, 4), "social": (1, 3)},
+        "personality": [("溫柔", 2), ("獨立", 1)],
+        "min_age": 8,
+        "memory": "💭 今天認真聊了很多心裡話，彼此似乎又更了解了一點。",
+    },
+    "一起完成小作品": {
+        "where": "home", "stamina": 3, "relationship": (2, 4),
+        "stats": {"creativity": (2, 5), "intelligence": (1, 3)},
+        "interest": ("創作", (4, 8)),
+        "personality": [("好奇", 1), ("獨立", 1)],
+        "min_age": 8,
+        "memory": "🛠️ 今天一起完成了一個小作品，留下了共同努力的成果。",
+    },
     "一起閱讀": {
         "where": "home", "stamina": 1, "relationship": (1, 3),
         "stats": {"intelligence": (1, 3), "emotion": (0, 1)},
@@ -1389,6 +1528,21 @@ ACTIVITY_LIBRARY = {
         "personality": [("好奇", 2)],
         "min_age": 1,
         "memory": "🧱 今天一起完成了一個積木作品。",
+    },
+    "嬰兒車散步": {
+        "where": "outside", "stamina": 1, "relationship": (2, 4),
+        "stats": {"emotion": (1, 2), "social": (0, 1)},
+        "interest": ("自然", (2, 4)),
+        "personality": [("好奇", 1), ("黏人", 1)],
+        "min_age": 0,
+        "memory": "🍼 今天推著嬰兒車到外面吹吹風，小小的世界又多了一點新鮮感。",
+    },
+    "看看外面的世界": {
+        "where": "outside", "stamina": 1, "relationship": (1, 3),
+        "stats": {"emotion": (1, 3)},
+        "personality": [("好奇", 1)],
+        "min_age": 0,
+        "memory": "🌤️ 今天帶孩子看看天空、樹影與來來往往的人群。",
     },
     "公園玩耍": {
         "where": "outside", "stamina": 2, "relationship": (1, 3),
@@ -1749,6 +1903,86 @@ def eligible_activities(child, where):
             result.append((name, data))
     return result
 
+def roll_park_event(user_id, child):
+    """公園限定事件：只有選擇「公園玩耍」後才會觸發。"""
+    experiences = parse_json(child["experiences"], {})
+    personalities = parse_json(child["personalities"], [])
+    interests = parse_json(child["interests"], [])
+    age = child["age_year"]
+    social = child["social"]
+    fitness = child["fitness"]
+    relationship = child["relationship"]
+
+    events = []
+
+    if age <= 1:
+        events += [
+            {"title":"🌳 第一次認真看公園","text":f"{child['name']}坐在一旁好奇地看著樹影和來往的人群，小手不停指著新鮮的東西。","effects":{"emotion":2},"interest":("探索",2),"personality":("好奇",1)},
+            {"title":"🫧 被風吹得咯咯笑","text":f"一陣風吹過，{child['name']}開心得笑了起來，似乎很喜歡這種新鮮的感覺。","effects":{"emotion":3},"interest":("自然",1)},
+        ]
+
+    if age >= 1:
+        events += [
+            {"title":"🐕 遇見可愛的小狗","text":f"{child['name']}在公園遇到一隻友善的小狗，站在原地看了很久。","effects":{"emotion":2},"interest":("自然",2),"personality":("好奇",1)},
+            {"title":"🐜 發現小昆蟲","text":f"{child['name']}蹲下來觀察地上的小昆蟲，還忍不住問了好多問題。","effects":{"intelligence":1,"emotion":1},"interest":("自然",3),"personality":("好奇",2)},
+            {"title":"🛝 想挑戰遊樂設施","text":f"{child['name']}盯著遊樂設施看了一會兒，最後鼓起勇氣去嘗試。","effects":{"fitness":2,"emotion":1},"interest":("運動",2),"personality":("勇敢",1)},
+        ]
+
+    if age >= 2:
+        events += [
+            {"title":"🎈 撿到飄來的氣球","text":f"一顆氣球剛好飄到{child['name']}附近，讓今天的公園時光多了一點驚喜。","effects":{"emotion":2},"personality":("活潑",1)},
+            {"title":"🧒 想看看其他孩子在玩什麼","text":f"{child['name']}注意到其他孩子的遊戲，先在旁邊觀察了一會兒。","effects":{"social":1},"interest":("探索",2),"personality":("好奇",1)},
+        ]
+
+    if social >= 30 or "活潑" in personalities:
+        events += [
+            {"title":"🤝 認識了新朋友","text":f"{child['name']}主動加入其他孩子的遊戲，短暫地認識了一位新朋友。","effects":{"social":3,"emotion":1},"personality":("活潑",1)},
+        ]
+    else:
+        events += [
+            {"title":"😳 躲在你身後觀察","text":f"其他孩子靠近時，{child['name']}先悄悄躲到你身後觀察，暫時還沒有準備好加入。","effects":{"relationship":2},"personality":("謹慎",1)},
+        ]
+
+    if fitness >= 35 or "運動" in interests:
+        events += [
+            {"title":"⚽ 想加入踢球","text":f"{child['name']}看到有人踢球後越看越有興趣，也想試著踢幾下。","effects":{"fitness":2,"emotion":1},"interest":("運動",3),"personality":("活潑",1)},
+        ]
+
+    if relationship >= 70:
+        events += [
+            {"title":"🤍 拉著你的手","text":f"{child['name']}在公園裡自然地拉著你的手，遇到有趣的東西就第一個想和你分享。","effects":{"relationship":3,"emotion":1}},
+        ]
+
+    # 少量重複遊玩後才會出現的成長事件
+    park_times = experiences.get("活動_公園玩耍", 0)
+    if park_times >= 3:
+        events += [
+            {"title":"🌳 熟悉的公園","text":f"{child['name']}似乎已經開始熟悉這座公園，走到喜歡的地方時顯得特別自在。","effects":{"emotion":2,"relationship":1}},
+        ]
+
+    if not events or random.random() > 0.60:
+        return None
+
+    event = random.choice(events)
+    changes = {k: child[k] + v for k, v in event.get("effects", {}).items()}
+    if changes:
+        change_child(child["child_id"], **changes)
+
+    fresh = child_dict(get_child(user_id))
+    if event.get("interest"):
+        interest, amount = event["interest"]
+        add_interest_progress(fresh, interest, amount)
+        fresh = child_dict(get_child(user_id))
+
+    if event.get("personality"):
+        personality, amount = event["personality"]
+        add_personality_progress(fresh, personality, amount)
+
+    add_memory(user_id, child["child_id"], event["title"], event["text"])
+    add_experience(child["child_id"], f"公園事件_{event['title']}", 1)
+    return event
+
+
 def run_activity(user_id, activity_name):
     child = child_dict(get_child(user_id))
     if not child:
@@ -1787,6 +2021,9 @@ def run_activity(user_id, activity_name):
     add_memory(user_id, child["child_id"], f"✨ {activity_name}", data["memory"])
 
     child_after = child_dict(get_child(user_id))
+    park_event = roll_park_event(user_id, child_after) if activity_name == "公園玩耍" else None
+
+    child_after = child_dict(get_child(user_id))
     event = roll_reasonable_event(user_id, child_after)
 
     message = f"{data['memory']}\n"
@@ -1799,10 +2036,13 @@ def run_activity(user_id, activity_name):
         message += f"\n\n🌟 **正式發現興趣：{discovered}！**"
         add_memory(user_id, child["child_id"], f"🌟 發現興趣｜{discovered}", f"{child['name']}經過一段時間的接觸與累積，正式發現自己喜歡{discovered}。")
 
+    if park_event:
+        message += f"\n\n🎲 **{park_event['title']}**\n{park_event['text']}"
+
     if event:
         message += f"\n\n{event['text']}"
 
-    return True, message, event
+    return True, message, park_event or event
 
 def roll_reasonable_event(user_id, child):
     experiences = parse_json(child["experiences"], {})
@@ -1906,8 +2146,22 @@ class FullActivityView(discord.ui.View):
     def __init__(self, where, child):
         super().__init__(timeout=180)
         acts = eligible_activities(child, where)
+        self.has_activities = bool(acts)
         if acts:
             self.add_item(ActivitySelect(where, child))
+        else:
+            self.add_item(BackHomeButton())
+
+class BackHomeButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="⬅️ 回主畫面", style=discord.ButtonStyle.secondary)
+
+    async def callback(self, interaction):
+        embed = await build_home_embed(str(interaction.user.id))
+        await interaction.response.edit_message(
+            embed=embed,
+            view=MoonLifeFullHomeView()
+        )
 
 class FamilyHistoryView(discord.ui.View):
     def __init__(self):
@@ -1943,9 +2197,13 @@ class MoonLifeFullHomeView(discord.ui.View):
     @discord.ui.button(label="🌳 外出", style=discord.ButtonStyle.success, row=0)
     async def outside(self, interaction, button):
         child = child_dict(get_child(str(interaction.user.id)))
+        view = FullActivityView("outside", child)
+        description = "每一次外出都會留下不同的人生經驗。"
+        if not view.has_activities:
+            description += "\n\n目前孩子的年齡還沒有適合的外出活動。"
         await interaction.response.edit_message(
-            embed=discord.Embed(title="🌳 外出", description="每一次外出都會留下不同的人生經驗。", color=MOONLIFE_COLOR),
-            view=FullActivityView("outside", child)
+            embed=discord.Embed(title="🌳 外出", description=description, color=MOONLIFE_COLOR),
+            view=view
         )
 
     @discord.ui.button(label="👶 孩子狀態", style=discord.ButtonStyle.secondary, row=0)
