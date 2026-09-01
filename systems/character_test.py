@@ -40,7 +40,7 @@ EXAM_MANAGERS = set(BOT_ADMINS)
 # 防止同一時間重複建立同一位考生的考場
 ACTIVE_EXAM_USERS = set()
 
-# 防止 setup_character_test 被 on_ready 重複註冊指令
+# 防止 setup_character_test 被 on_ready 重複註冊
 _SETUP_DONE = False
 
 
@@ -53,8 +53,10 @@ def get_db_connection():
         DB_PATH,
         check_same_thread=False
     )
+
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+
     return conn
 
 
@@ -80,7 +82,6 @@ def init_character_test_database():
         )
     """)
 
-    # 🔄 舊版資料庫自動補上「管理層指定題數」欄位
     assignment_columns = [
         row[1]
         for row in cursor.execute(
@@ -120,7 +121,9 @@ def init_character_test_database():
 
 
 def get_now():
-    return datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(TIMEZONE).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
 # ==========================
@@ -128,14 +131,12 @@ def get_now():
 # ==========================
 
 def get_cycle_round_key():
-    """
-    20 號～月底：設定下一個月的考試
-    1 號～19 號：目前這個月的考試週期
-    """
 
     now = datetime.now(TIMEZONE)
 
+    # 20 號～月底
     if now.day >= 20:
+
         year = now.year
         month = now.month + 1
 
@@ -145,6 +146,7 @@ def get_cycle_round_key():
 
         return f"{year:04d}-{month:02d}"
 
+    # 1 號～19 號
     return f"{now.year:04d}-{now.month:02d}"
 
 
@@ -154,26 +156,30 @@ def is_setup_window():
 
 
 def format_round(round_key):
+
     year, month = round_key.split("-")
+
     return f"{year} 年 {int(month)} 月"
 
 
 def cleanup_old_rounds(round_key):
-    """
-    每月 20 號進入新一輪時，只保留新的本月考試設定。
-    不保存歷史月份報考資料。
-    """
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "DELETE FROM character_test_assignments WHERE round_key != ?",
+        """
+        DELETE FROM character_test_assignments
+        WHERE round_key != ?
+        """,
         (round_key,)
     )
 
     cursor.execute(
-        "DELETE FROM character_test_sessions WHERE round_key != ?",
+        """
+        DELETE FROM character_test_sessions
+        WHERE round_key != ?
+        """,
         (round_key,)
     )
 
@@ -190,7 +196,10 @@ def is_exam_manager(user_id: int) -> bool:
 
 
 def get_mommy_name(user_id: int):
-    return MOMMY_LIST.get(user_id, "未知媽咪")
+    return MOMMY_LIST.get(
+        user_id,
+        "未知媽咪"
+    )
 
 
 # ==========================
@@ -198,16 +207,20 @@ def get_mommy_name(user_id: int):
 # ==========================
 
 def get_all_roles(mommy_id=None):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
     if mommy_id is None:
+
         cursor.execute("""
             SELECT *
             FROM character_exam_roles
             ORDER BY mommy_id ASC, id ASC
         """)
+
     else:
+
         cursor.execute("""
             SELECT *
             FROM character_exam_roles
@@ -216,11 +229,14 @@ def get_all_roles(mommy_id=None):
         """, (str(mommy_id),))
 
     roles = cursor.fetchall()
+
     conn.close()
+
     return roles
 
 
 def get_role(role_id: int):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -231,23 +247,35 @@ def get_role(role_id: int):
     """, (role_id,))
 
     role = cursor.fetchone()
+
     conn.close()
+
     return role
 
 
-def get_role_questions(role_id: int, difficulty=None):
+def get_role_questions(
+    role_id: int,
+    difficulty=None
+):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
     if difficulty:
+
         cursor.execute("""
             SELECT *
             FROM character_exam_questions
             WHERE role_id = ?
             AND difficulty = ?
             ORDER BY id ASC
-        """, (role_id, difficulty))
+        """, (
+            role_id,
+            difficulty
+        ))
+
     else:
+
         cursor.execute("""
             SELECT *
             FROM character_exam_questions
@@ -256,7 +284,9 @@ def get_role_questions(role_id: int, difficulty=None):
         """, (role_id,))
 
     questions = cursor.fetchall()
+
     conn.close()
+
     return questions
 
 
@@ -264,7 +294,11 @@ def get_role_questions(role_id: int, difficulty=None):
 # 📋 本月考試設定資料
 # ==========================
 
-def get_assignment(round_key, user_id):
+def get_assignment(
+    round_key,
+    user_id
+):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -273,14 +307,20 @@ def get_assignment(round_key, user_id):
         FROM character_test_assignments
         WHERE round_key = ?
         AND user_id = ?
-    """, (round_key, str(user_id)))
+    """, (
+        round_key,
+        str(user_id)
+    ))
 
     assignment = cursor.fetchone()
+
     conn.close()
+
     return assignment
 
 
 def get_assignments(round_key):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -292,15 +332,22 @@ def get_assignments(round_key):
     """, (round_key,))
 
     assignments = cursor.fetchall()
+
     conn.close()
+
     return assignments
 
 
-def get_active_session(user_id: int, round_key=None):
+def get_active_session(
+    user_id: int,
+    round_key=None
+):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
     if round_key:
+
         cursor.execute("""
             SELECT *
             FROM character_test_sessions
@@ -309,8 +356,13 @@ def get_active_session(user_id: int, round_key=None):
             AND status IN ('active', 'submitted')
             ORDER BY created_at DESC
             LIMIT 1
-        """, (str(user_id), round_key))
+        """, (
+            str(user_id),
+            round_key
+        ))
+
     else:
+
         cursor.execute("""
             SELECT *
             FROM character_test_sessions
@@ -321,7 +373,48 @@ def get_active_session(user_id: int, round_key=None):
         """, (str(user_id),))
 
     session = cursor.fetchone()
+
     conn.close()
+
+    return session
+
+
+def get_session_by_id(session_id):
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT *
+        FROM character_test_sessions
+        WHERE session_id = ?
+    """, (session_id,))
+
+    session = cursor.fetchone()
+
+    conn.close()
+
+    return session
+
+
+def get_session_by_channel(channel_id):
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT *
+        FROM character_test_sessions
+        WHERE channel_id = ?
+        AND status IN ('active', 'submitted')
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, (str(channel_id),))
+
+    session = cursor.fetchone()
+
+    conn.close()
+
     return session
 
 
@@ -332,6 +425,7 @@ def save_assignment(
     role_id,
     question_count
 ):
+
     now = get_now()
 
     conn = get_db_connection()
@@ -349,6 +443,7 @@ def save_assignment(
             updated_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?)
+
         ON CONFLICT(round_key, user_id)
         DO UPDATE SET
             mommy_id = excluded.mommy_id,
@@ -369,7 +464,11 @@ def save_assignment(
     conn.close()
 
 
-def delete_assignment(round_key, user_id):
+def delete_assignment(
+    round_key,
+    user_id
+):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -377,7 +476,10 @@ def delete_assignment(round_key, user_id):
         DELETE FROM character_test_assignments
         WHERE round_key = ?
         AND user_id = ?
-    """, (round_key, str(user_id)))
+    """, (
+        round_key,
+        str(user_id)
+    ))
 
     conn.commit()
     conn.close()
@@ -394,6 +496,7 @@ def save_session(
     question_message_ids,
     submit_message_id
 ):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -420,8 +523,13 @@ def save_session(
         str(mommy_id),
         role_id,
         str(channel_id),
-        json.dumps(question_data, ensure_ascii=False),
-        json.dumps(question_message_ids),
+        json.dumps(
+            question_data,
+            ensure_ascii=False
+        ),
+        json.dumps(
+            question_message_ids
+        ),
         str(submit_message_id),
         get_now()
     ))
@@ -431,6 +539,7 @@ def save_session(
 
 
 def mark_session_submitted(session_id):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -439,20 +548,24 @@ def mark_session_submitted(session_id):
         SET status = 'submitted',
             submitted_at = ?
         WHERE session_id = ?
-    """, (get_now(), session_id))
+    """, (
+        get_now(),
+        session_id
+    ))
 
     conn.commit()
     conn.close()
 
 
 def delete_session(session_id):
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "DELETE FROM character_test_sessions WHERE session_id = ?",
-        (session_id,)
-    )
+    cursor.execute("""
+        DELETE FROM character_test_sessions
+        WHERE session_id = ?
+    """, (session_id,))
 
     conn.commit()
     conn.close()
@@ -462,9 +575,24 @@ def delete_session(session_id):
 # 🎯 隨機抽題
 # ==========================
 
-def draw_exam_questions(role_id: int, count: int):
-    simple = list(get_role_questions(role_id, "simple"))
-    hard = list(get_role_questions(role_id, "hard"))
+def draw_exam_questions(
+    role_id: int,
+    count: int
+):
+
+    simple = list(
+        get_role_questions(
+            role_id,
+            "simple"
+        )
+    )
+
+    hard = list(
+        get_role_questions(
+            role_id,
+            "hard"
+        )
+    )
 
     if len(simple) + len(hard) < count:
         return None
@@ -474,36 +602,54 @@ def draw_exam_questions(role_id: int, count: int):
 
     selected = []
 
-    # -------------------------
-    # 🟢 先抽簡單題
-    # -------------------------
+    # 🟢 簡單題
+    simple_take = min(
+        simple_count,
+        len(simple)
+    )
 
-    simple_take = min(simple_count, len(simple))
-    selected.extend(random.sample(simple, simple_take))
+    selected.extend(
+        random.sample(
+            simple,
+            simple_take
+        )
+    )
 
-    # -------------------------
-    # 🔴 再抽困難題
-    # -------------------------
+    # 🔴 困難題
+    hard_take = min(
+        hard_count,
+        len(hard)
+    )
 
-    hard_take = min(hard_count, len(hard))
-    selected.extend(random.sample(hard, hard_take))
+    selected.extend(
+        random.sample(
+            hard,
+            hard_take
+        )
+    )
 
-    # -------------------------
-    # 🧩 題庫不足自動補題
-    # -------------------------
-
+    # 🧩 題庫不足補題
     remaining = count - len(selected)
-    selected_ids = {question["id"] for question in selected}
+
+    selected_ids = {
+        question["id"]
+        for question in selected
+    }
 
     if remaining > 0:
+
         extra_pool = [
             question
             for question in simple + hard
-            if question["id"] not in selected_ids
+            if question["id"]
+            not in selected_ids
         ]
 
         selected.extend(
-            random.sample(extra_pool, remaining)
+            random.sample(
+                extra_pool,
+                remaining
+            )
         )
 
     random.shuffle(selected)
@@ -524,8 +670,8 @@ def draw_exam_questions(role_id: int, count: int):
 # ==========================
 
 def create_setup_embed(round_key):
+
     assignments = get_assignments(round_key)
-    setup_available = is_setup_window()
 
     embed = discord.Embed(
         title="🎓 角色考試設定中心",
@@ -534,7 +680,7 @@ def create_setup_embed(round_key):
             "📋 每月 **20 號**開始設定下一輪考試。\n"
             "🎓 考試日期不綁定，由管理層手動安排與開始。\n"
             "⏰ 不設定倒數與考試時長。\n\n"
-            f"{'🟢 目前可以設定與修改。' if setup_available else '🔒 目前不是設定期間，僅可查看。'}"
+            "🟢 目前可以設定與修改。"
         ),
         color=discord.Color.blurple()
     )
@@ -574,20 +720,40 @@ def create_setup_embed(round_key):
     return embed
 
 
-def create_assignment_list_embed(guild, round_key, page=0):
+def create_assignment_list_embed(
+    guild,
+    round_key,
+    page=0
+):
+
     assignments = get_assignments(round_key)
 
     total_pages = max(
         1,
-        (len(assignments) + QUESTION_DISPLAY_PAGE_SIZE - 1)
+        (
+            len(assignments)
+            + QUESTION_DISPLAY_PAGE_SIZE
+            - 1
+        )
         // QUESTION_DISPLAY_PAGE_SIZE
     )
 
-    page = max(0, min(page, total_pages - 1))
+    page = max(
+        0,
+        min(
+            page,
+            total_pages - 1
+        )
+    )
 
-    start = page * QUESTION_DISPLAY_PAGE_SIZE
+    start = (
+        page
+        * QUESTION_DISPLAY_PAGE_SIZE
+    )
+
     page_assignments = assignments[
-        start:start + QUESTION_DISPLAY_PAGE_SIZE
+        start:
+        start + QUESTION_DISPLAY_PAGE_SIZE
     ]
 
     embed = discord.Embed(
@@ -601,17 +767,26 @@ def create_assignment_list_embed(guild, round_key, page=0):
     )
 
     if not page_assignments:
+
         embed.add_field(
             name="📭 目前沒有設定",
             value="尚未設定任何考生。",
             inline=False
         )
+
     else:
+
         for index, assignment in enumerate(
             page_assignments,
             start=start + 1
         ):
-            member = guild.get_member(int(assignment["user_id"]))
+
+            member = guild.get_member(
+                int(
+                    assignment["user_id"]
+                )
+            )
+
             display_name = (
                 member.display_name
                 if member
@@ -619,11 +794,15 @@ def create_assignment_list_embed(guild, round_key, page=0):
             )
 
             mommy_name = get_mommy_name(
-                int(assignment["mommy_id"])
+                int(
+                    assignment["mommy_id"]
+                )
             )
 
             role = get_role(
-                int(assignment["role_id"])
+                int(
+                    assignment["role_id"]
+                )
             )
 
             role_name = (
@@ -656,11 +835,13 @@ def create_assignment_list_embed(guild, round_key, page=0):
 class ExamMommySelect(Select):
 
     def __init__(self, parent_view):
+
         self.parent_view = parent_view
 
         options = []
 
         for mommy_id, mommy_name in MOMMY_LIST.items():
+
             options.append(
                 discord.SelectOption(
                     label=mommy_name[:100],
@@ -676,14 +857,22 @@ class ExamMommySelect(Select):
         )
 
     async def callback(self, interaction):
-        if not is_exam_manager(interaction.user.id):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此設定。",
                 ephemeral=True
             )
+
             return
 
-        self.parent_view.selected_mommy_id = int(self.values[0])
+        self.parent_view.selected_mommy_id = int(
+            self.values[0]
+        )
+
         self.parent_view.selected_role_id = None
         self.parent_view.role_page = 0
 
@@ -702,20 +891,31 @@ class ExamMommySelect(Select):
 class ExamRoleSelect(Select):
 
     def __init__(self, parent_view):
+
         self.parent_view = parent_view
 
-        roles = get_all_roles(
-            parent_view.selected_mommy_id
-        ) if parent_view.selected_mommy_id else []
+        roles = (
+            get_all_roles(
+                parent_view.selected_mommy_id
+            )
+            if parent_view.selected_mommy_id
+            else []
+        )
 
-        start = parent_view.role_page * SELECT_PAGE_SIZE
+        start = (
+            parent_view.role_page
+            * SELECT_PAGE_SIZE
+        )
+
         page_roles = roles[
-            start:start + SELECT_PAGE_SIZE
+            start:
+            start + SELECT_PAGE_SIZE
         ]
 
         options = []
 
         for role in page_roles:
+
             options.append(
                 discord.SelectOption(
                     label=role["role_name"][:100],
@@ -725,6 +925,7 @@ class ExamRoleSelect(Select):
             )
 
         if not options:
+
             options.append(
                 discord.SelectOption(
                     label=(
@@ -744,18 +945,25 @@ class ExamRoleSelect(Select):
         )
 
     async def callback(self, interaction):
-        if not is_exam_manager(interaction.user.id):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此設定。",
                 ephemeral=True
             )
+
             return
 
         if self.values[0] == "none":
+
             await interaction.response.send_message(
                 "📭 目前沒有可以選擇的角色。",
                 ephemeral=True
             )
+
             return
 
         self.parent_view.selected_role_id = int(
@@ -775,6 +983,7 @@ class ExamRoleSelect(Select):
 class ExamCandidateSelect(UserSelect):
 
     def __init__(self, parent_view):
+
         self.parent_view = parent_view
 
         super().__init__(
@@ -785,15 +994,21 @@ class ExamCandidateSelect(UserSelect):
         )
 
     async def callback(self, interaction):
-        if not is_exam_manager(interaction.user.id):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此設定。",
                 ephemeral=True
             )
+
             return
 
         self.parent_view.selected_candidate_ids = [
-            user.id for user in self.values
+            user.id
+            for user in self.values
         ]
 
         await interaction.response.edit_message(
@@ -803,21 +1018,24 @@ class ExamCandidateSelect(UserSelect):
 
 
 # ==========================
-# 📝 管理中心｜選擇考試題數
+# 📝 管理中心｜選擇題數
 # ==========================
 
 class ExamQuestionCountSelect(Select):
 
     def __init__(self, parent_view):
+
         self.parent_view = parent_view
 
         options = [
+
             discord.SelectOption(
                 label=f"{count} 題",
                 description="本次考試固定使用此題數",
                 value=str(count),
                 emoji="📝"
             )
+
             for count in range(
                 EXAM_MIN_QUESTIONS,
                 EXAM_MAX_QUESTIONS + 1
@@ -831,14 +1049,21 @@ class ExamQuestionCountSelect(Select):
         )
 
     async def callback(self, interaction):
-        if not is_exam_manager(interaction.user.id):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此設定。",
                 ephemeral=True
             )
+
             return
 
-        self.parent_view.selected_question_count = int(self.values[0])
+        self.parent_view.selected_question_count = int(
+            self.values[0]
+        )
 
         await interaction.response.edit_message(
             embed=self.parent_view.create_embed(),
@@ -853,6 +1078,7 @@ class ExamQuestionCountSelect(Select):
 class ExamSetupView(View):
 
     def __init__(self, manager_id):
+
         super().__init__(timeout=None)
 
         self.manager_id = manager_id
@@ -865,20 +1091,30 @@ class ExamSetupView(View):
         self.refresh_items()
 
     async def check_manager(self, interaction):
-        if not is_exam_manager(interaction.user.id):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此設定。",
                 ephemeral=True
             )
+
             return False
+
         return True
 
     def create_embed(self):
+
         round_key = get_cycle_round_key()
+
         embed = create_setup_embed(round_key)
 
         selected_mommy = (
-            get_mommy_name(self.selected_mommy_id)
+            get_mommy_name(
+                self.selected_mommy_id
+            )
             if self.selected_mommy_id
             else "尚未選擇"
         )
@@ -886,7 +1122,11 @@ class ExamSetupView(View):
         selected_role = "尚未選擇"
 
         if self.selected_role_id:
-            role = get_role(self.selected_role_id)
+
+            role = get_role(
+                self.selected_role_id
+            )
+
             if role:
                 selected_role = role["role_name"]
 
@@ -929,6 +1169,7 @@ class ExamSetupView(View):
         return embed
 
     def refresh_items(self):
+
         self.clear_items()
 
         self.add_item(
@@ -951,8 +1192,7 @@ class ExamSetupView(View):
             label="儲存設定",
             emoji="💾",
             style=discord.ButtonStyle.success,
-            row=4,
-            disabled=not is_setup_window()
+            row=4
         )
 
         view_button = Button(
@@ -998,6 +1238,7 @@ class ExamSetupView(View):
         self.add_item(reset_button)
 
     def has_next_role_page(self):
+
         if not self.selected_mommy_id:
             return False
 
@@ -1007,66 +1248,79 @@ class ExamSetupView(View):
 
         return (
             self.role_page + 1
-            < max(
+            <
+            max(
                 1,
-                (len(roles) + SELECT_PAGE_SIZE - 1)
+                (
+                    len(roles)
+                    + SELECT_PAGE_SIZE
+                    - 1
+                )
                 // SELECT_PAGE_SIZE
             )
         )
 
     async def save_settings(self, interaction):
-        if not await self.check_manager(interaction):
-            return
 
-        if not is_setup_window():
-            await interaction.response.send_message(
-                "🔒 目前無法修改本輪設定。",
-                ephemeral=True
-            )
+        if not await self.check_manager(
+            interaction
+        ):
             return
 
         if not self.selected_mommy_id:
+
             await interaction.response.send_message(
                 "❌ 請先選擇媽咪。",
                 ephemeral=True
             )
+
             return
 
         if not self.selected_role_id:
+
             await interaction.response.send_message(
                 "❌ 請先選擇角色。",
                 ephemeral=True
             )
+
             return
 
         if not self.selected_candidate_ids:
+
             await interaction.response.send_message(
                 "❌ 請至少選擇一位考生。",
                 ephemeral=True
             )
+
             return
 
         if not self.selected_question_count:
+
             await interaction.response.send_message(
                 "❌ 請先指定本次考試題數（5～10 題）。",
                 ephemeral=True
             )
+
             return
 
         round_key = get_cycle_round_key()
+
         cleanup_old_rounds(round_key)
 
         saved = []
         skipped = []
 
         for user_id in self.selected_candidate_ids:
+
             active_session = get_active_session(
                 user_id,
                 round_key
             )
 
             if active_session:
+
                 skipped.append(user_id)
+
                 continue
 
             save_assignment(
@@ -1076,9 +1330,13 @@ class ExamSetupView(View):
                 self.selected_role_id,
                 self.selected_question_count
             )
+
             saved.append(user_id)
 
-        role = get_role(self.selected_role_id)
+        role = get_role(
+            self.selected_role_id
+        )
+
         role_name = (
             role["role_name"]
             if role
@@ -1092,14 +1350,12 @@ class ExamSetupView(View):
             f"🎭 角色：**{role_name}**",
             f"📝 題數：**{self.selected_question_count} 題**",
             f"📅 考試月份：**{format_round(round_key)}**",
-            ""
+            "",
+            f"✅ 成功設定：**{len(saved)}** 位"
         ]
 
-        lines.append(
-            f"✅ 成功設定：**{len(saved)}** 位"
-        )
-
         if skipped:
+
             lines.append(
                 f"⚠️ 因正在考試而略過：**{len(skipped)}** 位"
             )
@@ -1111,10 +1367,14 @@ class ExamSetupView(View):
 
         self.selected_candidate_ids = []
         self.selected_question_count = None
+
         self.refresh_items()
 
     async def view_assignments(self, interaction):
-        if not await self.check_manager(interaction):
+
+        if not await self.check_manager(
+            interaction
+        ):
             return
 
         await interaction.response.send_message(
@@ -1132,7 +1392,10 @@ class ExamSetupView(View):
         )
 
     async def reset_selection(self, interaction):
-        if not await self.check_manager(interaction):
+
+        if not await self.check_manager(
+            interaction
+        ):
             return
 
         self.selected_mommy_id = None
@@ -1140,6 +1403,7 @@ class ExamSetupView(View):
         self.selected_candidate_ids = []
         self.selected_question_count = None
         self.role_page = 0
+
         self.refresh_items()
 
         await interaction.response.edit_message(
@@ -1148,7 +1412,10 @@ class ExamSetupView(View):
         )
 
     async def previous_role_page(self, interaction):
-        if not await self.check_manager(interaction):
+
+        if not await self.check_manager(
+            interaction
+        ):
             return
 
         if self.role_page > 0:
@@ -1157,6 +1424,7 @@ class ExamSetupView(View):
         self.selected_role_id = None
         self.selected_candidate_ids = []
         self.selected_question_count = None
+
         self.refresh_items()
 
         await interaction.response.edit_message(
@@ -1165,7 +1433,10 @@ class ExamSetupView(View):
         )
 
     async def next_role_page(self, interaction):
-        if not await self.check_manager(interaction):
+
+        if not await self.check_manager(
+            interaction
+        ):
             return
 
         if self.has_next_role_page():
@@ -1174,6 +1445,7 @@ class ExamSetupView(View):
         self.selected_role_id = None
         self.selected_candidate_ids = []
         self.selected_question_count = None
+
         self.refresh_items()
 
         await interaction.response.edit_message(
@@ -1189,6 +1461,7 @@ class ExamSetupView(View):
 class AssignmentSelect(Select):
 
     def __init__(self, parent_view):
+
         self.parent_view = parent_view
 
         assignments = get_assignments(
@@ -1201,14 +1474,18 @@ class AssignmentSelect(Select):
         )
 
         page_assignments = assignments[
-            start:start + QUESTION_DISPLAY_PAGE_SIZE
+            start:
+            start + QUESTION_DISPLAY_PAGE_SIZE
         ]
 
         options = []
 
         for assignment in page_assignments:
+
             member = parent_view.guild.get_member(
-                int(assignment["user_id"])
+                int(
+                    assignment["user_id"]
+                )
             )
 
             display_name = (
@@ -1218,7 +1495,9 @@ class AssignmentSelect(Select):
             )
 
             role = get_role(
-                int(assignment["role_id"])
+                int(
+                    assignment["role_id"]
+                )
             )
 
             role_name = (
@@ -1230,13 +1509,19 @@ class AssignmentSelect(Select):
             options.append(
                 discord.SelectOption(
                     label=display_name[:100],
-                    description=f"{role_name}｜{assignment['question_count']} 題"[:100],
-                    value=str(assignment["user_id"]),
+                    description=(
+                        f"{role_name}｜"
+                        f"{assignment['question_count']} 題"
+                    )[:100],
+                    value=str(
+                        assignment["user_id"]
+                    ),
                     emoji="👤"
                 )
             )
 
         if not options:
+
             options.append(
                 discord.SelectOption(
                     label="目前沒有設定",
@@ -1252,31 +1537,43 @@ class AssignmentSelect(Select):
         )
 
     async def callback(self, interaction):
-        if not is_exam_manager(interaction.user.id):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此設定。",
                 ephemeral=True
             )
+
             return
 
         if self.values[0] == "none":
+
             await interaction.response.send_message(
                 "📭 目前沒有考生設定。",
                 ephemeral=True
             )
+
             return
 
-        user_id = int(self.values[0])
+        user_id = int(
+            self.values[0]
+        )
+
         assignment = get_assignment(
             self.parent_view.round_key,
             user_id
         )
 
         if assignment is None:
+
             await interaction.response.send_message(
                 "❌ 找不到這位考生的設定。",
                 ephemeral=True
             )
+
             return
 
         active_session = get_active_session(
@@ -1285,11 +1582,13 @@ class AssignmentSelect(Select):
         )
 
         if active_session:
+
             await interaction.response.send_message(
                 "⚠️ 這位考生目前已有進行中的考試，\n"
                 "無法移除報考設定。",
                 ephemeral=True
             )
+
             return
 
         await interaction.response.send_message(
@@ -1305,14 +1604,23 @@ class AssignmentSelect(Select):
 
 class AssignmentListView(View):
 
-    def __init__(self, guild, round_key, page=0):
+    def __init__(
+        self,
+        guild,
+        round_key,
+        page=0
+    ):
+
         super().__init__(timeout=None)
+
         self.guild = guild
         self.round_key = round_key
         self.page = page
+
         self.refresh_items()
 
     def refresh_items(self):
+
         self.clear_items()
 
         assignments = get_assignments(
@@ -1321,13 +1629,20 @@ class AssignmentListView(View):
 
         total_pages = max(
             1,
-            (len(assignments) + QUESTION_DISPLAY_PAGE_SIZE - 1)
+            (
+                len(assignments)
+                + QUESTION_DISPLAY_PAGE_SIZE
+                - 1
+            )
             // QUESTION_DISPLAY_PAGE_SIZE
         )
 
         self.page = max(
             0,
-            min(self.page, total_pages - 1)
+            min(
+                self.page,
+                total_pages - 1
+            )
         )
 
         self.add_item(
@@ -1357,16 +1672,25 @@ class AssignmentListView(View):
         self.add_item(next_button)
 
     async def check_manager(self, interaction):
-        if not is_exam_manager(interaction.user.id):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此設定。",
                 ephemeral=True
             )
+
             return False
+
         return True
 
     async def previous_page(self, interaction):
-        if not await self.check_manager(interaction):
+
+        if not await self.check_manager(
+            interaction
+        ):
             return
 
         if self.page > 0:
@@ -1384,7 +1708,10 @@ class AssignmentListView(View):
         )
 
     async def next_page(self, interaction):
-        if not await self.check_manager(interaction):
+
+        if not await self.check_manager(
+            interaction
+        ):
             return
 
         assignments = get_assignments(
@@ -1393,7 +1720,11 @@ class AssignmentListView(View):
 
         total_pages = max(
             1,
-            (len(assignments) + QUESTION_DISPLAY_PAGE_SIZE - 1)
+            (
+                len(assignments)
+                + QUESTION_DISPLAY_PAGE_SIZE
+                - 1
+            )
             // QUESTION_DISPLAY_PAGE_SIZE
         )
 
@@ -1414,8 +1745,15 @@ class AssignmentListView(View):
 
 class DeleteAssignmentView(View):
 
-    def __init__(self, round_key, user_id, parent_view):
+    def __init__(
+        self,
+        round_key,
+        user_id,
+        parent_view
+    ):
+
         super().__init__(timeout=60)
+
         self.round_key = round_key
         self.user_id = user_id
         self.parent_view = parent_view
@@ -1425,19 +1763,21 @@ class DeleteAssignmentView(View):
         emoji="🗑️",
         style=discord.ButtonStyle.danger
     )
-    async def confirm(self, interaction, button):
-        if not is_exam_manager(interaction.user.id):
+    async def confirm(
+        self,
+        interaction,
+        button
+    ):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此設定。",
                 ephemeral=True
             )
-            return
 
-        if not is_setup_window():
-            await interaction.response.edit_message(
-                content="🔒 目前不是報考設定期間。",
-                view=None
-            )
             return
 
         active_session = get_active_session(
@@ -1446,10 +1786,15 @@ class DeleteAssignmentView(View):
         )
 
         if active_session:
+
             await interaction.response.edit_message(
-                content="⚠️ 這位考生目前已有進行中的考試，無法移除。",
+                content=(
+                    "⚠️ 這位考生目前已有進行中的考試，"
+                    "無法移除。"
+                ),
                 view=None
             )
+
             return
 
         delete_assignment(
@@ -1467,7 +1812,12 @@ class DeleteAssignmentView(View):
         emoji="↩️",
         style=discord.ButtonStyle.secondary
     )
-    async def cancel(self, interaction, button):
+    async def cancel(
+        self,
+        interaction,
+        button
+    ):
+
         await interaction.response.edit_message(
             content="↩️ 已取消。",
             view=None
@@ -1480,26 +1830,42 @@ class DeleteAssignmentView(View):
 
 class StartExamConfirmView(View):
 
-    def __init__(self, assignment, entry_channel):
+    def __init__(
+        self,
+        assignment,
+        entry_channel
+    ):
+
         super().__init__(timeout=180)
+
         self.assignment = assignment
         self.entry_channel = entry_channel
 
     @discord.ui.button(
         label="確認報考資料",
         emoji="✅",
-        style=discord.ButtonStyle.success,
-        row=0
+        style=discord.ButtonStyle.success
     )
-    async def confirm(self, interaction, button):
-        if interaction.user.id != int(self.assignment["user_id"]):
+    async def confirm(
+        self,
+        interaction,
+        button
+    ):
+
+        if interaction.user.id != int(
+            self.assignment["user_id"]
+        ):
+
             await interaction.response.send_message(
                 "❌ 這不是你的考試確認。",
                 ephemeral=True
             )
+
             return
 
-        question_count = int(self.assignment["question_count"])
+        question_count = int(
+            self.assignment["question_count"]
+        )
 
         await start_assigned_exam(
             interaction,
@@ -1510,10 +1876,14 @@ class StartExamConfirmView(View):
     @discord.ui.button(
         label="取消",
         emoji="❌",
-        style=discord.ButtonStyle.secondary,
-        row=0
+        style=discord.ButtonStyle.secondary
     )
-    async def cancel(self, interaction, button):
+    async def cancel(
+        self,
+        interaction,
+        button
+    ):
+
         await interaction.response.edit_message(
             content="↩️ 已取消本次考試。",
             embed=None,
@@ -1522,26 +1892,43 @@ class StartExamConfirmView(View):
 
 
 # ==========================
-# 🎓 依管理層設定開始考試
+# 🎓 開始考試
 # ==========================
 
-async def start_assigned_exam(interaction, assignment, count):
-    if interaction.user.id != int(assignment["user_id"]):
+async def start_assigned_exam(
+    interaction,
+    assignment,
+    count
+):
+
+    if interaction.user.id != int(
+        assignment["user_id"]
+    ):
+
         await interaction.response.send_message(
             "❌ 這不是你的考試。",
             ephemeral=True
         )
+
         return
 
-    if count < EXAM_MIN_QUESTIONS or count > EXAM_MAX_QUESTIONS:
+    if (
+        count < EXAM_MIN_QUESTIONS
+        or count > EXAM_MAX_QUESTIONS
+    ):
+
         await interaction.response.send_message(
             "❌ 考試題數設定無效，請聯絡管理層。",
             ephemeral=True
         )
+
         return
 
     round_key = assignment["round_key"]
-    user_id = int(assignment["user_id"])
+
+    user_id = int(
+        assignment["user_id"]
+    )
 
     existing = get_active_session(
         user_id,
@@ -1549,11 +1936,19 @@ async def start_assigned_exam(interaction, assignment, count):
     )
 
     if existing:
-        channel = interaction.guild.get_channel(
-            int(existing["channel_id"])
-        ) if interaction.guild else None
+
+        channel = (
+            interaction.guild.get_channel(
+                int(
+                    existing["channel_id"]
+                )
+            )
+            if interaction.guild
+            else None
+        )
 
         if channel:
+
             await interaction.response.edit_message(
                 content=(
                     "⚠️ **你目前已有一場進行中的角色考試。**\n\n"
@@ -1562,44 +1957,69 @@ async def start_assigned_exam(interaction, assignment, count):
                 embed=None,
                 view=None
             )
+
         else:
-            delete_session(existing["session_id"])
+
+            delete_session(
+                existing["session_id"]
+            )
+
             await interaction.response.edit_message(
-                content="⚠️ 原本的考場已不存在，請重新按「開始考試」。",
+                content=(
+                    "⚠️ 原本的考場已不存在，"
+                    "請重新按「開始考試」。"
+                ),
                 embed=None,
                 view=None
             )
+
         return
 
     if user_id in ACTIVE_EXAM_USERS:
+
         await interaction.response.edit_message(
-            content="⚠️ 你的考試正在建立中，請稍候。",
+            content=(
+                "⚠️ 你的考試正在建立中，"
+                "請稍候。"
+            ),
             embed=None,
             view=None
         )
+
         return
 
     ACTIVE_EXAM_USERS.add(user_id)
 
     try:
+
         role = get_role(
-            int(assignment["role_id"])
+            int(
+                assignment["role_id"]
+            )
         )
 
         if role is None:
+
             await interaction.response.edit_message(
-                content="❌ 找不到你的報考角色，請聯絡管理層。",
+                content=(
+                    "❌ 找不到你的報考角色，"
+                    "請聯絡管理層。"
+                ),
                 embed=None,
                 view=None
             )
+
             return
 
         questions = draw_exam_questions(
-            int(assignment["role_id"]),
+            int(
+                assignment["role_id"]
+            ),
             count
         )
 
         if not questions:
+
             await interaction.response.edit_message(
                 content=(
                     "❌ 題庫不足，無法建立本次考試。\n\n"
@@ -1608,6 +2028,7 @@ async def start_assigned_exam(interaction, assignment, count):
                 embed=None,
                 view=None
             )
+
             return
 
         await interaction.response.defer(
@@ -1622,24 +2043,31 @@ async def start_assigned_exam(interaction, assignment, count):
         )
 
         if channel is None:
-            await interaction.followup.send(
-                "❌ 建立考試頻道失敗，請確認 Bot 有建立頻道與管理權限。",
-                ephemeral=True
+
+            await interaction.edit_original_response(
+                content=(
+                    "❌ 建立考試頻道失敗，"
+                    "請確認 Bot 有建立頻道與管理權限。"
+                ),
+                embed=None,
+                view=None
             )
+
             return
 
-        await interaction.followup.edit_message(
-            interaction.message.id,
+        await interaction.edit_original_response(
             content=(
                 f"✅ **考試頻道已建立！**\n\n"
                 f"🎓 {channel.mention}\n"
                 f"📝 本次考試：**{count} 題**\n\n"
                 "請進入考試頻道開始作答。"
             ),
+            embed=None,
             view=None
         )
 
     finally:
+
         ACTIVE_EXAM_USERS.discard(user_id)
 
 
@@ -1653,13 +2081,16 @@ async def create_exam_channel(
     role,
     questions
 ):
+
     guild = interaction.guild
 
     if guild is None:
         return None
 
     candidate = guild.get_member(
-        int(assignment["user_id"])
+        int(
+            assignment["user_id"]
+        )
     )
 
     if candidate is None:
@@ -1685,10 +2116,14 @@ async def create_exam_channel(
     )[:95]
 
     overwrites = {
-        guild.default_role: discord.PermissionOverwrite(
+
+        guild.default_role:
+        discord.PermissionOverwrite(
             view_channel=False
         ),
-        candidate: discord.PermissionOverwrite(
+
+        candidate:
+        discord.PermissionOverwrite(
             view_channel=True,
             send_messages=True,
             read_message_history=True
@@ -1696,22 +2131,31 @@ async def create_exam_channel(
     }
 
     for manager_id in EXAM_MANAGERS:
-        manager = guild.get_member(manager_id)
+
+        manager = guild.get_member(
+            manager_id
+        )
 
         if manager:
-            overwrites[manager] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
+
+            overwrites[manager] = (
+                discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True
+                )
             )
 
     if guild.me:
-        overwrites[guild.me] = discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            read_message_history=True,
-            manage_channels=True,
-            manage_permissions=True
+
+        overwrites[guild.me] = (
+            discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_channels=True,
+                manage_permissions=True
+            )
         )
 
     channel = await guild.create_text_channel(
@@ -1722,21 +2166,32 @@ async def create_exam_channel(
     )
 
     mommy_name = get_mommy_name(
-        int(assignment["mommy_id"])
+        int(
+            assignment["mommy_id"]
+        )
     )
 
     # ==========================
-    # 📝 題目 Embed
+    # 📝 題目
     # ==========================
 
     question_message_ids = []
 
     chunks = [
+
         questions[index:index + 5]
-        for index in range(0, len(questions), 5)
+
+        for index in range(
+            0,
+            len(questions),
+            5
+        )
     ]
 
-    for chunk_index, chunk in enumerate(chunks):
+    for chunk_index, chunk in enumerate(
+        chunks
+    ):
+
         embed = discord.Embed(
             title=(
                 f"🌙 {role['role_name']}｜角色考試"
@@ -1750,31 +2205,45 @@ async def create_exam_channel(
             color=discord.Color.blurple()
         )
 
-        start_number = chunk_index * 5 + 1
+        start_number = (
+            chunk_index * 5 + 1
+        )
 
         for index, question in enumerate(
             chunk,
             start=start_number
         ):
+
             question_text = question["question"]
 
             if len(question_text) > 900:
-                question_text = question_text[:897] + "..."
+
+                question_text = (
+                    question_text[:897]
+                    + "..."
+                )
 
             difficulty_emoji = (
                 "🟢"
-                if question["difficulty"] == "simple"
+                if question["difficulty"]
+                == "simple"
                 else "🔴"
             )
 
             embed.add_field(
-                name=f"{difficulty_emoji} 第 {index} 題",
+                name=(
+                    f"{difficulty_emoji} "
+                    f"第 {index} 題"
+                ),
                 value=question_text,
                 inline=False
             )
 
         embed.set_footer(
-            text="🌙 Moon Bot v2｜請完成全部題目後按下「作答完成」"
+            text=(
+                "🌙 Moon Bot v2｜"
+                "請完成全部題目後按下「作答完成」"
+            )
         )
 
         message = await channel.send(
@@ -1785,15 +2254,23 @@ async def create_exam_channel(
             message.id
         )
 
+    # ==========================
+    # 📝 交卷面板
+    # ==========================
+
     submit_message = await channel.send(
+
         embed=discord.Embed(
             title="📝 作答完成",
             description=(
                 "所有題目回答完成後，請按下下方按鈕。\n\n"
-                "⚠️ 送出後將無法修改，並會立即離開本考試頻道。"
+                "⚠️ 送出後將無法修改答案。\n\n"
+                "👑 管理員如需提前結束考試，"
+                "可使用「管理員強制交卷」。"
             ),
             color=discord.Color.gold()
         ),
+
         view=SubmitExamView()
     )
 
@@ -1802,9 +2279,15 @@ async def create_exam_channel(
     save_session(
         session_id,
         assignment["round_key"],
-        int(assignment["user_id"]),
-        int(assignment["mommy_id"]),
-        int(assignment["role_id"]),
+        int(
+            assignment["user_id"]
+        ),
+        int(
+            assignment["mommy_id"]
+        ),
+        int(
+            assignment["role_id"]
+        ),
         channel.id,
         questions,
         question_message_ids,
@@ -1812,6 +2295,262 @@ async def create_exam_channel(
     )
 
     return channel
+
+
+# ==========================
+# 🔒 統一交卷處理
+# ==========================
+
+async def finalize_exam_submission(
+    interaction,
+    session,
+    forced=False
+):
+
+    # 再次確認狀態
+    latest_session = get_session_by_id(
+        session["session_id"]
+    )
+
+    if latest_session is None:
+
+        await interaction.response.edit_message(
+            content="❌ 找不到這場考試。",
+            view=None
+        )
+
+        return
+
+    if latest_session["status"] != "active":
+
+        await interaction.response.edit_message(
+            content="⚠️ 這場考試已經完成交卷。",
+            view=None
+        )
+
+        return
+
+    guild = interaction.guild
+
+    if guild is None:
+
+        await interaction.response.edit_message(
+            content="❌ 找不到伺服器資料。",
+            view=None
+        )
+
+        return
+
+    channel = guild.get_channel(
+        int(
+            latest_session["channel_id"]
+        )
+    )
+
+    if channel is None:
+
+        delete_session(
+            latest_session["session_id"]
+        )
+
+        await interaction.response.edit_message(
+            content="❌ 考試頻道已不存在。",
+            view=None
+        )
+
+        return
+
+    # ==========================
+    # 🔒 先標記已交卷
+    # ==========================
+
+    mark_session_submitted(
+        latest_session["session_id"]
+    )
+
+    candidate_id = int(
+        latest_session["user_id"]
+    )
+
+    candidate = guild.get_member(
+        candidate_id
+    )
+
+    # ==========================
+    # 🚪 移除考生權限
+    # ==========================
+
+    if candidate:
+
+        try:
+
+            await channel.set_permissions(
+                candidate,
+                view_channel=False,
+                send_messages=False,
+                read_message_history=False
+            )
+
+        except discord.HTTPException:
+            pass
+
+    # ==========================
+    # 📖 顯示標準答案
+    # ==========================
+
+    question_data = json.loads(
+        latest_session["question_data"]
+    )
+
+    message_ids = json.loads(
+        latest_session[
+            "question_message_ids"
+        ]
+    )
+
+    for message_index, message_id in enumerate(
+        message_ids
+    ):
+
+        try:
+
+            message = await channel.fetch_message(
+                int(message_id)
+            )
+
+            if not message.embeds:
+                continue
+
+            embed = message.embeds[0]
+
+            embed.clear_fields()
+
+            chunk = question_data[
+                message_index * 5:
+                message_index * 5 + 5
+            ]
+
+            start_number = (
+                message_index * 5 + 1
+            )
+
+            for index, question in enumerate(
+                chunk,
+                start=start_number
+            ):
+
+                question_text = question[
+                    "question"
+                ]
+
+                answer_text = question[
+                    "answer"
+                ]
+
+                # Discord Field 最多 1024 字
+                value = (
+                    f"📝 **問題：**\n"
+                    f"{question_text}\n\n"
+                    f"📖 **標準答案：**\n"
+                    f"{answer_text}"
+                )
+
+                if len(value) > 1024:
+                    value = value[:1021] + "..."
+
+                embed.add_field(
+                    name=(
+                        f"{'🟢' if question['difficulty'] == 'simple' else '🔴'} "
+                        f"第 {index} 題"
+                    ),
+                    value=value,
+                    inline=False
+                )
+
+            if forced:
+
+                embed.description = (
+                    "👑 **管理層已強制交卷**\n\n"
+                    "🔍 請管理層人工核對考生目前答案。"
+                )
+
+            else:
+
+                embed.description = (
+                    "👤 **考生已完成作答**\n\n"
+                    "🔍 請管理層人工核對考生答案。"
+                )
+
+            embed.color = discord.Color.green()
+
+            embed.set_footer(
+                text=(
+                    "🌙 Moon Bot v2｜"
+                    "人工核對完成後可關閉考試頻道"
+                )
+            )
+
+            await message.edit(
+                embed=embed
+            )
+
+        except discord.NotFound:
+            continue
+
+        except discord.HTTPException:
+            continue
+
+    # ==========================
+    # 🔍 人工核對
+    # ==========================
+
+    submit_type = (
+        "👑 管理層已強制交卷"
+        if forced
+        else "👤 考生已自行交卷"
+    )
+
+    await channel.send(
+
+        embed=discord.Embed(
+            title="🔍 人工核對",
+            description=(
+                f"{submit_type}\n\n"
+                "👑 請管理層核對考生答案。\n"
+                "確認完成後即可關閉本考試頻道。"
+            ),
+            color=discord.Color.orange()
+        ),
+
+        view=CloseExamView(
+            latest_session["session_id"]
+        )
+    )
+
+    # ==========================
+    # 📩 回覆操作人
+    # ==========================
+
+    if forced:
+
+        await interaction.response.edit_message(
+            content=(
+                "✅ **已由管理層強制交卷！**\n\n"
+                "📖 標準答案已顯示，"
+                "考生已無法繼續作答。"
+            ),
+            view=None
+        )
+
+    else:
+
+        await interaction.response.edit_message(
+            content=(
+                "✅ **作答完成！**\n\n"
+                "你已離開本次考試頻道。"
+            ),
+            view=None
+        )
 
 
 # ==========================
@@ -1823,39 +2562,57 @@ class SubmitExamView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
+    # ==========================
+    # 👤 考生自行交卷
+    # ==========================
+
     @discord.ui.button(
         label="作答完成",
         emoji="📝",
         style=discord.ButtonStyle.success,
         custom_id="character_test_submit"
     )
-    async def submit(self, interaction, button):
+    async def submit(
+        self,
+        interaction,
+        button
+    ):
+
         session = get_active_session(
             interaction.user.id
         )
 
         if session is None:
+
             await interaction.response.send_message(
                 "❌ 找不到你的進行中考試。",
                 ephemeral=True
             )
+
             return
 
-        if int(session["channel_id"]) != interaction.channel.id:
+        if int(
+            session["channel_id"]
+        ) != interaction.channel.id:
+
             await interaction.response.send_message(
                 "❌ 這不是你的考試頻道。",
                 ephemeral=True
             )
+
             return
 
         if session["status"] != "active":
+
             await interaction.response.send_message(
                 "⚠️ 這場考試已經完成作答。",
                 ephemeral=True
             )
+
             return
 
         await interaction.response.send_message(
+
             "⚠️ **交卷前請確認**\n\n"
             "📌 請確認所有題目皆已完成作答。\n"
             "✏️ **錯字、漏字、少字將不視為正確答案。**\n"
@@ -1863,21 +2620,102 @@ class SubmitExamView(View):
             "🚫 **確認交卷後將無法修改答案。**\n"
             "🔍 交卷後將由管理層進行人工核對。\n\n"
             "⚠️ **確定要交卷嗎？**",
+
             view=ConfirmSubmitView(
                 session["session_id"]
             ),
+
+            ephemeral=True
+        )
+
+    # ==========================
+    # 👑 管理員強制交卷
+    # ==========================
+
+    @discord.ui.button(
+        label="管理員強制交卷",
+        emoji="👑",
+        style=discord.ButtonStyle.danger,
+        custom_id="character_test_force_submit"
+    )
+    async def force_submit(
+        self,
+        interaction,
+        button
+    ):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
+            await interaction.response.send_message(
+                "❌ 只有管理層可以使用強制交卷。",
+                ephemeral=True
+            )
+
+            return
+
+        session = get_session_by_channel(
+            interaction.channel.id
+        )
+
+        if session is None:
+
+            await interaction.response.send_message(
+                "❌ 找不到這個考試頻道的考試資料。",
+                ephemeral=True
+            )
+
+            return
+
+        if session["status"] != "active":
+
+            await interaction.response.send_message(
+                "⚠️ 這場考試已經交卷。",
+                ephemeral=True
+            )
+
+            return
+
+        candidate = interaction.guild.get_member(
+            int(
+                session["user_id"]
+            )
+        )
+
+        candidate_name = (
+            candidate.display_name
+            if candidate
+            else session["user_id"]
+        )
+
+        await interaction.response.send_message(
+
+            "⚠️ **管理員強制交卷確認**\n\n"
+            f"👤 考生：**{candidate_name}**\n\n"
+            "🚫 強制交卷後，考生將立即無法繼續作答。\n"
+            "📖 系統會立即顯示標準答案。\n"
+            "🔍 接著由管理層進行人工核對。\n\n"
+            "⚠️ **確定要強制交卷嗎？**",
+
+            view=ConfirmForceSubmitView(
+                session["session_id"]
+            ),
+
             ephemeral=True
         )
 
 
 # ==========================
-# ⚠️ 交卷確認
+# ⚠️ 考生交卷確認
 # ==========================
 
 class ConfirmSubmitView(View):
 
     def __init__(self, session_id):
+
         super().__init__(timeout=60)
+
         self.session_id = session_id
 
     @discord.ui.button(
@@ -1885,140 +2723,50 @@ class ConfirmSubmitView(View):
         emoji="✅",
         style=discord.ButtonStyle.danger
     )
-    async def confirm(self, interaction, button):
-        session = get_active_session(
-            interaction.user.id
+    async def confirm(
+        self,
+        interaction,
+        button
+    ):
+
+        session = get_session_by_id(
+            self.session_id
         )
 
-        if session is None or session["session_id"] != self.session_id:
+        if session is None:
+
             await interaction.response.edit_message(
                 content="❌ 找不到這場考試。",
                 view=None
             )
+
             return
 
-        channel = interaction.guild.get_channel(
-            int(session["channel_id"])
-        )
+        # 只能本人交自己的卷
+        if interaction.user.id != int(
+            session["user_id"]
+        ):
 
-        if channel is None:
-            delete_session(self.session_id)
             await interaction.response.edit_message(
-                content="❌ 考試頻道已不存在。",
+                content="❌ 這不是你的考試。",
                 view=None
             )
+
             return
 
-        mark_session_submitted(
-            self.session_id
-        )
+        if session["status"] != "active":
 
-        question_data = json.loads(
-            session["question_data"]
-        )
-
-        message_ids = json.loads(
-            session["question_message_ids"]
-        )
-
-        # -------------------------
-        # 🚪 先移除考生權限
-        # -------------------------
-
-        candidate = interaction.guild.get_member(
-            interaction.user.id
-        )
-
-        if candidate:
-            await channel.set_permissions(
-                candidate,
-                view_channel=False,
-                send_messages=False,
-                read_message_history=False
+            await interaction.response.edit_message(
+                content="⚠️ 這場考試已經完成交卷。",
+                view=None
             )
 
-        # -------------------------
-        # 📖 自動顯示標準答案
-        # -------------------------
+            return
 
-        for message_id in message_ids:
-            try:
-                message = await channel.fetch_message(
-                    int(message_id)
-                )
-
-                embed = message.embeds[0]
-                embed.clear_fields()
-
-                # 重新依照原本每 5 題一則訊息分組
-                message_index = message_ids.index(
-                    message_id
-                )
-
-                chunk = question_data[
-                    message_index * 5:
-                    message_index * 5 + 5
-                ]
-
-                start_number = message_index * 5 + 1
-
-                for index, question in enumerate(
-                    chunk,
-                    start=start_number
-                ):
-                    embed.add_field(
-                        name=(
-                            f"{'🟢' if question['difficulty'] == 'simple' else '🔴'} "
-                            f"第 {index} 題"
-                        ),
-                        value=(
-                            f"📝 **問題：**\n"
-                            f"{question['question']}\n\n"
-                            f"📖 **標準答案：**\n"
-                            f"{question['answer']}"
-                        ),
-                        inline=False
-                    )
-
-                embed.description = (
-                    "👑 **考生已完成作答**\n\n"
-                    "🔍 請管理層人工核對考生答案。"
-                )
-                embed.color = discord.Color.green()
-                embed.set_footer(
-                    text="🌙 Moon Bot v2｜人工核對完成後可關閉考試頻道"
-                )
-
-                await message.edit(
-                    embed=embed
-                )
-
-            except discord.NotFound:
-                continue
-
-        # -------------------------
-        # 🗑️ 管理層關閉考場
-        # -------------------------
-
-        await channel.send(
-            embed=discord.Embed(
-                title="🔍 人工核對",
-                description=(
-                    "考生已完成作答並離開考試頻道。\n\n"
-                    "👑 請管理層核對考生答案。\n"
-                    "確認完成後即可關閉本考試頻道。"
-                ),
-                color=discord.Color.orange()
-            ),
-            view=CloseExamView(
-                self.session_id
-            )
-        )
-
-        await interaction.response.edit_message(
-            content="✅ **作答完成！**\n\n"
-                    "你已離開本次考試頻道。",
-            view=None
+        await finalize_exam_submission(
+            interaction,
+            session,
+            forced=False
         )
 
     @discord.ui.button(
@@ -2026,9 +2774,96 @@ class ConfirmSubmitView(View):
         emoji="↩️",
         style=discord.ButtonStyle.secondary
     )
-    async def cancel(self, interaction, button):
+    async def cancel(
+        self,
+        interaction,
+        button
+    ):
+
         await interaction.response.edit_message(
-            content="↩️ 已取消交卷，你可以繼續修改答案。",
+            content=(
+                "↩️ 已取消交卷，"
+                "你可以繼續修改答案。"
+            ),
+            view=None
+        )
+
+
+# ==========================
+# 👑 管理員強制交卷確認
+# ==========================
+
+class ConfirmForceSubmitView(View):
+
+    def __init__(self, session_id):
+
+        super().__init__(timeout=60)
+
+        self.session_id = session_id
+
+    @discord.ui.button(
+        label="確認強制交卷",
+        emoji="👑",
+        style=discord.ButtonStyle.danger
+    )
+    async def confirm(
+        self,
+        interaction,
+        button
+    ):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
+            await interaction.response.send_message(
+                "❌ 只有管理層可以使用強制交卷。",
+                ephemeral=True
+            )
+
+            return
+
+        session = get_session_by_id(
+            self.session_id
+        )
+
+        if session is None:
+
+            await interaction.response.edit_message(
+                content="❌ 找不到這場考試。",
+                view=None
+            )
+
+            return
+
+        if session["status"] != "active":
+
+            await interaction.response.edit_message(
+                content="⚠️ 這場考試已經完成交卷。",
+                view=None
+            )
+
+            return
+
+        await finalize_exam_submission(
+            interaction,
+            session,
+            forced=True
+        )
+
+    @discord.ui.button(
+        label="取消",
+        emoji="↩️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def cancel(
+        self,
+        interaction,
+        button
+    ):
+
+        await interaction.response.edit_message(
+            content="↩️ 已取消強制交卷。",
             view=None
         )
 
@@ -2040,7 +2875,9 @@ class ConfirmSubmitView(View):
 class CloseExamView(View):
 
     def __init__(self, session_id):
+
         super().__init__(timeout=None)
+
         self.session_id = session_id
 
     @discord.ui.button(
@@ -2049,12 +2886,21 @@ class CloseExamView(View):
         style=discord.ButtonStyle.danger,
         custom_id="character_test_close"
     )
-    async def close(self, interaction, button):
-        if not is_exam_manager(interaction.user.id):
+    async def close(
+        self,
+        interaction,
+        button
+    ):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以關閉考試頻道。",
                 ephemeral=True
             )
+
             return
 
         session = get_session_by_id(
@@ -2062,25 +2908,33 @@ class CloseExamView(View):
         )
 
         if session is None:
+
             await interaction.response.send_message(
                 "❌ 找不到這場考試。",
                 ephemeral=True
             )
+
             return
 
         if session["status"] != "submitted":
+
             await interaction.response.send_message(
-                "⚠️ 考生尚未完成作答，暫時不能關閉考試頻道。",
+                "⚠️ 考生尚未完成作答，"
+                "暫時不能關閉考試頻道。",
                 ephemeral=True
             )
+
             return
 
         await interaction.response.send_message(
+
             "⚠️ **確定要關閉本次考試頻道嗎？**\n\n"
             "關閉後頻道將永久刪除。",
+
             view=ConfirmCloseExamView(
                 self.session_id
             ),
+
             ephemeral=True
         )
 
@@ -2088,7 +2942,9 @@ class CloseExamView(View):
 class ConfirmCloseExamView(View):
 
     def __init__(self, session_id):
+
         super().__init__(timeout=60)
+
         self.session_id = session_id
 
     @discord.ui.button(
@@ -2096,12 +2952,21 @@ class ConfirmCloseExamView(View):
         emoji="🗑️",
         style=discord.ButtonStyle.danger
     )
-    async def confirm(self, interaction, button):
-        if not is_exam_manager(interaction.user.id):
+    async def confirm(
+        self,
+        interaction,
+        button
+    ):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以關閉考試頻道。",
                 ephemeral=True
             )
+
             return
 
         session = get_session_by_id(
@@ -2109,36 +2974,51 @@ class ConfirmCloseExamView(View):
         )
 
         if session is None:
+
             await interaction.response.edit_message(
                 content="❌ 這場考試已不存在。",
                 view=None
             )
+
             return
 
         channel = interaction.guild.get_channel(
-            int(session["channel_id"])
+            int(
+                session["channel_id"]
+            )
         )
 
         delete_session(
             self.session_id
         )
 
-        if channel:
-            await channel.delete(
-                reason="🌙 角色考試人工核對完成，關閉考場"
-            )
-
         await interaction.response.edit_message(
-            content="✅ 考試頻道已關閉並永久刪除。",
+            content=(
+                "✅ 考試頻道已關閉並永久刪除。"
+            ),
             view=None
         )
+
+        if channel:
+
+            await channel.delete(
+                reason=(
+                    "🌙 角色考試人工核對完成，"
+                    "關閉考場"
+                )
+            )
 
     @discord.ui.button(
         label="取消",
         emoji="↩️",
         style=discord.ButtonStyle.secondary
     )
-    async def cancel(self, interaction, button):
+    async def cancel(
+        self,
+        interaction,
+        button
+    ):
+
         await interaction.response.edit_message(
             content="↩️ 已取消關閉。",
             view=None
@@ -2146,31 +3026,15 @@ class ConfirmCloseExamView(View):
 
 
 # ==========================
-# 🔎 Session 查詢
-# ==========================
-
-def get_session_by_id(session_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT *
-        FROM character_test_sessions
-        WHERE session_id = ?
-    """, (session_id,))
-
-    session = cursor.fetchone()
-    conn.close()
-    return session
-
-
-# ==========================
 # 🎓 考試入口 Embed
 # ==========================
 
 def create_exam_entry_embed():
+
     return discord.Embed(
+
         title="🎓 角色考試入口",
+
         description=(
             "歡迎來到 **Moon Bot｜角色考試**。\n\n"
             "🎭 系統會自動取得管理層事前綁定的報考角色。\n"
@@ -2180,6 +3044,7 @@ def create_exam_entry_embed():
             "⚠️ 考生不能自行選擇角色。\n"
             "⚠️ 同一時間只能有一場進行中的考試。"
         ),
+
         color=discord.Color.blurple()
     )
 
@@ -2199,7 +3064,12 @@ class ExamEntryView(View):
         style=discord.ButtonStyle.success,
         custom_id="character_test_start_exam"
     )
-    async def start(self, interaction, button):
+    async def start(
+        self,
+        interaction,
+        button
+    ):
+
         round_key = get_cycle_round_key()
 
         assignment = get_assignment(
@@ -2208,11 +3078,13 @@ class ExamEntryView(View):
         )
 
         if assignment is None:
+
             await interaction.response.send_message(
                 "❌ 目前找不到你的本月報考資料。\n\n"
                 "請聯絡六位管理層確認你是否已完成報考設定。",
                 ephemeral=True
             )
+
             return
 
         existing = get_active_session(
@@ -2221,16 +3093,21 @@ class ExamEntryView(View):
         )
 
         if existing:
+
             channel = interaction.guild.get_channel(
-                int(existing["channel_id"])
+                int(
+                    existing["channel_id"]
+                )
             )
 
             if channel:
+
                 await interaction.response.send_message(
                     "⚠️ 你目前已有一場進行中的角色考試。\n\n"
                     f"🎓 考場：{channel.mention}",
                     ephemeral=True
                 )
+
                 return
 
             delete_session(
@@ -2238,33 +3115,47 @@ class ExamEntryView(View):
             )
 
         role = get_role(
-            int(assignment["role_id"])
+            int(
+                assignment["role_id"]
+            )
         )
 
         if role is None:
+
             await interaction.response.send_message(
                 "❌ 找不到你的報考角色，請聯絡管理層。",
                 ephemeral=True
             )
+
             return
 
         await interaction.response.send_message(
+
             embed=discord.Embed(
+
                 title="🎓 角色考試｜報考資料確認",
+
                 description=(
                     "📋 系統已取得你的報考資料。\n\n"
                     f"👤 **考生：** {interaction.user.display_name}\n"
-                    f"👩‍👧 **媽咪：** {get_mommy_name(int(assignment['mommy_id']))}\n"
-                    f"🎭 **報考角色：** {role['role_name']}\n\n"
+                    f"👩‍👧 **媽咪：** "
+                    f"{get_mommy_name(int(assignment['mommy_id']))}\n"
+                    f"🎭 **報考角色：** "
+                    f"{role['role_name']}\n"
+                    f"📝 **考試題數：** "
+                    f"{assignment['question_count']} 題\n\n"
                     "⚠️ 請確認以上資料正確。\n"
                     "確認後才會建立你的專屬考試頻道。"
                 ),
+
                 color=discord.Color.blurple()
             ),
+
             view=StartExamConfirmView(
                 assignment,
                 interaction.channel
             ),
+
             ephemeral=True
         )
 
@@ -2274,6 +3165,7 @@ class ExamEntryView(View):
 # ==========================
 
 def setup_character_test(bot):
+
     global _SETUP_DONE
 
     init_character_test_database()
@@ -2282,43 +3174,63 @@ def setup_character_test(bot):
         return
 
     _SETUP_DONE = True
-    
-    # 🎓 永久註冊角色考試入口按鈕
-    bot.add_view(ExamEntryView())
-
-    # 📝 永久註冊考試交卷按鈕
-    bot.add_view(SubmitExamView())
-    
-    # 🎓 永久註冊角色考試入口按鈕
-    bot.add_view(ExamEntryView())
 
     # ==========================
-    # 🎓 /角色考試設定
+    # 🔘 永久按鈕註冊
+    # ==========================
+
+    bot.add_view(
+        ExamEntryView()
+    )
+
+    bot.add_view(
+        SubmitExamView()
+    )
+
+    # ==========================
+    # 🎓 /考試設定
     # ==========================
 
     @bot.tree.command(
         name="考試設定",
         description="🎓 管理本輪媽咪、角色、考生與考試題數"
     )
-    async def character_test_setup(interaction: discord.Interaction):
-        if not is_exam_manager(interaction.user.id):
+    async def character_test_setup(
+        interaction: discord.Interaction
+    ):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 只有六位管理層可以使用此指令。",
                 ephemeral=True
             )
+
             return
 
         round_key = get_cycle_round_key()
 
-        # 20 號開始新一輪時清除舊月份資料
-        if datetime.now(TIMEZONE).day >= 20:
-            cleanup_old_rounds(round_key)
+        # 20 號開始新一輪
+        if datetime.now(
+            TIMEZONE
+        ).day >= 20:
+
+            cleanup_old_rounds(
+                round_key
+            )
 
         await interaction.response.send_message(
-            embed=create_setup_embed(round_key),
+
+            embed=create_setup_embed(
+                round_key
+            ),
+
             view=ExamSetupView(
                 interaction.user.id
             ),
+
             ephemeral=True
         )
 
@@ -2330,18 +3242,24 @@ def setup_character_test(bot):
         name="角色考試",
         description="🎓 開啟角色考試入口"
     )
-    async def character_test_entry(interaction: discord.Interaction):
+    async def character_test_entry(
+        interaction: discord.Interaction
+    ):
 
-        # 🔐 只有 6 位管理層可以使用
-        if not is_exam_manager(interaction.user.id):
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
             await interaction.response.send_message(
                 "❌ 你沒有權限使用此指令。",
                 ephemeral=True
             )
+
             return
 
         await interaction.response.send_message(
+
             embed=create_exam_entry_embed(),
+
             view=ExamEntryView()
         )
- 
