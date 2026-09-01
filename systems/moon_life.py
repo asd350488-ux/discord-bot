@@ -2088,6 +2088,171 @@ def eligible_activities(child, where):
             result.append((name, data))
     return result
 
+def roll_monthly_milestone(user_id, child):
+    """依月齡逐步解鎖，不直接加年齡，避免等待期間沒有內容。"""
+    experiences = parse_json(child["experiences"], {})
+    total_months = int(child["age_year"]) * 12 + int(child["age_month"])
+    key = f"月齡里程碑_{total_months}"
+    if experiences.get(key):
+        return None
+
+    milestones = {
+        1: ("👀 開始認真看著你", f"{child['name']}似乎開始會認真看著你的臉，對熟悉的聲音也有反應。", {"emotion":1}, ("探索",1)),
+        2: ("😊 第一次露出笑容", f"今天{child['name']}對著你露出了一個特別明顯的笑容。", {"emotion":2,"relationship":1}, None),
+        3: ("🗣️ 咿咿呀呀", f"{child['name']}開始發出更多咿咿呀呀的聲音，好像很想和你說話。", {"social":1,"emotion":1}, None),
+        4: ("🧸 對玩具有反應", f"{child['name']}開始會追著玩具看，也會想伸手碰一碰。", {"intelligence":1}, ("探索",1)),
+        5: ("🙌 想抓住東西", f"{child['name']}最近常常伸手想抓住眼前的東西。", {"fitness":1}, ("探索",1)),
+        6: ("🥣 開始嘗試新食物", f"{child['name']}對新的味道和食物表現出更多好奇。", {"emotion":1}, None),
+        7: ("🪑 嘗試坐穩", f"{child['name']}開始努力讓自己坐得更穩。", {"fitness":2}, None),
+        8: ("👀 開始認生", f"{child['name']}遇到不熟悉的人時會先觀察，對熟悉的人則特別安心。", {"relationship":1}, None),
+        9: ("🐾 開始努力爬行", f"{child['name']}開始想靠自己的力量到處探索。", {"fitness":2}, ("探索",2)),
+        10: ("🧸 能自己玩一下", f"{child['name']}偶爾可以自己專心玩一會兒玩具。", {"emotion":1,"intelligence":1}, None),
+        11: ("👣 嘗試扶著站立", f"{child['name']}開始抓著東西努力站起來。", {"fitness":2}, None),
+    }
+    item = milestones.get(total_months)
+    if not item:
+        return None
+
+    title, content, effects, interest = item
+    changes = {k: child[k] + v for k,v in effects.items()}
+    change_child(child["child_id"], **changes)
+    fresh = child_dict(get_child(user_id))
+    if interest:
+        add_interest_progress(fresh, interest[0], interest[1])
+    add_memory(user_id, child["child_id"], title, content)
+    add_experience(child["child_id"], key, 1)
+    return {"title":title,"text":content}
+
+
+def roll_player_child_encounter(user_id, child, activity_name):
+    """外出偶遇真實其他玩家的孩子；測試期沒有其他孩子時自然不觸發。"""
+    c.execute("""
+        SELECT ch.*
+        FROM moonlife_children ch
+        JOIN moonlife_players p ON p.current_child_id = ch.child_id
+        WHERE ch.user_id != ? AND ch.is_adult=0
+        ORDER BY RANDOM() LIMIT 1
+    """, (str(user_id),))
+    row = c.fetchone()
+    if not row:
+        return None
+    other = child_dict(row)
+
+    # 年齡差太大時只做「看到」，不做不合理的共同遊戲。
+    age_gap = abs(int(child["age_year"]) - int(other["age_year"]))
+    if age_gap >= 4:
+        title="👀 遇見另一個孩子"
+        content=f"外出時，{child['name']}看見了比自己年紀差很多的孩子「{other['name']}」，兩人短暫地注意到彼此。"
+        effects={"emotion":1}
+    elif child["age_year"] <= 1 and other["age_year"] <= 1:
+        options=[
+            ("👶 嬰兒車剛好停在旁邊", f"{child['name']}和「{other['name']}」剛好在附近，兩個小朋友互相張望了好一會兒。", {"emotion":1}),
+            ("😊 對方先笑了", f"另一個孩子「{other['name']}」突然笑了，{child['name']}也一直看著對方。", {"emotion":1}),
+        ]
+        title,content,effects=random.choice(options)
+    elif child["social"] >= 30:
+        options=[
+            ("🤝 認識了另一個孩子", f"{child['name']}外出時遇到「{other['name']}」，今天短暫地一起互動了一下。", {"social":2,"emotion":1}),
+            ("🧸 對彼此很好奇", f"{child['name']}和「{other['name']}」注意到彼此，對這位新朋友都很好奇。", {"social":1}),
+        ]
+        title,content,effects=random.choice(options)
+    else:
+        title="😳 偷偷觀察另一個孩子"
+        content=f"{child['name']}外出時看見「{other['name']}」，沒有馬上靠近，而是在你身邊安靜觀察。"
+        effects={"relationship":1,"emotion":1}
+
+    change_child(child["child_id"], **{k:child[k]+v for k,v in effects.items()})
+    add_memory(user_id, child["child_id"], title, content)
+    add_experience(child["child_id"], f"偶遇玩家孩子_{other['child_id']}", 1)
+    return {"title":title,"text":content}
+
+
+def roll_outside_event(user_id, child, activity_name):
+    """所有外出活動都有自己的生活事件，不再只有公園才可能有事件。"""
+    age = child["age_year"]
+    social = child["social"]
+    fitness = child["fitness"]
+    personalities = parse_json(child["personalities"], [])
+    interests = parse_json(child["interests"], [])
+
+    events = []
+
+    # 👶 嬰兒也能遇到的外出經驗
+    if age <= 1:
+        events += [
+            {"title":"🍃 風吹過樹葉","text":f"{child['name']}安靜地聽著樹葉被風吹動的聲音，好像第一次發現外面的世界這麼不一樣。","effects":{"emotion":1},"interest":("自然",1)},
+            {"title":"👀 好奇地張望","text":f"{child['name']}一路上睜大眼睛看著周圍，對每個新的聲音和畫面都很好奇。","effects":{"emotion":1},"interest":("探索",1),"personality":("好奇",1)},
+            {"title":"🕊️ 看見飛過的小鳥","text":f"{child['name']}注意到天空中飛過的小鳥，視線跟著移動了好久。","effects":{"emotion":1},"interest":("自然",1)},
+            {"title":"😴 外出後有點累","text":f"外面的世界看了好多，{child['name']}回程時有點睏，安靜地靠著你休息。","effects":{"relationship":1}},
+        ]
+
+    # 🌿 所有年齡都可能發生
+    events += [
+        {"title":"🌤️ 發現不一樣的天空","text":f"今天的天空和以前不太一樣，{child['name']}停下來看了好一會兒。","effects":{"emotion":1},"interest":("自然",1)},
+        {"title":"🎵 聽見陌生的聲音","text":f"{child['name']}聽見外面傳來陌生的聲音，忍不住四處尋找聲音的來源。","effects":{"social":1},"interest":("探索",1)},
+    ]
+
+    if social >= 25 or "活潑" in personalities:
+        events.append(
+            {"title":"👋 對陌生人揮手","text":f"{child['name']}遇到路人時主動揮了揮手，今天似乎比以前更願意接觸外面的世界。","effects":{"social":2},"personality":("活潑",1)}
+        )
+    else:
+        events.append(
+            {"title":"👀 安靜觀察人群","text":f"{child['name']}沒有急著靠近其他人，而是安靜地待在你身邊觀察。","effects":{"emotion":1,"relationship":1}}
+        )
+
+    # 依活動補充合理事件
+    activity_events = {
+        "嬰兒車散步": [
+            {"title":"🚶 小小的散步路線","text":f"今天走到一段以前沒注意過的路，{child['name']}一路看著兩旁的新景色。","effects":{"emotion":1},"interest":("探索",1)},
+        ],
+        "看看外面的世界": [
+            {"title":"☀️ 喜歡陽光的感覺","text":f"溫暖的陽光照在身上，{child['name']}看起來心情很好。","effects":{"emotion":1}},
+        ],
+        "自然散步": [
+            {"title":"🍂 撿起一片葉子","text":f"{child['name']}注意到地上的葉子，對它的形狀和顏色很好奇。","effects":{"intelligence":1},"interest":("自然",2),"personality":("好奇",1)},
+        ],
+        "圖書館": [
+            {"title":"📚 被一本書吸引","text":f"{child['name']}在書架前停了下來，對其中一本書特別有興趣。","effects":{"intelligence":1},"interest":("閱讀",2)},
+        ],
+        "探索新地方": [
+            {"title":"🗺️ 發現新角落","text":f"{child['name']}主動注意到一個以前沒看過的小角落，想再靠近看看。","effects":{"intelligence":1},"interest":("探索",2),"personality":("好奇",1)},
+        ],
+        "一起運動": [
+            {"title":"💪 不想太快放棄","text":f"活動累了以後，{child['name']}休息了一下，又想再試一次。","effects":{"fitness":1},"personality":("勇敢",1)},
+        ],
+    }
+    events += activity_events.get(activity_name, [])
+
+    # 興趣相關事件要先有接觸基礎，避免憑空出現。
+    if "自然" in interests and activity_name in ("嬰兒車散步", "自然散步"):
+        events.append(
+            {"title":"🌿 又想多看一會兒","text":f"{child['name']}對周圍的植物特別有興趣，主動停下來多看了一會兒。","effects":{"emotion":1},"interest":("自然",1)}
+        )
+
+    if not events or random.random() > 0.55:
+        return None
+
+    event = random.choice(events)
+    changes = {k: child[k] + v for k, v in event.get("effects", {}).items()}
+    if changes:
+        change_child(child["child_id"], **changes)
+
+    fresh = child_dict(get_child(user_id))
+    if event.get("interest"):
+        interest, amount = event["interest"]
+        add_interest_progress(fresh, interest, amount)
+        fresh = child_dict(get_child(user_id))
+
+    if event.get("personality"):
+        personality, amount = event["personality"]
+        add_personality_progress(fresh, personality, amount)
+
+    add_memory(user_id, child["child_id"], event["title"], event["text"])
+    add_experience(child["child_id"], f"外出事件_{activity_name}_{event['title']}", 1)
+    return event
+
+
 def roll_park_event(user_id, child):
     """公園限定事件：只有選擇「公園玩耍」後才會觸發。"""
     experiences = parse_json(child["experiences"], {})
@@ -2184,9 +2349,15 @@ def run_activity(user_id, activity_name):
         return False, "❌ 體力不足。", None
 
     stat_changes = apply_stat_changes(child, data.get("stats", {}))
+    # ❤️ 關係成長放慢：日常互動不再一次跳很多。
+    relationship_range = data.get("relationship", (0, 0))
+    relationship_gain = random.randint(*relationship_range)
+    if relationship_gain > 0:
+        relationship_gain = max(1, (relationship_gain + 1) // 2)
+
     change_child(
         child["child_id"],
-        relationship=child["relationship"] + random.randint(*data.get("relationship", (0, 0))),
+        relationship=child["relationship"] + relationship_gain,
         hunger=child["hunger"] + random.randint(3, 8),
     )
 
@@ -2206,6 +2377,15 @@ def run_activity(user_id, activity_name):
     add_memory(user_id, child["child_id"], f"✨ {activity_name}", data["memory"])
 
     child_after = child_dict(get_child(user_id))
+    milestone = roll_monthly_milestone(user_id, child_after)
+
+    child_after = child_dict(get_child(user_id))
+    encounter_event = roll_player_child_encounter(user_id, child_after, activity_name) if data.get("where") == "outside" and random.random() <= 0.35 else None
+
+    child_after = child_dict(get_child(user_id))
+    outside_event = roll_outside_event(user_id, child_after, activity_name) if data.get("where") == "outside" else None
+
+    child_after = child_dict(get_child(user_id))
     park_event = roll_park_event(user_id, child_after) if activity_name == "公園玩耍" else None
 
     child_after = child_dict(get_child(user_id))
@@ -2221,13 +2401,25 @@ def run_activity(user_id, activity_name):
         message += f"\n\n🌟 **正式發現興趣：{discovered}！**"
         add_memory(user_id, child["child_id"], f"🌟 發現興趣｜{discovered}", f"{child['name']}經過一段時間的接觸與累積，正式發現自己喜歡{discovered}。")
 
+    if milestone:
+        message += f"\n\n🌱 **{milestone['title']}**\n{milestone['text']}"
+
+    if encounter_event:
+        message += f"\n\n👶 **{encounter_event['title']}**\n{encounter_event['text']}"
+
+    if outside_event:
+        message += f"\n\n🎲 **{outside_event['title']}**\n{outside_event['text']}"
+
+    if milestone:
+        message += "\n\n✨ 這是孩子目前月齡的新里程碑，已記錄在人生回憶中。"
+
     if park_event:
         message += f"\n\n🎲 **{park_event['title']}**\n{park_event['text']}"
 
     if event:
         message += f"\n\n{event['text']}"
 
-    return True, message, park_event or event
+    return True, message, outside_event or park_event or event
 
 def roll_reasonable_event(user_id, child):
     experiences = parse_json(child["experiences"], {})
