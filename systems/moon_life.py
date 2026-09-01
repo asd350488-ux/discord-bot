@@ -31,6 +31,15 @@ except ImportError:
 
 MOONLIFE_COLOR = 0xB9A7E8
 
+# 🧪 Moon Life 專用測試人員
+# 測試期間購買 Moon Life 商店物品／體力時不扣努努幣。
+MOONLIFE_TESTERS = {
+    871398865012666389,
+}
+
+def is_moonlife_tester(user_id):
+    return int(user_id) in MOONLIFE_TESTERS
+
 MAX_NATURAL_STAMINA = 10
 STAMINA_RECOVER_SECONDS = 3600
 
@@ -342,6 +351,10 @@ def remove_money(user_id, amount):
     if amount <= 0:
         return False
 
+    # 🧪 Moon Life 測試人員：所有 Moon Life 扣款免費。
+    if is_moonlife_tester(user_id):
+        return True
+
     c.execute("""
         UPDATE users
         SET money = money - ?
@@ -551,12 +564,51 @@ def stat_level(value):
 # ==========================================================
 
 class AdoptionModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
-    parent_name = discord.ui.TextInput(label="請輸入你在 Moon Life 裡的名字", max_length=30)
-    child_name = discord.ui.TextInput(label="請輸入孩子的名字", max_length=30)
+    # 第一階段只填家長名字，先抽孩子性別後才取名。
+    parent_name = discord.ui.TextInput(
+        label="請輸入你在 Moon Life 裡的名字",
+        max_length=30
+    )
 
     def __init__(self, identity):
         super().__init__()
         self.identity = identity
+
+    async def on_submit(self, interaction: discord.Interaction):
+        parent_name = str(self.parent_name.value).strip()
+
+        if not parent_name:
+            await interaction.response.send_message("❌ 請先輸入你的名字。", ephemeral=True)
+            return
+
+        # 👶 先由系統抽中孩子性別，再進入命名階段。
+        gender = random.choice(["男", "女"])
+        gender_text = "男孩 👦" if gender == "男" else "女孩 👧"
+
+        await interaction.response.send_modal(
+            ChildNamingModal(
+                identity=self.identity,
+                parent_name=parent_name,
+                gender=gender
+            )
+        )
+
+
+class ChildNamingModal(discord.ui.Modal):
+    def __init__(self, identity, parent_name, gender):
+        self.identity = identity
+        self.parent_name = parent_name
+        self.gender = gender
+
+        gender_text = "男孩 👦" if gender == "男" else "女孩 👧"
+        super().__init__(title=f"🎉 抽中了！孩子是{gender_text}")
+
+        self.child_name = discord.ui.TextInput(
+            label=f"請幫這位{gender_text}取名字",
+            placeholder="現在知道性別後，再幫孩子取名字吧！",
+            max_length=30
+        )
+        self.add_item(self.child_name)
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
@@ -580,8 +632,6 @@ class AdoptionModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
                 )
                 return
 
-        gender = random.choice(["男", "女"])
-
         # 初始素質稍微隨機，避免每個孩子完全一樣
         stats = [random.randint(3, 8) for _ in range(5)]
 
@@ -603,7 +653,7 @@ class AdoptionModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
-            str(self.parent_name.value).strip(),
+            self.parent_name,
             self.identity,
             str(self.child_name.value).strip(),
             gender,
@@ -634,7 +684,7 @@ class AdoptionModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
                 current_child_id=excluded.current_child_id
         """, (
             user_id,
-            str(self.parent_name.value).strip(),
+            self.parent_name,
             self.identity,
             10,
             now_iso(),
@@ -657,13 +707,13 @@ class AdoptionModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
             user_id,
             child_id,
             "👶 第一次相遇",
-            f"{self.parent_name.value} 領養了 {self.child_name.value}。"
+            f"{self.parent_name} 領養了 {self.child_name.value}。"
         )
 
         embed = discord.Embed(
             title="🌙 領養成功！",
             description=(
-                f"{identity_emoji(self.identity)} 你：**{self.parent_name.value}**\n"
+                f"{identity_emoji(self.identity)} 你：**{self.parent_name}**\n"
                 f"{gender_emoji(gender)} 孩子：**{self.child_name.value}**\n\n"
                 f"🎂 **0歲1個月**\n"
                 f"🌱 從今天開始，你們要一起慢慢長大。"
@@ -1412,8 +1462,9 @@ class ShopView(discord.ui.View):
         # 管理員測試帳號可以無限購買，價格規則照常計算。
         price = (buys + 1) * 1000
         money = get_money(user_id)
+        is_tester = is_moonlife_tester(interaction.user.id)
 
-        if money < price:
+        if not is_tester and money < price:
             await interaction.response.send_message(
                 f"❌ 努努幣不足。\n需要：{price:,}\n目前：{money:,}",
                 ephemeral=True
@@ -1432,9 +1483,11 @@ class ShopView(discord.ui.View):
         conn.commit()
 
         admin_note = "\n🔧 BOT 管理員測試模式：今日購買次數不受限制。" if is_admin else ""
+        tester_note = "\n🧪 Moon Life 測試模式：本次免費，不扣努努幣。" if is_tester else ""
+        cost_text = "💰 測試免費（0 努努幣）" if is_tester else f"💰 消耗 {price:,} 努努幣"
         await interaction.response.send_message(
-            f"⚡ 購買成功！\n體力 +10\n💰 消耗 {price:,} 努努幣\n\n"
-            f"購買體力可以突破自然上限 10。{admin_note}",
+            f"⚡ 購買成功！\n體力 +10\n{cost_text}\n\n"
+            f"購買體力可以突破自然上限 10。{admin_note}{tester_note}",
             ephemeral=True
         )
 
@@ -1481,10 +1534,104 @@ async def show_shop_category(interaction, category):
 
     embed = discord.Embed(
         title="🛍️ Moon Life 商店",
-        description="\n\n".join(lines),
+        description=(
+            "📦 **選擇物品後可以輸入購買數量，每次最多 50 個。**\n"
+            "🧸 耐久玩具因背包耐久度設計，每次維持購買 1 件。\n\n"
+            + "\n\n".join(lines)
+        ),
         color=MOONLIFE_COLOR
     )
     await interaction.response.edit_message(embed=embed, view=view)
+
+
+class ShopQuantityModal(discord.ui.Modal):
+    """商店數量購買：每次 1～50。"""
+
+    def __init__(self, item_name):
+        self.item_name = item_name
+        item = ITEMS[item_name]
+        super().__init__(title=f"🛍️ 購買 {item_name}")
+
+        self.quantity = discord.ui.TextInput(
+            label="購買數量（1～50）",
+            placeholder="例如：10",
+            default="1",
+            required=True,
+            max_length=2
+        )
+        self.add_item(self.quantity)
+
+        self.item_price = int(item["price"])
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+
+        try:
+            amount = int(str(self.quantity.value).strip())
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ 購買數量請輸入 1～50 的整數。",
+                ephemeral=True
+            )
+            return
+
+        if not 1 <= amount <= 50:
+            await interaction.response.send_message(
+                "❌ 每次購買數量必須介於 **1～50**。",
+                ephemeral=True
+            )
+            return
+
+        item = ITEMS.get(self.item_name)
+        if not item:
+            await interaction.response.send_message("❌ 找不到這個物品。", ephemeral=True)
+            return
+
+        # 🧸 玩具是耐久物品，目前背包設計為每種玩具一件並共用耐久度。
+        # 因此避免玩家花錢買 50 件，實際上卻只得到一件。
+        if is_durable_item(self.item_name) and amount > 1:
+            await interaction.response.send_message(
+                "🧸 **耐久玩具目前每次只能購買 1 件。**\n"
+                "因為每種玩具在背包中會以單一耐久度物品保存，"
+                "避免你買了多件卻只得到一件。",
+                ephemeral=True
+            )
+            return
+
+        total_price = self.item_price * amount
+        money = get_money(user_id)
+        is_tester = is_moonlife_tester(interaction.user.id)
+
+        if not is_tester and money < total_price:
+            await interaction.response.send_message(
+                f"❌ 努努幣不足。\n"
+                f"單價：{self.item_price:,} 努努幣\n"
+                f"數量：{amount}\n"
+                f"總價：{total_price:,} 努努幣\n"
+                f"目前：{money:,}",
+                ephemeral=True
+            )
+            return
+
+        # 一次扣款、一次加入。測試人員 remove_money 會直接免費通過。
+        if not remove_money(user_id, total_price):
+            await interaction.response.send_message(
+                "❌ 購買失敗，請重新確認努努幣餘額。",
+                ephemeral=True
+            )
+            return
+
+        add_inventory(user_id, self.item_name, amount)
+
+        cost_text = "🧪 測試免費：**0 努努幣**" if is_tester else f"💰 總消耗：**{total_price:,} 努努幣**"
+        await interaction.response.send_message(
+            f"🛍️ **購買成功！**\n\n"
+            f"📦 獲得：**{self.item_name} ×{amount}**\n"
+            f"💰 單價：{self.item_price:,} 努努幣\n"
+            f"{cost_text}\n"
+            f"💳 剩餘：{get_money(user_id):,} 努努幣",
+            ephemeral=True
+        )
 
 
 class ShopSelect(discord.ui.Select):
@@ -1492,25 +1639,11 @@ class ShopSelect(discord.ui.Select):
         super().__init__(placeholder="選擇要購買的物品", options=options)
 
     async def callback(self, interaction):
-        user_id = str(interaction.user.id)
         name = self.values[0]
         item = ITEMS[name]
-        money = get_money(user_id)
 
-        if money < item["price"]:
-            await interaction.response.send_message(
-                f"❌ 努努幣不足。\n需要：{item['price']:,}\n目前：{money:,}",
-                ephemeral=True
-            )
-            return
-
-        remove_money(user_id, item["price"])
-        add_inventory(user_id, name)
-
-        await interaction.response.send_message(
-            f"🛍️ 購買成功！\n獲得：**{name} ×1**\n💰 消耗：{item['price']:,} 努努幣",
-            ephemeral=True
-        )
+        # 選擇物品後再讓玩家輸入數量，而不是直接購買 1 個。
+        await interaction.response.send_modal(ShopQuantityModal(name))
 
 
 class ShopBackButton(discord.ui.Button):
@@ -1544,12 +1677,12 @@ AGE_STAGES = [
 ]
 
 ACTIVITY_LIBRARY = {
-    "親子聊天": {
-        "where": "home", "stamina": 1, "relationship": (2, 5),
-        "stats": {"emotion": (1, 3), "social": (0, 2)},
+    "跟孩子說說話": {
+        "where": "home", "stamina": 1, "relationship": (1, 3),
+        "stats": {"emotion": (1, 2), "social": (0, 1)},
         "personality": [("溫柔", 2), ("黏人", 1)],
         "min_age": 0,
-        "memory": "💬 你們今天好好聊了一會兒。",
+        "memory": "💬 你今天溫柔地和孩子說說話，孩子安靜聽著你的聲音。",
     },
     "抱抱孩子": {
         "where": "home", "stamina": 1, "relationship": (3, 6),
@@ -1780,7 +1913,7 @@ EVENT_LIBRARY = [
         "id": "hungry_child",
         "title": "🍽️ 小小的肚子聲",
         "condition": lambda ch, ex: ch["hunger"] >= 65 and ex.get("事件_hungry_child", 0) < 3,
-        "text": lambda ch: f"🥺 {ch['name']}摸著肚子，小聲地說：「我好像餓餓了……」",
+        "text": lambda ch: f"🥺 {ch['name']}看起來有點焦躁，不時扭動身體，像是在告訴你肚子餓了。",
         "effects": {},
     },
     {
@@ -1826,7 +1959,7 @@ EVENT_LIBRARY = [
     {
         "id": "little_hug",
         "title": "🤗 突然的擁抱",
-        "condition": lambda ch, ex: ch["relationship"] >= 70 and ch["emotion"] >= 15 and ex.get("事件_little_hug", 0) < 3,
+         "condition": lambda ch, ex: ch["age_year"] >= 1 and ch["relationship"] >= 70 and ch["emotion"] >= 15 and ex.get("事件_little_hug", 0) < 3,
         "text": lambda ch: f"🤗 沒有特別的原因，{ch['name']}今天突然給了你一個大大的擁抱。",
         "effects": {"relationship": 2, "emotion": 1},
     },
@@ -1931,7 +2064,7 @@ EVENT_LIBRARY = [
     {
         "id": "tiny_treasure",
         "title": "🍃 小小的寶物",
-        "condition": lambda ch, ex: ex.get("活動_自然", 0) >= 3 and ex.get("事件_tiny_treasure", 0) < 3,
+         "condition": lambda ch, ex: ch["age_year"] >= 1 and ex.get("活動_自然", 0) >= 3 and ex.get("事件_tiny_treasure", 0) < 3,
         "text": lambda ch: f"🍃 {ch['name']}今天撿到了一個覺得非常特別的小東西，認真地說要好好收藏。",
         "effects": {"emotion": 1},
         "personality": ("好奇", 1),
@@ -2125,7 +2258,7 @@ def roll_monthly_milestone(user_id, child):
 
 
 def roll_player_child_encounter(user_id, child, activity_name):
-    """外出偶遇真實其他玩家的孩子；測試期沒有其他孩子時自然不觸發。"""
+    """外出偶遇真實其他玩家的孩子，並依雙方年齡使用合理互動。"""
     c.execute("""
         SELECT ch.*
         FROM moonlife_children ch
@@ -2136,99 +2269,175 @@ def roll_player_child_encounter(user_id, child, activity_name):
     row = c.fetchone()
     if not row:
         return None
+
     other = child_dict(row)
+    age = int(child["age_year"])
+    other_age = int(other["age_year"])
 
-    # 年齡差太大時只做「看到」，不做不合理的共同遊戲。
-    age_gap = abs(int(child["age_year"]) - int(other["age_year"]))
-    if age_gap >= 4:
-        title="👀 遇見另一個孩子"
-        content=f"外出時，{child['name']}看見了比自己年紀差很多的孩子「{other['name']}」，兩人短暫地注意到彼此。"
-        effects={"emotion":1}
-    elif child["age_year"] <= 1 and other["age_year"] <= 1:
-        options=[
-            ("👶 嬰兒車剛好停在旁邊", f"{child['name']}和「{other['name']}」剛好在附近，兩個小朋友互相張望了好一會兒。", {"emotion":1}),
-            ("😊 對方先笑了", f"另一個孩子「{other['name']}」突然笑了，{child['name']}也一直看著對方。", {"emotion":1}),
-        ]
-        title,content,effects=random.choice(options)
-    elif child["social"] >= 30:
-        options=[
-            ("🤝 認識了另一個孩子", f"{child['name']}外出時遇到「{other['name']}」，今天短暫地一起互動了一下。", {"social":2,"emotion":1}),
-            ("🧸 對彼此很好奇", f"{child['name']}和「{other['name']}」注意到彼此，對這位新朋友都很好奇。", {"social":1}),
-        ]
-        title,content,effects=random.choice(options)
+    # 👶 0歲嬰兒：只會「看到、注視、聽到、微笑」等被動且合理的互動。
+    if age == 0:
+        if other_age == 0:
+            options = [
+                ("👶 嬰兒車剛好停在旁邊",
+                 f"{child['name']}和「{other['name']}」的嬰兒車剛好停在附近，兩個寶寶安靜地互相張望。",
+                 {"emotion": 1}),
+                ("😊 看見另一個寶寶",
+                 f"{child['name']}注意到另一位寶寶「{other['name']}」，視線停留了一會兒，對這張陌生的小臉很好奇。",
+                 {"emotion": 1}),
+                ("👀 兩雙好奇的眼睛",
+                 f"{child['name']}和「{other['name']}」短暫地看著彼此，兩個小朋友都還太小，只是靜靜感受這次相遇。",
+                 {"emotion": 1}),
+            ]
+        else:
+            options = [
+                ("👀 看見另一個孩子",
+                 f"外出時，{child['name']}注意到不遠處的孩子「{other['name']}」，安靜地看了一會兒。",
+                 {"emotion": 1}),
+                ("🔊 聽見孩子們的聲音",
+                 f"{child['name']}聽見附近孩子們玩耍的聲音，睜大眼睛四處張望。",
+                 {"emotion": 1}),
+            ]
+        title, content, effects = random.choice(options)
+
     else:
-        title="😳 偷偷觀察另一個孩子"
-        content=f"{child['name']}外出時看見「{other['name']}」，沒有馬上靠近，而是在你身邊安靜觀察。"
-        effects={"relationship":1,"emotion":1}
+        age_gap = abs(age - other_age)
+        if age_gap >= 4:
+            title = "👀 遇見另一個孩子"
+            content = f"外出時，{child['name']}看見了比自己年紀差很多的孩子「{other['name']}」，兩人短暫地注意到彼此。"
+            effects = {"emotion": 1}
+        elif age <= 1 and other_age <= 1:
+            options = [
+                ("👶 兩個小朋友互相張望",
+                 f"{child['name']}和「{other['name']}」剛好在附近，兩個小朋友互相張望了好一會兒。",
+                 {"emotion": 1}),
+                ("😊 對方先笑了",
+                 f"另一個孩子「{other['name']}」突然笑了，{child['name']}也一直看著對方。",
+                 {"emotion": 1}),
+            ]
+            title, content, effects = random.choice(options)
+        elif child["social"] >= 30:
+            options = [
+                ("🤝 認識了另一個孩子",
+                 f"{child['name']}外出時遇到「{other['name']}」，今天短暫地一起互動了一下。",
+                 {"social": 2, "emotion": 1}),
+                ("🧸 對彼此很好奇",
+                 f"{child['name']}和「{other['name']}」注意到彼此，對這位新朋友都很好奇。",
+                 {"social": 1}),
+            ]
+            title, content, effects = random.choice(options)
+        else:
+            title = "😳 偷偷觀察另一個孩子"
+            content = f"{child['name']}外出時看見「{other['name']}」，沒有馬上靠近，而是在你身邊安靜觀察。"
+            effects = {"relationship": 1, "emotion": 1}
 
-    change_child(child["child_id"], **{k:child[k]+v for k,v in effects.items()})
+    change_child(child["child_id"], **{k: child[k] + v for k, v in effects.items()})
     add_memory(user_id, child["child_id"], title, content)
     add_experience(child["child_id"], f"偶遇玩家孩子_{other['child_id']}", 1)
-    return {"title":title,"text":content}
+    return {"title": title, "text": content}
 
 
 def roll_outside_event(user_id, child, activity_name):
-    """所有外出活動都有自己的生活事件，不再只有公園才可能有事件。"""
-    age = child["age_year"]
+    """所有外出活動都有生活事件；0歲嬰兒使用嚴格的嬰兒專屬事件池。"""
+    age = int(child["age_year"])
     social = child["social"]
-    fitness = child["fitness"]
     personalities = parse_json(child["personalities"], [])
     interests = parse_json(child["interests"], [])
 
-    events = []
-
-    # 👶 嬰兒也能遇到的外出經驗
-    if age <= 1:
-        events += [
-            {"title":"🍃 風吹過樹葉","text":f"{child['name']}安靜地聽著樹葉被風吹動的聲音，好像第一次發現外面的世界這麼不一樣。","effects":{"emotion":1},"interest":("自然",1)},
-            {"title":"👀 好奇地張望","text":f"{child['name']}一路上睜大眼睛看著周圍，對每個新的聲音和畫面都很好奇。","effects":{"emotion":1},"interest":("探索",1),"personality":("好奇",1)},
-            {"title":"🕊️ 看見飛過的小鳥","text":f"{child['name']}注意到天空中飛過的小鳥，視線跟著移動了好久。","effects":{"emotion":1},"interest":("自然",1)},
-            {"title":"😴 外出後有點累","text":f"外面的世界看了好多，{child['name']}回程時有點睏，安靜地靠著你休息。","effects":{"relationship":1}},
+    # ==========================================================
+    # 👶 0歲嬰兒：只能被動感受世界，不會自己探索、揮手或主動行動
+    # ==========================================================
+    if age == 0:
+        infant_events = [
+            {"title": "🍃 聽見風吹樹葉",
+             "text": f"微風吹過樹葉，{child['name']}安靜地聽著沙沙聲，眼睛慢慢轉向聲音傳來的方向。",
+             "effects": {"emotion": 1}},
+            {"title": "👀 好奇地張望",
+             "text": f"{child['name']}睜著眼睛看著周圍陌生的光影和景色，對外面的世界似乎充滿好奇。",
+             "effects": {"emotion": 1}},
+            {"title": "🕊️ 看見飛過的小鳥",
+             "text": f"一隻小鳥從眼前飛過，{child['name']}的視線跟著移動了一小段時間。",
+             "effects": {"emotion": 1}},
+            {"title": "😴 外出後有點累",
+             "text": f"外面的聲音和景色看了好多，{child['name']}回程時有點睏，安靜地靠著你休息。",
+             "effects": {"relationship": 1}},
+            {"title": "☀️ 感受暖暖的陽光",
+             "text": f"溫暖的陽光照在身上，{child['name']}看起來很放鬆。",
+             "effects": {"emotion": 1}},
+            {"title": "🔊 聽見陌生的聲音",
+             "text": f"周圍傳來不同的聲音，{child['name']}安靜地聽著，偶爾轉動眼睛尋找聲音的方向。",
+             "effects": {"emotion": 1}},
         ]
 
-    # 🌿 所有年齡都可能發生
-    events += [
-        {"title":"🌤️ 發現不一樣的天空","text":f"今天的天空和以前不太一樣，{child['name']}停下來看了好一會兒。","effects":{"emotion":1},"interest":("自然",1)},
-        {"title":"🎵 聽見陌生的聲音","text":f"{child['name']}聽見外面傳來陌生的聲音，忍不住四處尋找聲音的來源。","effects":{"social":1},"interest":("探索",1)},
-    ]
+        activity_events = {
+            "嬰兒車散步": [
+                {"title": "🍼 嬰兒車上的小旅行",
+                 "text": f"你推著{child['name']}慢慢散步，沿路的光影和聲音成了今天的新體驗。",
+                 "effects": {"emotion": 1}},
+            ],
+            "看看外面的世界": [
+                {"title": "🌤️ 看著天空",
+                 "text": f"{child['name']}安靜地看著明亮的天空和晃動的樹影，今天的世界對他來說又多了一點新鮮感。",
+                 "effects": {"emotion": 1}},
+            ],
+        }
+        events = infant_events + activity_events.get(activity_name, [])
 
-    if social >= 25 or "活潑" in personalities:
-        events.append(
-            {"title":"👋 對陌生人揮手","text":f"{child['name']}遇到路人時主動揮了揮手，今天似乎比以前更願意接觸外面的世界。","effects":{"social":2},"personality":("活潑",1)}
-        )
+    # ==========================================================
+    # 🧒 1歲以上：才逐步加入主動觀察與互動
+    # ==========================================================
     else:
-        events.append(
-            {"title":"👀 安靜觀察人群","text":f"{child['name']}沒有急著靠近其他人，而是安靜地待在你身邊觀察。","effects":{"emotion":1,"relationship":1}}
-        )
+        events = [
+            {"title":"🌤️ 發現不一樣的天空",
+             "text":f"今天的天空和以前不太一樣，{child['name']}停下來看了好一會兒。",
+             "effects":{"emotion":1},"interest":("自然",1)},
+            {"title":"🎵 聽見陌生的聲音",
+             "text":f"{child['name']}聽見外面傳來陌生的聲音，忍不住四處尋找聲音的來源。",
+             "effects":{"social":1},"interest":("探索",1)},
+        ]
 
-    # 依活動補充合理事件
-    activity_events = {
-        "嬰兒車散步": [
-            {"title":"🚶 小小的散步路線","text":f"今天走到一段以前沒注意過的路，{child['name']}一路看著兩旁的新景色。","effects":{"emotion":1},"interest":("探索",1)},
-        ],
-        "看看外面的世界": [
-            {"title":"☀️ 喜歡陽光的感覺","text":f"溫暖的陽光照在身上，{child['name']}看起來心情很好。","effects":{"emotion":1}},
-        ],
-        "自然散步": [
-            {"title":"🍂 撿起一片葉子","text":f"{child['name']}注意到地上的葉子，對它的形狀和顏色很好奇。","effects":{"intelligence":1},"interest":("自然",2),"personality":("好奇",1)},
-        ],
-        "圖書館": [
-            {"title":"📚 被一本書吸引","text":f"{child['name']}在書架前停了下來，對其中一本書特別有興趣。","effects":{"intelligence":1},"interest":("閱讀",2)},
-        ],
-        "探索新地方": [
-            {"title":"🗺️ 發現新角落","text":f"{child['name']}主動注意到一個以前沒看過的小角落，想再靠近看看。","effects":{"intelligence":1},"interest":("探索",2),"personality":("好奇",1)},
-        ],
-        "一起運動": [
-            {"title":"💪 不想太快放棄","text":f"活動累了以後，{child['name']}休息了一下，又想再試一次。","effects":{"fitness":1},"personality":("勇敢",1)},
-        ],
-    }
-    events += activity_events.get(activity_name, [])
+        if social >= 25 or "活潑" in personalities:
+            events.append(
+                {"title":"👋 對陌生人揮手",
+                 "text":f"{child['name']}遇到路人時主動揮了揮手，今天似乎比以前更願意接觸外面的世界。",
+                 "effects":{"social":2},"personality":("活潑",1)}
+            )
+        else:
+            events.append(
+                {"title":"👀 安靜觀察人群",
+                 "text":f"{child['name']}沒有急著靠近其他人，而是安靜地待在你身邊觀察。",
+                 "effects":{"emotion":1,"relationship":1}}
+            )
 
-    # 興趣相關事件要先有接觸基礎，避免憑空出現。
-    if "自然" in interests and activity_name in ("嬰兒車散步", "自然散步"):
-        events.append(
-            {"title":"🌿 又想多看一會兒","text":f"{child['name']}對周圍的植物特別有興趣，主動停下來多看了一會兒。","effects":{"emotion":1},"interest":("自然",1)}
-        )
+        activity_events = {
+            "自然散步": [
+                {"title":"🍂 撿起一片葉子",
+                 "text":f"{child['name']}注意到地上的葉子，對它的形狀和顏色很好奇。",
+                 "effects":{"intelligence":1},"interest":("自然",2),"personality":("好奇",1)},
+            ],
+            "圖書館": [
+                {"title":"📚 被一本書吸引",
+                 "text":f"{child['name']}在書架前停了下來，對其中一本書特別有興趣。",
+                 "effects":{"intelligence":1},"interest":("閱讀",2)},
+            ],
+            "探索新地方": [
+                {"title":"🗺️ 發現新角落",
+                 "text":f"{child['name']}主動注意到一個以前沒看過的小角落，想再靠近看看。",
+                 "effects":{"intelligence":1},"interest":("探索",2),"personality":("好奇",1)},
+            ],
+            "一起運動": [
+                {"title":"💪 不想太快放棄",
+                 "text":f"活動累了以後，{child['name']}休息了一下，又想再試一次。",
+                 "effects":{"fitness":1},"personality":("勇敢",1)},
+            ],
+        }
+        events += activity_events.get(activity_name, [])
+
+        if "自然" in interests and activity_name in ("嬰兒車散步", "自然散步"):
+            events.append(
+                {"title":"🌿 又想多看一會兒",
+                 "text":f"{child['name']}對周圍的植物特別有興趣，主動停下來多看了一會兒。",
+                 "effects":{"emotion":1},"interest":("自然",1)}
+            )
 
     if not events or random.random() > 0.55:
         return None
@@ -2354,6 +2563,9 @@ def run_activity(user_id, activity_name):
     relationship_gain = random.randint(*relationship_range)
     if relationship_gain > 0:
         relationship_gain = max(1, (relationship_gain + 1) // 2)
+    # 👶 嬰兒期建立依附需要時間，避免每次活動都快速升滿親近。
+    if int(child["age_year"]) == 0 and relationship_gain > 0:
+        relationship_gain = 1
 
     change_child(
         child["child_id"],
@@ -2427,6 +2639,21 @@ def roll_reasonable_event(user_id, child):
         event for event in EVENT_LIBRARY
         if event["condition"](child, experiences)
     ]
+
+    # 👶 0歲仍是嬰兒：只能觸發符合發展階段的事件。
+    # 避免出現「嬰兒聊天、完整說話、自己撿寶物」等不合理內容。
+    if int(child["age_year"]) == 0:
+        infant_safe_ids = {
+            "hungry_child",
+            "very_hungry",
+            "safe_home",
+            "first_night",
+            "trust_moment",
+        }
+        eligible = [
+            event for event in eligible
+            if event.get("id") in infant_safe_ids
+        ]
 
     if not eligible:
         return None
