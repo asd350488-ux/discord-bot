@@ -208,6 +208,84 @@ def identity_emoji(identity):
 def gender_emoji(gender):
     return "👦" if gender == "男" else "👧"
 
+
+# ==========================================================
+# 🧪 測試資料清除
+# ==========================================================
+
+def clear_moonlife_data(user_id):
+    """完整清除指定使用者的 Moon Life 資料，不影響努努幣或其他系統。"""
+    user_id = str(user_id)
+
+    # 先刪除依附在孩子身上的人生回憶，再刪除其他 Moon Life 資料
+    c.execute("DELETE FROM moonlife_memories WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM moonlife_inventory WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM moonlife_daily WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM moonlife_children WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM moonlife_players WHERE user_id=?", (user_id,))
+    conn.commit()
+
+
+class MoonLifeClearConfirmView(discord.ui.View):
+    """避免測試資料被誤按直接刪除。"""
+
+    def __init__(self, user_id):
+        super().__init__(timeout=60)
+        self.user_id = str(user_id)
+        self.finished = False
+
+    @discord.ui.button(label="🗑️ 確定清空", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(
+                "❌ 這不是你的清除確認視窗。",
+                ephemeral=True
+            )
+            return
+
+        if self.finished:
+            await interaction.response.send_message("⚠️ 資料已經清空。", ephemeral=True)
+            return
+
+        self.finished = True
+        clear_moonlife_data(self.user_id)
+
+        for item in self.children:
+            item.disabled = True
+
+        await interaction.response.edit_message(
+            content=(
+                "🧹 **Moon Life 測試紀錄已清空！**\n\n"
+                "已刪除：\n"
+                "👶 孩子資料\n"
+                "📦 Moon Life 背包\n"
+                "📖 人生回憶\n"
+                "📅 遊戲天數與每日紀錄\n"
+                "⚡ Moon Life 體力／玩家資料\n\n"
+                "💰 **努努幣與 Moon Life 以外的系統資料完全不會受到影響。**\n\n"
+                "現在可以重新從 `/moonlife` 開始測試。"
+            ),
+            view=self
+        )
+
+    @discord.ui.button(label="取消", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(
+                "❌ 這不是你的清除確認視窗。",
+                ephemeral=True
+            )
+            return
+
+        for item in self.children:
+            item.disabled = True
+
+        await interaction.response.edit_message(
+            content="👌 已取消，Moon Life 紀錄沒有被刪除。",
+            view=self
+        )
+
+
 def get_player(user_id):
     c.execute("SELECT * FROM moonlife_players WHERE user_id=?", (str(user_id),))
     return c.fetchone()
@@ -3035,6 +3113,27 @@ def setup_moon_life(bot):
     if getattr(bot, "_moon_life_loaded", False):
         return
     bot._moon_life_loaded = True
+
+    @bot.tree.command(name="moonlife清空紀錄", description="清空自己的 Moon Life 測試紀錄")
+    async def moonlife_clear_record(interaction: discord.Interaction):
+        user_id = interaction.user.id
+
+        # 正式上線後只有 BOT_ADMINS 可以使用；測試階段也允許 Moon Life 測試員自行重置。
+        if user_id not in BOT_ADMINS and not is_moonlife_tester(user_id):
+            await interaction.response.send_message(
+                "❌ 這個功能目前只開放 Moon Life 測試人員與管理員。",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "⚠️ **確定要清空自己的 Moon Life 測試紀錄嗎？**\n\n"
+            "這會刪除你的孩子、背包、人生回憶、遊戲天數與 Moon Life 體力資料。\n"
+            "💰 **不會刪除努努幣，也不會影響其他系統。**",
+            view=MoonLifeClearConfirmView(user_id),
+            ephemeral=True
+        )
+
 
     @bot.tree.command(name="moonlife", description="進入 Moon Life")
     async def moonlife(interaction: discord.Interaction):
