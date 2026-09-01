@@ -163,6 +163,15 @@ def init_moonclub_tables():
     """)
 
     c.execute("""
+        CREATE TABLE IF NOT EXISTS moonclub_inventory (
+            user_id TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, item_name)
+        )
+    """)
+
+    c.execute("""
         CREATE TABLE IF NOT EXISTS moonclub_model_daily (
             user_id TEXT NOT NULL,
             model_id INTEGER NOT NULL,
@@ -310,6 +319,176 @@ def add_reputation(user_id, amount):
     c.execute("UPDATE moonclub_players SET reputation=?, model_capacity=? WHERE user_id=?", (after, new_cap, str(user_id)))
     conn.commit()
     return before, after, old_cap, new_cap, stage
+
+
+# ==========================================================
+# 💰 努努幣／🛒 商店／🎒 背包
+# ==========================================================
+
+SHOP_ITEMS = {
+    "energy_drink": {"name":"🧃 能量飲料","price":500,"stamina":15,"desc":"快速補充體力。"},
+    "meal": {"name":"🍱 精緻餐點","price":1000,"stamina":30,"desc":"補充更多體力。"},
+    "premium_rest": {"name":"✨ 高級恢復券","price":2000,"stamina":60,"desc":"大幅恢復體力。"},
+    "flower": {"name":"🌹 精緻花束","price":500,"gift":3,"bonus":{"emotion":1},"desc":"小小心意，讓他心情更好。"},
+    "coffee": {"name":"☕ 精品咖啡組","price":1000,"gift":4,"bonus":{"social":1},"desc":"適合悠閒聊天的小禮物。"},
+    "chocolate": {"name":"🍫 精品巧克力","price":1500,"gift":5,"bonus":{"emotion":2},"desc":"甜蜜的小驚喜。"},
+    "books": {"name":"📚 精選書籍","price":2000,"gift":4,"bonus":{"intelligence":2},"desc":"兼顧心意與知識。"},
+    "sports": {"name":"🏋️ 運動裝備組","price":2500,"gift":5,"bonus":{"fitness":2},"desc":"適合重視體能與訓練的他。"},
+    "creative_box": {"name":"🎨 創作禮盒","price":3000,"gift":6,"bonus":{"creativity":3},"desc":"給靈感與創意的一份支持。"},
+    "perfume": {"name":"🌙 高級香水","price":3500,"gift":7,"bonus":{"social":2},"desc":"精緻又有個人風格。"},
+    "watch": {"name":"⌚ 精品手錶","price":4000,"gift":8,"bonus":{"intelligence":2},"desc":"重要時刻的高級禮物。"},
+    "headphones": {"name":"🎧 頂級耳機","price":5000,"gift":8,"bonus":{"creativity":3},"desc":"陪伴練習、休息與靈感時光。"},
+    "tailored_suit": {"name":"🤵 高級訂製服","price":7000,"gift":10,"bonus":{"social":4},"desc":"提升公開場合的自信與社交表現。"},
+    "luxury_gift": {"name":"💎 奢華禮盒","price":10000,"gift":15,"bonus":{"emotion":5},"desc":"昂貴但不是用來快速刷滿好感度。"},
+}
+def get_money(user_id):
+    try:
+        c.execute("SELECT money FROM users WHERE user_id=?", (str(user_id),))
+        row = c.fetchone()
+        if not row:
+            return 0
+        try:
+            return int(row["money"])
+        except Exception:
+            return int(row[0])
+    except Exception:
+        return 0
+
+def remove_money(user_id, amount):
+    amount = int(amount)
+    if amount <= 0:
+        return True
+    # 保留 Moon Club 專用測試帳號免費，正式玩家會實際扣努努幣。
+    if is_moonclub_tester(user_id):
+        return True
+    c.execute("UPDATE users SET money=money-? WHERE user_id=? AND money>=?",
+              (amount, str(user_id), amount))
+    ok = c.rowcount > 0
+    conn.commit()
+    return ok
+
+def add_inventory(user_id, item_key, amount=1):
+    c.execute("""
+        INSERT INTO moonclub_inventory (user_id,item_name,quantity)
+        VALUES (?,?,?)
+        ON CONFLICT(user_id,item_name)
+        DO UPDATE SET quantity=quantity+excluded.quantity
+    """, (str(user_id), item_key, int(amount)))
+    conn.commit()
+
+def inventory_amount(user_id, item_key):
+    c.execute("SELECT quantity FROM moonclub_inventory WHERE user_id=? AND item_name=?",
+              (str(user_id), item_key))
+    row=c.fetchone()
+    return int(row[0]) if row else 0
+
+def consume_inventory(user_id, item_key):
+    qty=inventory_amount(user_id,item_key)
+    if qty <= 0: return False
+    if qty == 1:
+        c.execute("DELETE FROM moonclub_inventory WHERE user_id=? AND item_name=?",(str(user_id),item_key))
+    else:
+        c.execute("UPDATE moonclub_inventory SET quantity=quantity-1 WHERE user_id=? AND item_name=?",
+                  (str(user_id),item_key))
+    conn.commit()
+    return True
+
+def spend_for_action(user_id, amount):
+    amount=int(amount)
+    if is_moonclub_tester(user_id):
+        return True, get_money(user_id), True
+    before=get_money(user_id)
+    if before < amount:
+        return False, before, False
+    if not remove_money(user_id,amount):
+        return False, before, False
+    return True, before-amount, False
+
+
+# --------------------------
+# 🛒 商店 UI
+# --------------------------
+def build_shop_embed(user_id):
+    lines=[]
+    for key,data in SHOP_ITEMS.items():
+        lines.append(f"{data['name']}｜💰 **{data['price']:,}**\\n{data['desc']}")
+    return discord.Embed(
+        title="🛒 Moon Club｜商店",
+        description=f"💳 目前努努幣：**{get_money(user_id):,}**\\n\\n" + "\\n\\n".join(lines),
+        color=MOONCLUB_COLOR)
+
+class ShopItemSelect(discord.ui.Select):
+    def __init__(self, category):
+        self.category=category
+        keys=[k for k,v in SHOP_ITEMS.items() if ("stamina" in v if category=="energy" else "gift" in v)]
+        options=[discord.SelectOption(label=f"{SHOP_ITEMS[k]['name']}｜{SHOP_ITEMS[k]['price']:,} 努努幣",value=k,description=SHOP_ITEMS[k]["desc"]) for k in keys]
+        super().__init__(placeholder="選擇要購買的物品…",options=options)
+    async def callback(self,interaction):
+        user_id=str(interaction.user.id); key=self.values[0]; data=SHOP_ITEMS[key]
+        ok,_,testing=spend_for_action(user_id,data["price"])
+        if not ok:
+            await interaction.response.send_message(f"❌ 努努幣不足，需要 **{data['price']:,}**，目前 **{get_money(user_id):,}**。",ephemeral=True); return
+        add_inventory(user_id,key,1)
+        await interaction.response.edit_message(
+            embed=discord.Embed(title="🛒 購買成功",description=f"獲得 **{data['name']} ×1**\\n💰 {'測試免費' if testing else f'努努幣 -{data['price']:,}'}\\n🎒 已放入背包。",color=MOONCLUB_COLOR),
+            view=ShopView())
+
+class InventorySelect(discord.ui.Select):
+    def __init__(self,user_id):
+        options=[]
+        for key,data in SHOP_ITEMS.items():
+            qty=inventory_amount(user_id,key)
+            if qty>0:
+                options.append(discord.SelectOption(label=f"{data['name']} ×{qty}",value=key))
+        super().__init__(placeholder="選擇要使用的物品…",options=options)
+    async def callback(self,interaction):
+        user_id=str(interaction.user.id); key=self.values[0]; data=SHOP_ITEMS[key]
+        model=model_dict(get_model(user_id))
+        if not consume_inventory(user_id,key):
+            await interaction.response.send_message("❌ 背包中沒有這個物品。",ephemeral=True); return
+        if "stamina" in data:
+            before=model.get("model_stamina",100); after=clamp(before+data["stamina"],0,100)
+            change_model(model["model_id"],model_stamina=after)
+            text=f"⚡ 體力：**{before} → {after} / 100**"
+        else:
+            before=model.get("affection",0); after=clamp(before+data["gift"],0,1000)
+            updates={"affection": after}; bonus_text=""
+            for stat, amount in data.get("bonus", {}).items():
+                old_value=int(model.get(stat,0)); new_value=clamp(old_value+int(amount),0,1000)
+                updates[stat]=new_value
+                bonus_text += f"\n✨ {stat}：**{old_value} → {new_value}**"
+            change_model(model["model_id"], **updates)
+            text=f"❤️ 好感度：**{before} → {after} / 1000**" + bonus_text
+        add_memory(user_id,model["model_id"],f"🎁 使用 {data['name']}",text)
+        await interaction.response.edit_message(embed=discord.Embed(title=data["name"],description=f"👤 **{model['name']}**\\n{text}",color=MOONCLUB_COLOR),view=ShopView())
+
+class ShopView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+    @discord.ui.button(label="🧃 體力用品",style=discord.ButtonStyle.success,row=0)
+    async def energy(self,interaction,button):
+        v=discord.ui.View(timeout=180); v.add_item(ShopItemSelect("energy")); v.add_item(ShopBackButton())
+        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)),view=v)
+    @discord.ui.button(label="🎁 禮物",style=discord.ButtonStyle.primary,row=0)
+    async def gifts(self,interaction,button):
+        v=discord.ui.View(timeout=180); v.add_item(ShopItemSelect("gift")); v.add_item(ShopBackButton())
+        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)),view=v)
+    @discord.ui.button(label="🎒 背包",style=discord.ButtonStyle.secondary,row=1)
+    async def inventory(self,interaction,button):
+        user_id=str(interaction.user.id)
+        opts=[k for k in SHOP_ITEMS if inventory_amount(user_id,k)>0]
+        if not opts:
+            await interaction.response.send_message("🎒 背包目前是空的。",ephemeral=True); return
+        v=discord.ui.View(timeout=180); v.add_item(InventorySelect(user_id)); v.add_item(ShopBackButton())
+        await interaction.response.edit_message(embed=discord.Embed(title="🎒 Moon Club｜背包",description="選擇物品後立即使用。",color=MOONCLUB_COLOR),view=v)
+    @discord.ui.button(label="⬅️ 回主畫面",style=discord.ButtonStyle.secondary,row=1)
+    async def back(self,interaction,button):
+        await refresh_home(interaction)
+
+class ShopBackButton(discord.ui.Button):
+    def __init__(self): super().__init__(label="⬅️ 回商店",style=discord.ButtonStyle.secondary)
+    async def callback(self,interaction):
+        await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)),view=ShopView())
 
 
 # ==========================================================
@@ -575,9 +754,12 @@ class MoonClubHomeView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=300)
 
-    @discord.ui.button(label="🏠 會館", style=discord.ButtonStyle.primary, row=0)
-    async def home(self, interaction, button):
-        await refresh_home(interaction)
+    @discord.ui.button(label="🛒 商店", style=discord.ButtonStyle.primary, row=0)
+    async def shop(self, interaction, button):
+        await interaction.response.edit_message(
+            embed=build_shop_embed(str(interaction.user.id)),
+            view=ShopView(),
+        )
 
     @discord.ui.button(label="👤 男模資料", style=discord.ButtonStyle.secondary, row=0)
     async def model(self, interaction, button):
@@ -751,8 +933,8 @@ def apply_training(user_id, key):
     model = model_dict(get_model(user_id))
     data = TRAINING_LIBRARY[key]
     training_count, _ = daily_row(user_id, model["model_id"])
-    if training_count >= 3:
-        return None, "❌ 今天已完成 3 次培訓，讓他休息一下吧。"
+    if model.get("model_stamina", 100) < 10:
+        return None, "⚡ 體力不足 10，請先到 🛒 商店購買補給品並使用。"
 
     stat = data["stat"]
     gain = random.randint(2, 5)
@@ -812,7 +994,7 @@ class TrainingView(discord.ui.View):
         await interaction.response.edit_message(
             embed=discord.Embed(
                 title=data["name"],
-                description=f"👤 **{model['name']}** 完成培訓！\n{STAT_EMOJIS[stat]} 能力 +**{gain}**{extra}",
+                description=f"👤 **{model['name']}** 完成培訓！\n{STAT_EMOJIS[stat]} 能力 +**{gain}**\n⚡ 體力 -10{extra}",
                 color=MOONCLUB_COLOR,
             ),
             view=BackHomeView(),
@@ -854,14 +1036,21 @@ class InteractionView(discord.ui.View):
         user_id = str(interaction.user.id)
         model = model_dict(get_model(user_id))
         _, interaction_count = daily_row(user_id, model["model_id"])
-        if interaction_count >= 3:
-            await interaction.response.send_message("❌ 今天已經進行很多互動了，明天再繼續吧。", ephemeral=True)
-            return
         name, text = INTERACTIONS[index]
-        gain = random.randint(15, 35)
+        stamina_cost = [3, 5, 4, 4][index]
+        coin_cost = [500, 1000, 500, 1000][index]
+        if model.get("model_stamina", 100) < stamina_cost:
+            await interaction.response.send_message(f"⚡ 體力不足 {stamina_cost}，請先補充體力。", ephemeral=True)
+            return
+        ok, _, testing = spend_for_action(user_id, coin_cost)
+        if not ok:
+            await interaction.response.send_message(f"❌ 努努幣不足，需要 **{coin_cost:,}** 努努幣，目前只有 **{get_money(user_id):,}**。", ephemeral=True)
+            return
+        gain = random.randint(5, 12)
         before = model["relationship"]
         after = clamp(before + gain, 0, 1000)
-        change_model(model["model_id"], relationship=after)
+        change_model(model["model_id"], relationship=after,
+                     model_stamina=clamp(model.get("model_stamina",100)-stamina_cost,0,100))
         c.execute("""
             UPDATE moonclub_model_daily
             SET interaction_count=interaction_count+1
@@ -871,7 +1060,7 @@ class InteractionView(discord.ui.View):
         await interaction.response.edit_message(
             embed=discord.Embed(
                 title=name,
-                description=f"👤 **{model['name']}**\n{text}\n\n💕 默契：**{before} → {after} / 1000**",
+                description=f"👤 **{model['name']}**\n{text}\n\n💕 默契：**{before} → {after} / 1000**\n⚡ 體力 -{stamina_cost}\n💰 {'測試免費' if testing else f'努努幣 -{coin_cost:,}'}",
                 color=MOONCLUB_COLOR,
             ),
             view=BackHomeView(),
@@ -892,52 +1081,53 @@ class InteractionView(discord.ui.View):
 
 # ==========================================================
 # 💗 約會／好感度系統｜0～1000
+# V23 平衡：好感度採長期累積；默契日常互動每次 +5～12。
 # ==========================================================
 
 DATE_OPTIONS = [
-    (0, "☕ 輕鬆見面", "你們找了一個不太吵的地方坐下。從近況聊到彼此的習慣，氣氛比剛認識時自然許多。", (18, 35)),
-    (200, "🌆 外出約會", "傍晚的街道比會館安靜。他刻意放慢腳步配合你，偶爾回頭確認你是不是還在身邊。", (25, 45)),
-    (400, "💋 親密約會", "氣氛變得比平常更曖昧。靠近時，你們沒有再刻意保持距離；在彼此都願意的情況下，一個吻讓原本的關係明顯跨過了新的界線。", (30, 55)),
-    (600, "🌙 私人約會", "他把時間留給了你們兩個人。長時間的擁抱、親吻與貼近，讓原本只存在於玩笑裡的曖昧逐漸變得真實。當氣氛升溫時，他仍停下來確認你的心意。", (35, 60)),
-    (800, "🔥 私人時光", "房門關上後，外面的聲音像被隔絕了。他靠近你，低聲說著只有你們聽得見的話。衣著不再像剛出門時那樣整齊，親吻與親密的觸碰讓夜晚變得格外漫長；接下來的私人時光，留給你們自己。🌙", (40, 70)),
-    (1000, "💎 專屬約會", "這已經不是普通的約會。你們之間有足夠的信任，也知道彼此真正想要的是什麼。他把你拉進懷裡，長久地吻著你，然後在再次確認彼此心意後，讓這個夜晚只屬於你們兩個人。🌙", (45, 80)),
+    (0, "☕ 輕鬆見面", "你們找了一個不太吵的地方坐下。從近況聊到彼此的習慣，氣氛比剛認識時自然許多。", (5, 8)),
+    (200, "🌆 外出約會", "傍晚的街道比會館安靜。他刻意放慢腳步配合你，偶爾回頭確認你是不是還在身邊。", (7, 12)),
+    (400, "💋 親密約會", "氣氛變得比平常更曖昧。靠近時，你們沒有再刻意保持距離；在彼此都願意的情況下，一個吻讓原本的關係明顯跨過了新的界線。", (8, 15)),
+    (600, "🌙 私人約會", "他把時間留給了你們兩個人。長時間的擁抱、親吻與貼近，讓原本只存在於玩笑裡的曖昧逐漸變得真實。當氣氛升溫時，他仍停下來確認你的心意。", (10, 18)),
+    (800, "🔥 私人時光", "房門關上後，外面的聲音像被隔絕了。他靠近你，低聲說著只有你們聽得見的話。衣著不再像剛出門時那樣整齊，親吻與親密的觸碰讓夜晚變得格外漫長；接下來的私人時光，留給你們自己。🌙", (12, 22)),
+    (1000, "💎 專屬約會", "這已經不是普通的約會。你們之間有足夠的信任，也知道彼此真正想要的是什麼。他把你拉進懷裡，長久地吻著你，然後在再次確認彼此心意後，讓這個夜晚只屬於你們兩個人。🌙", (15, 25)),
 ]
 
 # V17｜DATE_31～60：兩階完整隨機劇情（每次三選一）
 DATE_EVENTS = {
 400: [
-("DATE_31｜🤝 第一次主動牽手","過馬路時他沒有立刻放開你的手。你們都知道理由早已不只是人很多。",[("❤️ 反過來握住他的手",30),("😈 問他打算牽多久",35),("😊 靜靜讓他牽著",32)]),
-("DATE_32｜🌃 捨不得結束的夜晚","明明已經說過再見，你們卻都還站在原地。他低聲說：『其實……再走一下也可以。』",[("❤️ 我也還不想回去",35),("😄 問他是不是捨不得",38),("🌙 提議繼續聊天",30)]),
-("DATE_33｜💋 差一點吻上的距離","他靠得很近，兩個人同時安靜下來。他沒有越過界線，只等你的反應。",[("❤️ 看著他不躲開",40),("😈 問他想做什麼",38),("😳 主動拉開距離",18)]),
-("DATE_34｜🌧️ 同一把傘","雨突然落下，他撐開傘朝你伸手：『過來。』肩膀在狹小的傘下不時碰在一起。",[("🤍 主動靠近他",35),("😄 問他是不是故意靠近",32),("☔ 把傘往他那邊移",30)]),
-("DATE_35｜😈 第一次明顯吃醋","你提起另一個人後，他突然安靜了許多。你問怎麼了，他只說『沒什麼。』",[("😈 問他是不是吃醋",42),("❤️ 告訴他不用在意",35),("😄 故意繼續逗他",25)]),
-("DATE_36｜🛋️ 第一次到私人空間","約會結束很晚，他在門口猶豫後問：『要不要……進來坐一下？』",[("☕ 進去喝杯東西",35),("❤️ 問他是不是常帶人回來",38),("😊 約好下次再來",30)]),
-("DATE_37｜🤍 突然的擁抱","你情緒低落時，他沒有急著說教，只是把你拉進懷裡：『不用每次都假裝沒事。』",[("❤️ 回抱他",42),("😳 問他突然怎麼了",35),("🤍 靜靜待在他懷裡",40)]),
-("DATE_38｜🌙 深夜的真心話","夜深後，他忽然問：『你覺得……我們現在算什麼？』",[("❤️ 問他希望是什麼",45),("😄 要他先回答",42),("💬 認真說出感覺",40)]),
-("DATE_39｜💋 第一個吻","他停在你面前，先低聲問：『我可以吻你嗎？』",[("❤️ 點頭答應",50),("😈 你覺得呢？",42),("😊 再等等",28)]),
-("DATE_40｜🍷 約會後的試探","晚餐後他看著你說：『今天……你看起來很好。』",[("❤️ 稱讚回去",38),("😈 問他是不是故意說這種話",42),("😳 害羞地轉開話題",30)]),
-("DATE_41｜🎠 人群中的保護","人潮把你們沖散一點，他立刻拉住你：『跟著我。』一路都沒有放開。",[("❤️ 十指交扣",45),("😄 問他是不是太誇張",32),("🤍 輕輕握住他的手",40)]),
-("DATE_42｜🌃 夜景下的靠近","風有點冷，他把外套披到你身上：『別感冒。』",[("❤️ 拉著他一起穿",42),("😈 問他是不是只對你這樣",45),("🤍 靠近他避風",40)]),
-("DATE_43｜📸 只有兩人的照片","他說上次的合照還留著，這次又主動站到你身旁：『再拍一張？』",[("❤️ 靠近一起拍",45),("😄 問他是不是要當桌布",48),("📸 幫他拍個人照",35)]),
-("DATE_44｜💭 他開始主動想念你","見面前他先傳訊息：『你今天會來吧？』他承認昨天就在想今天。",[("❤️ 我也是",48),("😈 問他是不是想你",45),("😊 說自己很期待",42)]),
-("DATE_45｜❤️ 差一點說出口的告白","告別前他說有件事想告訴你，沉默很久又想算了。",[("❤️ 告訴他可以說",55),("😈 直接問是不是喜歡你",58),("🤍 告訴他不用急",45)]),
+("DATE_31｜🤝 第一次主動牽手","過馬路時他沒有立刻放開你的手。你們都知道理由早已不只是人很多。",[("❤️ 反過來握住他的手",6),("😈 問他打算牽多久",6),("😊 靜靜讓他牽著",6)]),
+("DATE_32｜🌃 捨不得結束的夜晚","明明已經說過再見，你們卻都還站在原地。他低聲說：『其實……再走一下也可以。』",[("❤️ 我也還不想回去",6),("😄 問他是不是捨不得",7),("🌙 提議繼續聊天",6)]),
+("DATE_33｜💋 差一點吻上的距離","他靠得很近，兩個人同時安靜下來。他沒有越過界線，只等你的反應。",[("❤️ 看著他不躲開",7),("😈 問他想做什麼",7),("😳 主動拉開距離",5)]),
+("DATE_34｜🌧️ 同一把傘","雨突然落下，他撐開傘朝你伸手：『過來。』肩膀在狹小的傘下不時碰在一起。",[("🤍 主動靠近他",6),("😄 問他是不是故意靠近",6),("☔ 把傘往他那邊移",6)]),
+("DATE_35｜😈 第一次明顯吃醋","你提起另一個人後，他突然安靜了許多。你問怎麼了，他只說『沒什麼。』",[("😈 問他是不是吃醋",7),("❤️ 告訴他不用在意",6),("😄 故意繼續逗他",6)]),
+("DATE_36｜🛋️ 第一次到私人空間","約會結束很晚，他在門口猶豫後問：『要不要……進來坐一下？』",[("☕ 進去喝杯東西",6),("❤️ 問他是不是常帶人回來",7),("😊 約好下次再來",6)]),
+("DATE_37｜🤍 突然的擁抱","你情緒低落時，他沒有急著說教，只是把你拉進懷裡：『不用每次都假裝沒事。』",[("❤️ 回抱他",7),("😳 問他突然怎麼了",6),("🤍 靜靜待在他懷裡",7)]),
+("DATE_38｜🌙 深夜的真心話","夜深後，他忽然問：『你覺得……我們現在算什麼？』",[("❤️ 問他希望是什麼",7),("😄 要他先回答",7),("💬 認真說出感覺",7)]),
+("DATE_39｜💋 第一個吻","他停在你面前，先低聲問：『我可以吻你嗎？』",[("❤️ 點頭答應",8),("😈 你覺得呢？",7),("😊 再等等",6)]),
+("DATE_40｜🍷 約會後的試探","晚餐後他看著你說：『今天……你看起來很好。』",[("❤️ 稱讚回去",7),("😈 問他是不是故意說這種話",7),("😳 害羞地轉開話題",6)]),
+("DATE_41｜🎠 人群中的保護","人潮把你們沖散一點，他立刻拉住你：『跟著我。』一路都沒有放開。",[("❤️ 十指交扣",7),("😄 問他是不是太誇張",6),("🤍 輕輕握住他的手",7)]),
+("DATE_42｜🌃 夜景下的靠近","風有點冷，他把外套披到你身上：『別感冒。』",[("❤️ 拉著他一起穿",7),("😈 問他是不是只對你這樣",7),("🤍 靠近他避風",7)]),
+("DATE_43｜📸 只有兩人的照片","他說上次的合照還留著，這次又主動站到你身旁：『再拍一張？』",[("❤️ 靠近一起拍",7),("😄 問他是不是要當桌布",7),("📸 幫他拍個人照",6)]),
+("DATE_44｜💭 他開始主動想念你","見面前他先傳訊息：『你今天會來吧？』他承認昨天就在想今天。",[("❤️ 我也是",7),("😈 問他是不是想你",7),("😊 說自己很期待",7)]),
+("DATE_45｜❤️ 差一點說出口的告白","告別前他說有件事想告訴你，沉默很久又想算了。",[("❤️ 告訴他可以說",8),("😈 直接問是不是喜歡你",8),("🤍 告訴他不用急",7)]),
 ],
 600: [
-("DATE_46｜🌙 不想結束的私人約會","他看著時間說今天過得太快了，明顯還不想結束今晚。",[("❤️ 再陪他一下",40),("😈 問他是不是捨不得",45),("🤍 靜靜靠在他身邊",42)]),
-("DATE_47｜💋 久別後的見面","忙了一段時間後終於見面，他遠遠看到你就張開雙手。",[("❤️ 主動抱住他",48),("😈 問他有多想",45),("😊 說你也一樣",42)]),
-("DATE_48｜🛋️ 窩在一起的午後","電影播到一半，你發現他根本沒在看，因為視線一直停在你身上。",[("😈 問他到底在看什麼",48),("❤️ 靠到他身邊",45),("🎬 拉他回去看電影",40)]),
-("DATE_49｜🌃 深夜散步","你們自然牽著手，他捏了捏你的手指：『我喜歡這樣。』",[("❤️ 十指交扣",48),("😄 問他喜歡什麼",45),("🤍 靠近他",42)]),
-("DATE_50｜💋 安靜下來後的吻","話題慢慢停下，他靠近前仍先問：『……我可以嗎？』",[("❤️ 主動吻他",55),("💋 點頭",52),("😈 故意不回答",30)]),
-("DATE_51｜🌧️ 留在這裡避雨","雨越下越大，他說現在回去不方便，問你要不要再待一會。",[("❤️ 留下來陪他",45),("😈 問他是不是故意的",48),("☕ 一起準備熱飲",42)]),
-("DATE_52｜🤍 他在你面前很放鬆","他說只有和你在一起時，不用一直想那麼多。",[("❤️ 讓他一直做自己",52),("🤍 靜靜陪著他",48),("💬 問他平常壓力",55)]),
-("DATE_53｜🌙 睡前的電話","他說沒什麼事，只是想聽聽你的聲音。",[("❤️ 陪他聊到想睡",50),("😈 問他是不是每天想你",52),("😊 說你也會想他",48)]),
-("DATE_54｜🍳 第一次一起準備早餐","廚房裡忙成一團，他從背後靠近看你的做法。",[("😂 把事情交給他",40),("❤️ 一起完成",48),("😈 叫他不要靠太近",45)]),
-("DATE_55｜💗 被朋友問起關係","朋友問你們到底是什麼關係，他先看向你，沒有急著回答。",[("❤️ 要他回答",55),("😈 反問朋友覺得呢",48),("🤍 說正在慢慢了解",50)]),
-("DATE_56｜🌃 夜晚的擁抱","告別時他抱著你比平常久，明顯捨不得放手。",[("❤️ 抱得更緊",55),("😈 問他怎麼還不放開",50),("🤍 靜靜待著",48)]),
-("DATE_57｜🎁 只有你知道的習慣","你特別準備了他喜歡的東西，他愣住：『你怎麼知道？』",[("❤️ 因為我有記得",55),("😄 問他是不是感動",45),("🎁 說以後也會記得",50)]),
-("DATE_58｜💋 親吻後的沉默","親吻結束後距離仍很近，他輕聲問你怎麼突然安靜。",[("❤️ 再靠近他",55),("😳 說不知道該說什麼",50),("😈 問他是不是還想繼續",52)]),
-("DATE_59｜🌙 留到很晚的夜晚","原本只見一會，最後聊天看電影吃東西，一轉眼已經很晚。",[("❤️ 說時間過得很快",55),("😈 問他是不是故意拖時間",52),("🌙 說自己也不想離開",50)]),
-("DATE_60｜❤️ 真正確認彼此的重要","他說以前習慣一個人，但現在開始習慣有你了。",[("❤️ 告訴他你也一樣",65),("🤍 靜靜握住他的手",58),("😈 問他是不是在告白",62)]),
+("DATE_46｜🌙 不想結束的私人約會","他看著時間說今天過得太快了，明顯還不想結束今晚。",[("❤️ 再陪他一下",10),("😈 問他是不是捨不得",11),("🤍 靜靜靠在他身邊",11)]),
+("DATE_47｜💋 久別後的見面","忙了一段時間後終於見面，他遠遠看到你就張開雙手。",[("❤️ 主動抱住他",11),("😈 問他有多想",11),("😊 說你也一樣",11)]),
+("DATE_48｜🛋️ 窩在一起的午後","電影播到一半，你發現他根本沒在看，因為視線一直停在你身上。",[("😈 問他到底在看什麼",11),("❤️ 靠到他身邊",11),("🎬 拉他回去看電影",10)]),
+("DATE_49｜🌃 深夜散步","你們自然牽著手，他捏了捏你的手指：『我喜歡這樣。』",[("❤️ 十指交扣",11),("😄 問他喜歡什麼",11),("🤍 靠近他",11)]),
+("DATE_50｜💋 安靜下來後的吻","話題慢慢停下，他靠近前仍先問：『……我可以嗎？』",[("❤️ 主動吻他",12),("💋 點頭",12),("😈 故意不回答",9)]),
+("DATE_51｜🌧️ 留在這裡避雨","雨越下越大，他說現在回去不方便，問你要不要再待一會。",[("❤️ 留下來陪他",11),("😈 問他是不是故意的",11),("☕ 一起準備熱飲",11)]),
+("DATE_52｜🤍 他在你面前很放鬆","他說只有和你在一起時，不用一直想那麼多。",[("❤️ 讓他一直做自己",12),("🤍 靜靜陪著他",11),("💬 問他平常壓力",12)]),
+("DATE_53｜🌙 睡前的電話","他說沒什麼事，只是想聽聽你的聲音。",[("❤️ 陪他聊到想睡",12),("😈 問他是不是每天想你",12),("😊 說你也會想他",11)]),
+("DATE_54｜🍳 第一次一起準備早餐","廚房裡忙成一團，他從背後靠近看你的做法。",[("😂 把事情交給他",10),("❤️ 一起完成",11),("😈 叫他不要靠太近",11)]),
+("DATE_55｜💗 被朋友問起關係","朋友問你們到底是什麼關係，他先看向你，沒有急著回答。",[("❤️ 要他回答",12),("😈 反問朋友覺得呢",11),("🤍 說正在慢慢了解",12)]),
+("DATE_56｜🌃 夜晚的擁抱","告別時他抱著你比平常久，明顯捨不得放手。",[("❤️ 抱得更緊",12),("😈 問他怎麼還不放開",12),("🤍 靜靜待著",11)]),
+("DATE_57｜🎁 只有你知道的習慣","你特別準備了他喜歡的東西，他愣住：『你怎麼知道？』",[("❤️ 因為我有記得",12),("😄 問他是不是感動",11),("🎁 說以後也會記得",12)]),
+("DATE_58｜💋 親吻後的沉默","親吻結束後距離仍很近，他輕聲問你怎麼突然安靜。",[("❤️ 再靠近他",12),("😳 說不知道該說什麼",12),("😈 問他是不是還想繼續",12)]),
+("DATE_59｜🌙 留到很晚的夜晚","原本只見一會，最後聊天看電影吃東西，一轉眼已經很晚。",[("❤️ 說時間過得很快",12),("😈 問他是不是故意拖時間",12),("🌙 說自己也不想離開",12)]),
+("DATE_60｜❤️ 真正確認彼此的重要","他說以前習慣一個人，但現在開始習慣有你了。",[("❤️ 告訴他你也一樣",13),("🤍 靜靜握住他的手",13),("😈 問他是不是在告白",13)]),
 ]
 }
 
@@ -991,9 +1181,13 @@ class DateChoiceView(discord.ui.View):
     async def choose(self, interaction, label, gain):
         user_id = str(interaction.user.id)
         model = model_dict(get_model(user_id))
+        if model.get("model_stamina",100) < 8:
+            await interaction.response.send_message("⚡ 體力不足 8，請先補充體力。", ephemeral=True)
+            return
         before = model.get("affection", 0)
         after = clamp(before + gain, 0, 1000)
-        change_model(model["model_id"], affection=after)
+        change_model(model["model_id"], affection=after,
+                     model_stamina=clamp(model.get("model_stamina",100)-8,0,100))
         title, story = self.event[0], self.event[1]
         add_memory(user_id, model["model_id"], title, f"選擇：{label}。{story} 好感度 {before} → {after}。")
         await interaction.response.edit_message(embed=discord.Embed(title=title, description=f"👤 **{model['name']}**\n{story}\n\n✨ 你的選擇：**{label}**\n❤️ 好感度：**{before} → {after} / 1000**（{affection_name(after)}）", color=MOONCLUB_COLOR), view=BackHomeView())
@@ -1004,6 +1198,12 @@ class DateEventStageView(discord.ui.View):
         user_id=str(interaction.user.id); model=model_dict(get_model(user_id)); affection=model.get("affection",0)
         if affection < required:
             await interaction.response.send_message(f"🔒 需要 ❤️ 好感度 **{required}** 才能進入這個約會階段。", ephemeral=True); return
+        coin_cost = 3000 if required >= 800 else 2000
+        if model.get("model_stamina",100) < 8:
+            await interaction.response.send_message("⚡ 體力不足 8，請先補充體力。", ephemeral=True); return
+        ok, _, _ = spend_for_action(user_id, coin_cost)
+        if not ok:
+            await interaction.response.send_message(f"❌ 努努幣不足，需要 **{coin_cost:,}** 努努幣。", ephemeral=True); return
         event=random.choice(DATE_EVENTS[required])
         await interaction.response.edit_message(embed=discord.Embed(title=event[0], description=f"👤 **{model['name']}**\n{event[1]}\n\n請選擇你的反應：", color=MOONCLUB_COLOR), view=DateChoiceView(event))
     @discord.ui.button(label="❤️ 曖昧期隨機約會", style=discord.ButtonStyle.danger)
@@ -1035,7 +1235,14 @@ class DateSelect(discord.ui.Select):
         user_id=str(interaction.user.id); model=model_dict(get_model(user_id)); idx=int(self.values[0]); required,title,story,gain_range=DATE_OPTIONS[idx]; affection=model.get("affection",0)
         if affection < required:
             await interaction.response.send_message(f"🔒 需要 ❤️ 好感度 **{required}** 才能解鎖這個約會。",ephemeral=True); return
-        gain=random.randint(*gain_range); after=clamp(affection+gain,0,1000); change_model(model["model_id"],affection=after); add_memory(user_id,model["model_id"],title,f"{story} 好感度 {affection} → {after}。")
+        coin_cost = 500 + (idx * 500)
+        stamina_cost = 6
+        if model.get("model_stamina",100) < stamina_cost:
+            await interaction.response.send_message(f"⚡ 體力不足 {stamina_cost}，請先補充體力。",ephemeral=True); return
+        ok, _, testing = spend_for_action(user_id, coin_cost)
+        if not ok:
+            await interaction.response.send_message(f"❌ 努努幣不足，需要 **{coin_cost:,}** 努努幣。",ephemeral=True); return
+        gain=random.randint(*gain_range); after=clamp(affection+gain,0,1000); change_model(model["model_id"],affection=after,model_stamina=clamp(model.get("model_stamina",100)-stamina_cost,0,100)); add_memory(user_id,model["model_id"],title,f"{story} 好感度 {affection} → {after}。")
         await interaction.response.edit_message(embed=discord.Embed(title=title,description=f"👤 **{model['name']}**\n{story}\n\n❤️ 好感度：**{affection} → {after} / 1000**（{affection_name(after)}）",color=MOONCLUB_COLOR),view=BackHomeView())
 
 # ==========================================================
@@ -1243,6 +1450,83 @@ class MoonClubClearConfirmView(discord.ui.View):
 
 
 # ==========================================================
+# 🌙 Moon Club｜固定遊戲入口面板
+# 說明：
+# - 入口面板只負責讓玩家按「開始遊戲」。
+# - 玩家按下後，完全沿用原本的完整 Moon Club 面板與流程。
+# - 不會改動、重建或覆蓋任何玩家資料。
+# ==========================================================
+
+def build_moonclub_entrance_embed():
+    return discord.Embed(
+        title="🌙 Moon Club｜男模養成",
+        description=(
+            "歡迎來到 **Moon Club**。\n\n"
+            "在這裡，你將經營自己的男模會館，培養旗下男模，"
+            "一步步見證他們的成長與變化。\n\n"
+            "🏋️ **培訓**｜提升五大能力與專長\n"
+            "💬 **互動**｜更加了解他的個性與想法\n"
+            "💗 **約會**｜慢慢累積好感度與關係\n"
+            "🌟 **知名度**｜讓 Moon Club 逐漸受到關注\n"
+            "🛒 **商店**｜購買體力用品與各式禮物\n"
+            "👥 **招募新人**｜隨著會館發展迎接更多男模\n\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "✨ **點擊下方按鈕，開始你的 Moon Club 之旅。**"
+        ),
+        color=MOONCLUB_COLOR,
+    )
+
+
+async def open_moonclub_game(interaction: discord.Interaction):
+    """完全沿用原本 /moonclub 的遊戲進入流程。"""
+    user_id = str(interaction.user.id)
+
+    if not get_player(user_id) or not get_models(user_id):
+        embed = discord.Embed(
+            title="🌙 Moon Club｜男模會館",
+            description=(
+                "你接手了一間剛起步的小型男模會館。\n\n"
+                f"{OWNER_ICON} 你是會館老闆\n"
+                "👥 一開始可以培養兩位新人男模\n"
+                "🏋️ 培訓五大能力與專長\n"
+                "💕 建立最高 1000 點默契\n"
+                "🏛️ 提升 Moon Club 知名度\n"
+                "🎴 知名度達標後解鎖新人招募\n\n"
+                "✨ 現在，讓 Moon Club 正式開幕吧！"
+            ),
+            color=MOONCLUB_COLOR,
+        )
+        await interaction.response.send_message(
+            embed=embed,
+            view=StartMoonClubView(),
+            ephemeral=True,
+        )
+        return
+
+    embed = await build_home_embed(user_id)
+    await interaction.response.send_message(
+        embed=embed,
+        view=MoonClubHomeView(),
+        ephemeral=True,
+    )
+
+
+class MoonClubEntranceView(discord.ui.View):
+    """固定入口面板使用；按鈕採 persistent view，重新啟動 Bot 後仍可註冊。"""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="🌙 開始遊戲",
+        style=discord.ButtonStyle.primary,
+        custom_id="moonclub_entrance_start_v1",
+    )
+    async def start_game(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await open_moonclub_game(interaction)
+
+
+# ==========================================================
 # 🚀 指令註冊
 # ==========================================================
 
@@ -1252,6 +1536,9 @@ def setup_moon_club(bot):
     if getattr(bot, "_moon_club_loaded", False):
         return
     bot._moon_club_loaded = True
+
+    # 註冊固定入口按鈕，Bot 重啟後已存在的入口面板仍可使用。
+    bot.add_view(MoonClubEntranceView())
 
     @bot.tree.command(name="moonclub清空紀錄", description="清空自己的 Moon Club 測試紀錄")
     async def moonclub_clear_record(interaction: discord.Interaction):
@@ -1265,29 +1552,25 @@ def setup_moon_club(bot):
             ephemeral=True,
         )
 
-    @bot.tree.command(name="moonclub", description="進入 Moon Club｜男模會館")
-    async def moonclub(interaction: discord.Interaction):
-        user_id = str(interaction.user.id)
-        if not get_player(user_id) or not get_models(user_id):
-            embed = discord.Embed(
-                title="🌙 Moon Club｜男模會館",
-                description=(
-                    "你接手了一間剛起步的小型男模會館。\n\n"
-                    f"{OWNER_ICON} 你是會館老闆\n"
-                    "👥 一開始可以培養兩位新人男模\n"
-                    "🏋️ 培訓五大能力與專長\n"
-                    "💕 建立最高 1000 點默契\n"
-                    "🏛️ 提升 Moon Club 知名度\n"
-                    "🎴 知名度達標後解鎖新人招募\n\n"
-                    "✨ 現在，讓 Moon Club 正式開幕吧！"
-                ),
-                color=MOONCLUB_COLOR,
+    # 👑 Moon Club 固定入口面板：只有 BOT_ADMINS 可以重新發送。
+    # 玩家資料完全不會受到刪除／重發入口訊息影響。
+    @bot.tree.command(name="moonclub遊戲面板", description="發送 Moon Club 固定遊戲入口面板")
+    async def moonclub_game_panel(interaction: discord.Interaction):
+        if interaction.user.id not in BOT_ADMINS:
+            await interaction.response.send_message(
+                "❌ 只有 Moon Club 管理員可以發送遊戲入口面板。",
+                ephemeral=True,
             )
-            await interaction.response.send_message(embed=embed, view=StartMoonClubView(), ephemeral=True)
             return
 
-        embed = await build_home_embed(user_id)
-        await interaction.response.send_message(embed=embed, view=MoonClubHomeView(), ephemeral=True)
+        await interaction.response.send_message(
+            embed=build_moonclub_entrance_embed(),
+            view=MoonClubEntranceView(),
+        )
+
+    @bot.tree.command(name="moonclub", description="進入 Moon Club｜男模會館")
+    async def moonclub(interaction: discord.Interaction):
+        await open_moonclub_game(interaction)
 
     print("🌙 Moon Club V14｜三選一隨機新人招募正式版已載入")
 
