@@ -1,220 +1,2174 @@
 # -*- coding: utf-8 -*-
-"""
-🌙 Moon Life｜V1 獨立系統
-放置位置：systems/moon_life.py
-
-載入方式（main.py）：
-await bot.load_extension("systems.moon_life")
-"""
+# ==========================================================
+# 🌙 Moon Life｜完整獨立系統
+# 放置位置：systems/moon_life.py
+#
+# main.py：
+# from systems.moon_life import setup_moon_life
+# setup_moon_life(bot)
+# ==========================================================
 
 import random
-import sqlite3
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
-TW_TZ = timezone(timedelta(hours=8))
-DB_PATH = "moon_life.db"
+try:
+    from database import conn, c
+except ImportError:
+    raise ImportError("❌ Moon Life 無法載入 database.py 的 conn、c")
 
-TRAITS = ["活潑", "害羞", "溫柔", "調皮", "好奇", "勇敢", "獨立", "黏人"]
+# ==========================================================
+# ⚙️ 基本設定
+# ==========================================================
+
+MOONLIFE_COLOR = 0xB9A7E8
+
+MAX_NATURAL_STAMINA = 10
+STAMINA_RECOVER_SECONDS = 3600
+
+GROWTH_PER_MONTH = 100
+ADULT_AGE = 18
+
 INTERESTS = ["繪畫", "音樂", "運動", "閱讀", "自然", "探索"]
 
+STAT_EMOJIS = {
+    "intelligence": "🧠",
+    "emotion": "❤️",
+    "fitness": "💪",
+    "creativity": "🎨",
+    "social": "✨",
+}
 
-def now_ts():
-    return int(datetime.now(TW_TZ).timestamp())
+PERSONALITY_EMOJIS = {
+    "活潑": "😄",
+    "害羞": "😳",
+    "溫柔": "🥹",
+    "調皮": "😂",
+    "好奇": "🤔",
+    "勇敢": "💪",
+    "獨立": "🌱",
+    "黏人": "❤️",
+}
+
+ITEMS = {
+    # 🧸 玩具／學習用品：可從背包實際使用
+    "玩偶": {"price": 300, "type": "toy", "durability": 20, "desc": "陪伴孩子玩耍的小玩偶。", "relationship": 2, "emotion": 1},
+    "球": {"price": 300, "type": "toy", "durability": 30, "desc": "適合跑跳與運動。", "fitness": 2, "interest": "運動", "interest_gain": 8},
+    "拼圖": {"price": 400, "type": "toy", "durability": 15, "desc": "動動腦的小遊戲。", "intelligence": 2},
+    "畫具": {"price": 500, "type": "toy", "durability": 20, "desc": "開始創作的畫具。", "creativity": 2, "interest": "繪畫", "interest_gain": 8},
+    "故事書": {"price": 450, "type": "toy", "durability": 30, "desc": "一起閱讀的故事書。", "intelligence": 2, "interest": "閱讀", "interest_gain": 8},
+
+    # 🍱 食物：不同恢復效果
+    "水果": {"price": 120, "type": "food", "hunger": 20, "relationship": 1, "emotion": 1, "desc": "清爽的水果，恢復一些飢餓並讓心情變好。"},
+    "便當": {"price": 300, "type": "food", "hunger": 45, "relationship": 1, "desc": "好好吃一頓，能大幅緩解飢餓。"},
+    "小蛋糕": {"price": 500, "type": "food", "hunger": 25, "emotion": 3, "relationship": 1, "desc": "甜甜的親子點心，除了填飽肚子也能帶來好心情。"},
+    "糖果": {"price": 80, "type": "food", "hunger": 8, "emotion": 1, "desc": "少量甜食，只能稍微止餓。"},
+    "麵包": {"price": 100, "type": "food", "hunger": 15, "desc": "簡單又方便的小點心。"},
+
+    # 🎁 特殊物品
+    "氣球": {"price": 250, "type": "special", "desc": "可能帶來特別的回憶。"},
+    "禮物": {"price": 800, "type": "special", "desc": "送給孩子的小驚喜。"},
+    "生日蛋糕": {"price": 1000, "type": "birthday", "hunger": 20, "emotion": 5, "relationship": 3, "desc": "在孩子生日月一起慶祝，留下特別的生日回憶。"},
+}
 
 
-class MoonLife(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        self.db = sqlite3.connect(DB_PATH)
-        self.db.row_factory = sqlite3.Row
-        self.init_db()
+# ==========================================================
+# 🗃️ 資料庫
+# ==========================================================
 
-    def init_db(self):
-        c = self.db.cursor()
-        c.execute("""CREATE TABLE IF NOT EXISTS ml_players (
-            user_id INTEGER PRIMARY KEY,
-            active_child_id INTEGER,
-            created_at INTEGER
-        )""")
-        c.execute("""CREATE TABLE IF NOT EXISTS ml_children (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            owner_id INTEGER NOT NULL,
-            owner_name TEXT NOT NULL,
-            owner_type TEXT NOT NULL,
+def init_moonlife_tables():
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS moonlife_players (
+            user_id TEXT PRIMARY KEY,
+            parent_name TEXT NOT NULL,
+            parent_identity TEXT NOT NULL,
+            stamina INTEGER NOT NULL DEFAULT 10,
+            stamina_updated_at TEXT,
+            daily_stamina_buys INTEGER NOT NULL DEFAULT 0,
+            stamina_buy_date TEXT,
+            current_child_id INTEGER,
+            created_at TEXT
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS moonlife_children (
+            child_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            parent_name TEXT NOT NULL,
+            parent_identity TEXT NOT NULL,
             name TEXT NOT NULL,
             gender TEXT NOT NULL,
-            age_months INTEGER DEFAULT 1,
-            growth INTEGER DEFAULT 0,
-            energy INTEGER DEFAULT 10,
-            last_energy INTEGER,
-            hunger INTEGER DEFAULT 100,
-            relationship INTEGER DEFAULT 20,
-            intelligence INTEGER DEFAULT 0,
-            emotion INTEGER DEFAULT 0,
-            fitness INTEGER DEFAULT 0,
-            creativity INTEGER DEFAULT 0,
-            social INTEGER DEFAULT 0,
-            trait_scores TEXT DEFAULT '',
-            traits TEXT DEFAULT '',
-            interest_scores TEXT DEFAULT '',
-            interests TEXT DEFAULT '',
-            contacts TEXT DEFAULT '',
-            memories TEXT DEFAULT '',
-            alive_active INTEGER DEFAULT 1,
-            adopted_at INTEGER
-        )""")
-        self.db.commit()
+            age_year INTEGER NOT NULL DEFAULT 0,
+            age_month INTEGER NOT NULL DEFAULT 1,
+            growth INTEGER NOT NULL DEFAULT 0,
+            intelligence INTEGER NOT NULL DEFAULT 5,
+            emotion INTEGER NOT NULL DEFAULT 5,
+            fitness INTEGER NOT NULL DEFAULT 5,
+            creativity INTEGER NOT NULL DEFAULT 5,
+            social INTEGER NOT NULL DEFAULT 5,
+            relationship INTEGER NOT NULL DEFAULT 25,
+            hunger INTEGER NOT NULL DEFAULT 20,
+            personality_scores TEXT NOT NULL DEFAULT '{}',
+            personalities TEXT NOT NULL DEFAULT '[]',
+            interests TEXT NOT NULL DEFAULT '[]',
+            interest_progress TEXT NOT NULL DEFAULT '{}',
+            experiences TEXT NOT NULL DEFAULT '{}',
+            is_adult INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT
+        )
+    """)
 
-    def active_child(self, user_id):
-        r = self.db.execute("""SELECT c.* FROM ml_players p
-            JOIN ml_children c ON p.active_child_id=c.id
-            WHERE p.user_id=? AND c.alive_active=1""", (user_id,)).fetchone()
-        return r
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS moonlife_inventory (
+            user_id TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, item_name)
+        )
+    """)
 
-    def recover_energy(self, child):
-        elapsed = max(0, (now_ts() - (child["last_energy"] or now_ts())) // 3600)
-        if elapsed <= 0 or child["energy"] >= 10:
-            return child
-        new_energy = min(10, child["energy"] + elapsed)
-        self.db.execute("UPDATE ml_children SET energy=?, last_energy=? WHERE id=?",
-                        (new_energy, now_ts(), child["id"]))
-        self.db.commit()
-        return self.db.execute("SELECT * FROM ml_children WHERE id=?", (child["id"],)).fetchone()
+    # 舊資料庫升級：耐久度欄位不存在時自動補上
+    columns = {row[1] for row in c.execute("PRAGMA table_info(moonlife_inventory)").fetchall()}
+    if "durability" not in columns:
+        c.execute("ALTER TABLE moonlife_inventory ADD COLUMN durability INTEGER")
+    if "max_durability" not in columns:
+        c.execute("ALTER TABLE moonlife_inventory ADD COLUMN max_durability INTEGER")
 
-    def relation_label(self, n):
-        if n < 10: return "🤍 陌生"
-        if n < 30: return "🌱 熟悉"
-        if n < 55: return "😊 親近"
-        if n < 80: return "❤️ 信任"
-        return "💕 無可取代"
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS moonlife_memories (
+            memory_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            child_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
 
-    def age_text(self, m):
-        return f"{m//12}歲{m%12}個月"
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS moonlife_daily (
+            user_id TEXT PRIMARY KEY,
+            game_day INTEGER NOT NULL DEFAULT 1,
+            last_day_at TEXT,
+            care_done INTEGER NOT NULL DEFAULT 0,
+            play_done INTEGER NOT NULL DEFAULT 0,
+            outside_done INTEGER NOT NULL DEFAULT 0
+        )
+    """)
 
-    async def adopt_finish(self, interaction, owner_type, owner_name, child_name):
-        gender = random.choice(["男孩", "女孩"])
-        scores = [random.randint(3, 8) for _ in range(5)]
-        trait_scores = {t: random.randint(20, 80) for t in TRAITS}
-        interest_scores = {i: 0 for i in INTERESTS}
-        c = self.db.cursor()
-        old = self.active_child(interaction.user.id)
-        if old:
-            await interaction.response.send_message("❌ 你目前已有正在成長的孩子，必須等孩子 18 歲成年後才能再次領養。", ephemeral=True)
-            return
-        c.execute("""INSERT INTO ml_children
-        (owner_id,owner_name,owner_type,name,gender,last_energy,intelligence,emotion,fitness,creativity,social,trait_scores,interest_scores,adopted_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (interaction.user.id,owner_name,owner_type,child_name,gender,now_ts(),*scores,
-         repr(trait_scores),repr(interest_scores),now_ts()))
-        child_id=c.lastrowid
-        c.execute("INSERT OR REPLACE INTO ml_players(user_id,active_child_id,created_at) VALUES(?,?,?)",
-                  (interaction.user.id,child_id,now_ts()))
-        self.db.commit()
-        await interaction.response.send_message(
-            f"🌙 **領養成功！**\n\n👤 你：{owner_name}（{owner_type}）\n👶 孩子：{child_name}（{gender}）\n🎂 年齡：0歲1個月\n\n從今天開始，好好陪伴 {child_name} 成長吧！🥹",
-            ephemeral=True)
-
-    @app_commands.command(name="moonlife", description="進入 Moon Life")
-    async def moonlife(self, interaction: discord.Interaction):
-        child = self.active_child(interaction.user.id)
-        if not child:
-            await interaction.response.send_message("🌙 歡迎來到 Moon Life！請使用 `/領養孩子` 開始你的第一段人生。", ephemeral=True)
-            return
-        child = self.recover_energy(child)
-        embed = discord.Embed(title="🌙 Moon Life", description=f"👤 你：{child['owner_name']} {child['owner_type']}\n👶 孩子：{child['name']}（{child['gender']}）")
-        embed.add_field(name="🎂 年齡", value=self.age_text(child["age_months"]))
-        embed.add_field(name="🌱 成長", value=f"{child['growth']} / 100")
-        embed.add_field(name="⚡ 體力", value=f"{child['energy']} / 10")
-        embed.add_field(name="❤️ 關係", value=self.relation_label(child["relationship"]))
-        await interaction.response.send_message(embed=embed, view=MoonMenu(self, interaction.user.id), ephemeral=True)
-
-    @app_commands.command(name="領養孩子", description="開始領養你的孩子")
-    async def adopt(self, interaction: discord.Interaction):
-        if self.active_child(interaction.user.id):
-            await interaction.response.send_message("❌ 你目前只能同時養育一位未成年孩子。", ephemeral=True)
-            return
-        await interaction.response.send_modal(AdoptModal(self))
-
-    async def activity(self, interaction, kind):
-        child=self.active_child(interaction.user.id)
-        if not child: return await interaction.response.send_message("❌ 目前沒有孩子。", ephemeral=True)
-        child=self.recover_energy(child)
-        if child["energy"]<=0: return await interaction.response.send_message("⚡ 體力不足，休息後再來吧！", ephemeral=True)
-        mapping={
-            "home":("🏠 在家", random.choice(["今天一起整理了玩具。","一起度過了安靜的家庭時光。"])),
-            "outside":("🌳 外出", random.choice(["一起到公園散步。","今天看到了有趣的新事物。"])),
-            "play":("🧸 玩耍", random.choice(["孩子玩得非常開心！","你們一起玩了很久。"]))
-        }
-        title,text=mapping[kind]
-        growth=random.randint(8,15)
-        hunger=max(0,child["hunger"]-random.randint(4,9))
-        relation=min(100,child["relationship"]+random.randint(1,3))
-        self.db.execute("UPDATE ml_children SET energy=energy-1,growth=growth+?,hunger=?,relationship=? WHERE id=?",
-                        (growth,hunger,relation,child["id"]))
-        self.db.commit()
-        msg=f"{title}\n{text}\n\n🌱 成長 +{growth}\n⚡ 體力 -1"
-        if hunger<35: msg+="\n\n🥺 孩子摸了摸肚子，好像有點餓了。"
-        await interaction.response.send_message(msg, ephemeral=True)
-
-    async def show_child(self, interaction):
-        c=self.active_child(interaction.user.id)
-        if not c: return await interaction.response.send_message("❌ 目前沒有孩子。",ephemeral=True)
-        traits=c["traits"] or "❓ 尚未形成"
-        interests=c["interests"] or "🌱 尚未發現"
-        e=discord.Embed(title=f"👶 {c['name']} 的資料",description=f"🎂 {self.age_text(c['age_months'])}\n❤️ {self.relation_label(c['relationship'])}")
-        e.add_field(name="🧠 智慧",value=f"{c['intelligence']} / 100")
-        e.add_field(name="❤️ 情感",value=f"{c['emotion']} / 100")
-        e.add_field(name="💪 體能",value=f"{c['fitness']} / 100")
-        e.add_field(name="🎨 創造",value=f"{c['creativity']} / 100")
-        e.add_field(name="✨ 社交",value=f"{c['social']} / 100")
-        e.add_field(name="🌟 個性",value=traits,inline=False)
-        e.add_field(name="🎯 興趣",value=interests,inline=False)
-        await interaction.response.send_message(embed=e,ephemeral=True)
+    conn.commit()
 
 
-class AdoptModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
-    owner_type=discord.ui.TextInput(label="你想成為什麼？",placeholder="男 / 女 / 貓 / 狗",max_length=2)
-    owner_name=discord.ui.TextInput(label="你的名字",max_length=20)
-    child_name=discord.ui.TextInput(label="孩子的名字",max_length=20)
+# ==========================================================
+# 🕒 工具
+# ==========================================================
 
-    def __init__(self,cog): super().__init__(); self.cog=cog
-    async def on_submit(self,interaction):
-        t=self.owner_type.value.strip()
-        if t not in ["男","女","貓","狗"]:
-            return await interaction.response.send_message("❌ 只能選擇：男、女、貓、狗。",ephemeral=True)
-        await self.cog.adopt_finish(interaction,t,self.owner_name.value.strip(),self.child_name.value.strip())
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+def clamp(value, low, high):
+    return max(low, min(high, value))
+
+def parse_json(text, default):
+    import json
+    try:
+        return json.loads(text) if text else default
+    except Exception:
+        return default
+
+def dump_json(data):
+    import json
+    return json.dumps(data, ensure_ascii=False)
+
+def identity_emoji(identity):
+    return {"男": "👨", "女": "👩", "貓": "🐱", "狗": "🐶"}.get(identity, "👤")
+
+def gender_emoji(gender):
+    return "👦" if gender == "男" else "👧"
+
+def get_player(user_id):
+    c.execute("SELECT * FROM moonlife_players WHERE user_id=?", (str(user_id),))
+    return c.fetchone()
+
+def get_child(user_id):
+    c.execute("""
+        SELECT ch.*
+        FROM moonlife_players p
+        JOIN moonlife_children ch ON p.current_child_id = ch.child_id
+        WHERE p.user_id=?
+    """, (str(user_id),))
+    return c.fetchone()
+
+def child_dict(row):
+    if not row:
+        return None
+    cols = [x[0] for x in c.description]
+    return dict(zip(cols, row))
+
+def get_daily(user_id):
+    c.execute("SELECT * FROM moonlife_daily WHERE user_id=?", (str(user_id),))
+    row = c.fetchone()
+    if not row:
+        c.execute(
+            "INSERT INTO moonlife_daily (user_id, game_day, last_day_at) VALUES (?, 1, ?)",
+            (str(user_id), now_iso())
+        )
+        conn.commit()
+        c.execute("SELECT * FROM moonlife_daily WHERE user_id=?", (str(user_id),))
+        row = c.fetchone()
+    return row
+
+def update_stamina(user_id):
+    player = get_player(user_id)
+    if not player:
+        return None
+
+    c.execute("""
+        SELECT stamina, stamina_updated_at
+        FROM moonlife_players WHERE user_id=?
+    """, (str(user_id),))
+    row = c.fetchone()
+    if not row:
+        return None
+    stamina, updated = row
+    stamina = int(stamina)
+
+    now = datetime.now(timezone.utc)
+
+    # 購買後超過自然上限時完全停止自然恢復。
+    if stamina >= MAX_NATURAL_STAMINA:
+        return stamina
+
+    try:
+        old = datetime.fromisoformat(updated) if updated else now
+    except Exception:
+        old = now
+
+    elapsed = max(0, int((now - old).total_seconds()))
+    recovered = elapsed // STAMINA_RECOVER_SECONDS
+    if recovered > 0:
+        stamina = min(MAX_NATURAL_STAMINA, stamina + recovered)
+        consumed_seconds = recovered * STAMINA_RECOVER_SECONDS
+        new_time = datetime.fromtimestamp(old.timestamp() + consumed_seconds, tz=timezone.utc)
+        c.execute(
+            "UPDATE moonlife_players SET stamina=?, stamina_updated_at=? WHERE user_id=?",
+            (stamina, new_time.isoformat(), str(user_id))
+        )
+        conn.commit()
+    return stamina
+
+def use_stamina(user_id, amount):
+    stamina = update_stamina(user_id)
+    if stamina is None or stamina < amount:
+        return False
+
+    new_stamina = stamina - amount
+    # 從 >=10 降到 <10 的瞬間，才重新開始計算自然恢復時間。
+    c.execute("SELECT stamina FROM moonlife_players WHERE user_id=?", (str(user_id),))
+    old_stamina = int(c.fetchone()[0])
+    if old_stamina >= MAX_NATURAL_STAMINA and new_stamina < MAX_NATURAL_STAMINA:
+        updated_at = now_iso()
+        c.execute(
+            "UPDATE moonlife_players SET stamina=?, stamina_updated_at=? WHERE user_id=?",
+            (new_stamina, updated_at, str(user_id))
+        )
+    else:
+        c.execute(
+            "UPDATE moonlife_players SET stamina=? WHERE user_id=?",
+            (new_stamina, str(user_id))
+        )
+    conn.commit()
+    return True
+
+def add_memory(user_id, child_id, title, content):
+    c.execute("""
+        INSERT INTO moonlife_memories
+        (user_id, child_id, title, content, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (str(user_id), child_id, title, content, now_iso()))
+    conn.commit()
+
+def change_child(child_id, **changes):
+    allowed = {
+        "growth", "intelligence", "emotion", "fitness", "creativity",
+        "social", "relationship", "hunger", "age_year", "age_month",
+        "personality_scores", "personalities", "interests",
+        "interest_progress", "experiences", "is_adult"
+    }
+    fields = []
+    values = []
+    for key, value in changes.items():
+        if key not in allowed:
+            continue
+        if key in {"intelligence", "emotion", "fitness", "creativity", "social"}:
+            value = clamp(int(value), 0, 100)
+        if key == "relationship":
+            value = clamp(int(value), 0, 100)
+        if key == "hunger":
+            value = clamp(int(value), 0, 100)
+        fields.append(f"{key}=?")
+        values.append(value)
+
+    if fields:
+        values.append(child_id)
+        c.execute(
+            f"UPDATE moonlife_children SET {', '.join(fields)} WHERE child_id=?",
+            tuple(values)
+        )
+        conn.commit()
+
+def get_money(user_id):
+    c.execute("SELECT money FROM users WHERE user_id=?", (str(user_id),))
+    row = c.fetchone()
+    if not row:
+        return 0
+    return int(row["money"])
+
+def remove_money(user_id, amount):
+    amount = int(amount)
+    if amount <= 0:
+        return False
+
+    c.execute("""
+        UPDATE users
+        SET money = money - ?
+        WHERE user_id=? AND money >= ?
+    """, (amount, str(user_id), amount))
+    success = c.rowcount > 0
+    conn.commit()
+    return success
+
+def is_durable_item(item_name):
+    return ITEMS.get(item_name, {}).get("type") == "toy"
+
+def add_inventory(user_id, item_name, amount=1):
+    """食物／特殊物品累加數量；玩具用品建立可重複使用的耐久物品。"""
+    user_id = str(user_id)
+    item = ITEMS.get(item_name, {})
+    if is_durable_item(item_name):
+        max_durability = int(item.get("durability", 20))
+        c.execute("""
+            INSERT INTO moonlife_inventory
+            (user_id, item_name, quantity, durability, max_durability)
+            VALUES (?, ?, 1, ?, ?)
+            ON CONFLICT(user_id, item_name)
+            DO UPDATE SET
+                quantity=1,
+                durability=excluded.max_durability,
+                max_durability=excluded.max_durability
+        """, (user_id, item_name, max_durability, max_durability))
+    else:
+        c.execute("""
+            INSERT INTO moonlife_inventory (user_id, item_name, quantity)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, item_name)
+            DO UPDATE SET quantity=quantity+excluded.quantity
+        """, (user_id, item_name, amount))
+    conn.commit()
+
+def remove_inventory(user_id, item_name, amount=1):
+    c.execute("""
+        SELECT quantity FROM moonlife_inventory
+        WHERE user_id=? AND item_name=?
+    """, (str(user_id), item_name))
+    row = c.fetchone()
+    if not row or row[0] < amount:
+        return False
+    new_qty = row[0] - amount
+    if new_qty <= 0:
+        c.execute("DELETE FROM moonlife_inventory WHERE user_id=? AND item_name=?", (str(user_id), item_name))
+    else:
+        c.execute("UPDATE moonlife_inventory SET quantity=? WHERE user_id=? AND item_name=?",
+                  (new_qty, str(user_id), item_name))
+    conn.commit()
+    return True
+
+def use_durability(user_id, item_name):
+    c.execute("""
+        SELECT durability, max_durability FROM moonlife_inventory
+        WHERE user_id=? AND item_name=?
+    """, (str(user_id), item_name))
+    row = c.fetchone()
+    if not row or row[0] is None or int(row[0]) <= 0:
+        return False, 0, 0
+    durability = int(row[0]) - 1
+    max_durability = int(row[1] or ITEMS.get(item_name, {}).get("durability", 20))
+    c.execute("""
+        UPDATE moonlife_inventory SET durability=?, max_durability=?
+        WHERE user_id=? AND item_name=?
+    """, (durability, max_durability, str(user_id), item_name))
+    conn.commit()
+    return True, durability, max_durability
 
 
-class MoonMenu(discord.ui.View):
-    def __init__(self,cog,user_id):
-        super().__init__(timeout=180)
-        self.cog=cog; self.user_id=user_id
+# ==========================================================
+# 🌱 成長、個性、興趣
+# ==========================================================
 
-    async def check(self,i):
-        if i.user.id!=self.user_id:
-            await i.response.send_message("這不是你的 Moon Life 面板喔！",ephemeral=True); return False
+def add_growth(user_id, child, amount):
+    growth = child["growth"] + amount
+    age_year = child["age_year"]
+    age_month = child["age_month"]
+
+    months_gained = growth // GROWTH_PER_MONTH
+    growth %= GROWTH_PER_MONTH
+
+    if months_gained:
+        age_month += months_gained
+        while age_month > 12:
+            age_month -= 12
+            age_year += 1
+
+    adult = 1 if age_year >= ADULT_AGE else 0
+
+    change_child(
+        child["child_id"],
+        growth=growth,
+        age_year=age_year,
+        age_month=age_month,
+        is_adult=adult
+    )
+
+    if adult:
+        c.execute("""
+            UPDATE moonlife_players
+            SET current_child_id=NULL
+            WHERE user_id=?
+        """, (str(user_id),))
+        conn.commit()
+        add_memory(
+            user_id,
+            child["child_id"],
+            "🌙 成年了",
+            f"{child['name']} 已經 {ADULT_AGE} 歲，正式成年。"
+        )
         return True
 
-    @discord.ui.button(label="🏠 在家",style=discord.ButtonStyle.primary)
-    async def home(self,i,b):
-        if await self.check(i): await self.cog.activity(i,"home")
+    return False
 
-    @discord.ui.button(label="🌳 外出",style=discord.ButtonStyle.primary)
-    async def outside(self,i,b):
-        if await self.check(i): await self.cog.activity(i,"outside")
+def add_personality_progress(child, personality, amount):
+    scores = parse_json(child["personality_scores"], {})
+    scores[personality] = int(scores.get(personality, 0)) + amount
 
-    @discord.ui.button(label="👶 孩子",style=discord.ButtonStyle.secondary)
-    async def child(self,i,b):
-        if await self.check(i): await self.cog.show_child(i)
+    personalities = parse_json(child["personalities"], [])
+    if child["age_year"] >= 6 and personality not in personalities and len(personalities) < 3:
+        if scores[personality] >= 30:
+            personalities.append(personality)
 
-    @discord.ui.button(label="🧸 玩耍",style=discord.ButtonStyle.success)
-    async def play(self,i,b):
-        if await self.check(i): await self.cog.activity(i,"play")
+    change_child(
+        child["child_id"],
+        personality_scores=dump_json(scores),
+        personalities=dump_json(personalities)
+    )
+
+def add_interest_progress(child, interest, amount):
+    progress = parse_json(child["interest_progress"], {})
+    progress[interest] = int(progress.get(interest, 0)) + amount
+
+    interests = parse_json(child["interests"], [])
+    discovered = None
+
+    # 合理規則：至少有相關接觸累積 + 相關素質
+    stat_ok = True
+    if interest == "繪畫":
+        stat_ok = child["creativity"] >= 15
+    elif interest == "音樂":
+        stat_ok = child["creativity"] >= 15
+    elif interest == "運動":
+        stat_ok = child["fitness"] >= 15
+    elif interest == "閱讀":
+        stat_ok = child["intelligence"] >= 15
+    elif interest == "自然":
+        stat_ok = child["emotion"] >= 10
+    elif interest == "探索":
+        stat_ok = child["intelligence"] >= 10
+
+    if (
+        interest not in interests
+        and len(interests) < 3
+        and child["age_year"] >= 3
+        and progress[interest] >= 25
+        and stat_ok
+    ):
+        interests.append(interest)
+        discovered = interest
+
+    change_child(
+        child["child_id"],
+        interest_progress=dump_json(progress),
+        interests=dump_json(interests)
+    )
+    return discovered
+
+def hunger_text(child):
+    hunger = child["hunger"]
+    name = child["name"]
+
+    if hunger >= 80:
+        return f"😭 {name}看起來非常餓了……"
+    if hunger >= 60:
+        return f"🥺 {name}摸了摸肚子：「我餓餓……」"
+    if hunger >= 40:
+        return f"🙂 {name}看起來有點想吃東西。"
+    return f"😊 {name}目前看起來精神不錯。"
+
+def relationship_name(value):
+    if value >= 90:
+        return "💕 無可取代"
+    if value >= 65:
+        return "❤️ 信任"
+    if value >= 40:
+        return "😊 親近"
+    if value >= 15:
+        return "🌱 熟悉"
+    return "🤍 陌生"
+
+def stat_level(value):
+    if value >= 80:
+        return "🌟 非常突出"
+    if value >= 50:
+        return "⭐ 擅長"
+    if value >= 20:
+        return "🙂 普通"
+    return "🌱 剛開始發展"
 
 
-async def setup(bot):
-    await bot.add_cog(MoonLife(bot))
+# ==========================================================
+# 👶 領養流程
+# ==========================================================
+
+class AdoptionModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
+    parent_name = discord.ui.TextInput(label="請輸入你在 Moon Life 裡的名字", max_length=30)
+    child_name = discord.ui.TextInput(label="請輸入孩子的名字", max_length=30)
+
+    def __init__(self, identity):
+        super().__init__()
+        self.identity = identity
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+
+        c.execute("""
+            SELECT current_child_id FROM moonlife_players
+            WHERE user_id=?
+        """, (user_id,))
+        old = c.fetchone()
+
+        if old and old[0]:
+            c.execute("""
+                SELECT is_adult FROM moonlife_children
+                WHERE child_id=?
+            """, (old[0],))
+            row = c.fetchone()
+            if row and not row[0]:
+                await interaction.response.send_message(
+                    "❌ 你目前還有一位未成年的孩子，成年後才能再次領養。",
+                    ephemeral=True
+                )
+                return
+
+        gender = random.choice(["男", "女"])
+
+        # 初始素質稍微隨機，避免每個孩子完全一樣
+        stats = [random.randint(3, 8) for _ in range(5)]
+
+        personality_scores = {
+            p: random.randint(0, 8)
+            for p in PERSONALITY_EMOJIS
+        }
+
+        c.execute("""
+            INSERT INTO moonlife_children (
+                user_id, parent_name, parent_identity,
+                name, gender,
+                intelligence, emotion, fitness, creativity, social,
+                relationship, hunger,
+                personality_scores, personalities,
+                interests, interest_progress, experiences,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            str(self.parent_name.value).strip(),
+            self.identity,
+            str(self.child_name.value).strip(),
+            gender,
+            stats[0], stats[1], stats[2], stats[3], stats[4],
+            25,
+            20,
+            dump_json(personality_scores),
+            "[]",
+            "[]",
+            "{}",
+            "{}",
+            now_iso()
+        ))
+
+        child_id = c.lastrowid
+
+        c.execute("""
+            INSERT INTO moonlife_players (
+                user_id, parent_name, parent_identity,
+                stamina, stamina_updated_at,
+                daily_stamina_buys, stamina_buy_date,
+                current_child_id, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                parent_name=excluded.parent_name,
+                parent_identity=excluded.parent_identity,
+                current_child_id=excluded.current_child_id
+        """, (
+            user_id,
+            str(self.parent_name.value).strip(),
+            self.identity,
+            10,
+            now_iso(),
+            datetime.now(timezone.utc).date().isoformat(),
+            child_id,
+            now_iso()
+        ))
+
+        c.execute("""
+            INSERT INTO moonlife_daily
+            (user_id, game_day, last_day_at, care_done, play_done, outside_done)
+            VALUES (?, 1, ?, 0, 0, 0)
+            ON CONFLICT(user_id) DO UPDATE SET
+                care_done=0, play_done=0, outside_done=0
+        """, (user_id, now_iso()))
+
+        conn.commit()
+
+        add_memory(
+            user_id,
+            child_id,
+            "👶 第一次相遇",
+            f"{self.parent_name.value} 領養了 {self.child_name.value}。"
+        )
+
+        embed = discord.Embed(
+            title="🌙 領養成功！",
+            description=(
+                f"{identity_emoji(self.identity)} 你：**{self.parent_name.value}**\n"
+                f"{gender_emoji(gender)} 孩子：**{self.child_name.value}**\n\n"
+                f"🎂 **0歲1個月**\n"
+                f"🌱 從今天開始，你們要一起慢慢長大。"
+            ),
+            color=MOONLIFE_COLOR
+        )
+        await interaction.response.send_message(
+            embed=embed,
+            view=MoonLifeFullHomeView(),
+            ephemeral=True
+        )
+
+
+class AdoptionIdentityView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=120)
+
+    async def choose(self, interaction, identity):
+        await interaction.response.send_modal(AdoptionModal(identity))
+
+    @discord.ui.button(label="👨 男", style=discord.ButtonStyle.primary)
+    async def male(self, interaction, button):
+        await self.choose(interaction, "男")
+
+    @discord.ui.button(label="👩 女", style=discord.ButtonStyle.primary)
+    async def female(self, interaction, button):
+        await self.choose(interaction, "女")
+
+    @discord.ui.button(label="🐱 貓", style=discord.ButtonStyle.secondary)
+    async def cat(self, interaction, button):
+        await self.choose(interaction, "貓")
+
+    @discord.ui.button(label="🐶 狗", style=discord.ButtonStyle.secondary)
+    async def dog(self, interaction, button):
+        await self.choose(interaction, "狗")
+
+
+# ==========================================================
+# 🏠 主畫面
+# ==========================================================
+
+async def build_home_embed(user_id):
+    player = get_player(user_id)
+    child_row = get_child(user_id)
+
+    if not player or not child_row:
+        return None
+
+    child = child_dict(child_row)
+    stamina = update_stamina(user_id)
+    daily = get_daily(user_id)
+
+    personalities = parse_json(child["personalities"], [])
+    interests = parse_json(child["interests"], [])
+
+    personality_text = "、".join(
+        f"{PERSONALITY_EMOJIS.get(x, '🌱')} {x}" for x in personalities
+    ) if personalities else "🌱 還在慢慢形成"
+
+    interest_text = "、".join(interests) if interests else "🌱 還在慢慢發現"
+
+    embed = discord.Embed(
+        title="🌙 Moon Life",
+        description=(
+            f"{identity_emoji(player[2])} 你：**{player[1]}**\n"
+            f"{gender_emoji(child['gender'])} 孩子：**{child['name']}**\n\n"
+            f"🎂 年齡：**{child['age_year']}歲{child['age_month']}個月**\n"
+            f"🌱 成長：**{child['growth']} / 100**\n"
+            f"⚡ 體力：**{stamina}**"
+            f"{' / 10' if stamina <= 10 else ''}\n"
+            f"❤️ 關係：**{relationship_name(child['relationship'])}**\n\n"
+            f"🌟 個性：{personality_text}\n"
+            f"🎨 興趣：{interest_text}\n\n"
+            f"📅 遊戲日：第 **{daily[1]}** 天"
+        ),
+        color=MOONLIFE_COLOR
+    )
+
+    embed.add_field(name="🍽️ 狀態", value=hunger_text(child), inline=False)
+
+    return embed
+
+
+class MoonLifeHomeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    async def refresh(self, interaction):
+        embed = await build_home_embed(str(interaction.user.id))
+        if embed is None:
+            await interaction.response.send_message(
+                "❌ 你目前沒有未成年的孩子。",
+                ephemeral=True
+            )
+            return
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🏠 在家", style=discord.ButtonStyle.primary, row=0)
+    async def home(self, interaction, button):
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🏠 在家",
+                description="選擇今天想和孩子做什麼。",
+                color=MOONLIFE_COLOR
+            ),
+            view=HomeActionsView()
+        )
+
+    @discord.ui.button(label="🌳 外出", style=discord.ButtonStyle.success, row=0)
+    async def outside(self, interaction, button):
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🌳 外出",
+                description="外面的世界正在等著你們。",
+                color=MOONLIFE_COLOR
+            ),
+            view=OutsideView()
+        )
+
+    @discord.ui.button(label="👶 孩子", style=discord.ButtonStyle.secondary, row=0)
+    async def child(self, interaction, button):
+        user_id = str(interaction.user.id)
+        row = get_child(user_id)
+        if not row:
+            await interaction.response.send_message("❌ 找不到孩子資料。", ephemeral=True)
+            return
+
+        child = child_dict(row)
+        personalities = parse_json(child["personalities"], [])
+        interests = parse_json(child["interests"], [])
+
+        embed = discord.Embed(
+            title=f"👶 {child['name']} 的資料",
+            description=(
+                f"{gender_emoji(child['gender'])} {child['gender']}\n"
+                f"🎂 {child['age_year']}歲{child['age_month']}個月\n"
+                f"❤️ {relationship_name(child['relationship'])}\n\n"
+                f"🧠 智慧：{child['intelligence']} / 100\n"
+                f"❤️ 情感：{child['emotion']} / 100\n"
+                f"💪 體能：{child['fitness']} / 100\n"
+                f"🎨 創造：{child['creativity']} / 100\n"
+                f"✨ 社交：{child['social']} / 100\n\n"
+                f"🌟 個性：{'、'.join(personalities) if personalities else '尚未正式形成'}\n"
+                f"🎨 興趣：{'、'.join(interests) if interests else '尚未正式發現'}"
+            ),
+            color=MOONLIFE_COLOR
+        )
+        await interaction.response.edit_message(embed=embed, view=BackHomeView())
+
+    @discord.ui.button(label="🎒 背包", style=discord.ButtonStyle.secondary, row=1)
+    async def inventory(self, interaction, button):
+        user_id = str(interaction.user.id)
+        c.execute("""
+            SELECT item_name, quantity FROM moonlife_inventory
+            WHERE user_id=? AND quantity>0
+            ORDER BY item_name
+        """, (user_id,))
+        rows = c.fetchall()
+
+        text = "\n".join(f"• {name} × {qty}" for name, qty in rows) if rows else "目前背包是空的。"
+        embed = discord.Embed(title="🎒 背包", description=text, color=MOONLIFE_COLOR)
+        await interaction.response.edit_message(embed=embed, view=InventoryView(rows))
+
+    @discord.ui.button(label="🛍️ 商店", style=discord.ButtonStyle.secondary, row=1)
+    async def shop(self, interaction, button):
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🛍️ Moon Life 商店",
+                description="選擇你想購買的類別。",
+                color=MOONLIFE_COLOR
+            ),
+            view=ShopView()
+        )
+
+    @discord.ui.button(label="📖 人生回憶", style=discord.ButtonStyle.secondary, row=1)
+    async def memories(self, interaction, button):
+        user_id = str(interaction.user.id)
+        child = child_dict(get_child(user_id))
+        c.execute("""
+            SELECT title, content FROM moonlife_memories
+            WHERE user_id=? AND child_id=?
+            ORDER BY memory_id DESC LIMIT 10
+        """, (user_id, child["child_id"]))
+        rows = c.fetchall()
+
+        description = "\n\n".join(f"**{a}**\n{b}" for a, b in rows) or "還沒有留下回憶。"
+        embed = discord.Embed(
+            title="📖 人生回憶",
+            description=description[:4000],
+            color=MOONLIFE_COLOR
+        )
+        await interaction.response.edit_message(embed=embed, view=BackHomeView())
+
+    @discord.ui.button(label="🌙 結束今天", style=discord.ButtonStyle.danger, row=2)
+    async def end_day(self, interaction, button):
+        user_id = str(interaction.user.id)
+        child = child_dict(get_child(user_id))
+        daily = get_daily(user_id)
+
+        if not daily[3]:
+            await interaction.response.send_message(
+                "❌ 今天還沒有完成基本照顧，先陪陪孩子吧。",
+                ephemeral=True
+            )
+            return
+
+        # 每結束一天，飢餓增加
+        change_child(child["child_id"], hunger=child["hunger"] + 18)
+
+        c.execute("""
+            UPDATE moonlife_daily
+            SET game_day=game_day+1,
+                last_day_at=?,
+                care_done=0,
+                play_done=0,
+                outside_done=0
+            WHERE user_id=?
+        """, (now_iso(), user_id))
+        conn.commit()
+
+        child = child_dict(get_child(user_id))
+        adult = add_growth(user_id, child, 10)
+
+        if adult:
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="🌙 孩子成年了",
+                    description=f"恭喜！**{child['name']}** 已經 18 歲，正式成年。\n\n你現在可以再次領養新的孩子。",
+                    color=MOONLIFE_COLOR
+                ),
+                view=None
+            )
+            return
+
+        child = child_dict(get_child(user_id))
+        event_text = random.choice([
+            f"🌙 {child['name']}今天在你身邊安心地睡著了。",
+            f"✨ {child['name']}今天好像又長大了一點。",
+            f"🥹 你看著{child['name']}，覺得今天也是很珍貴的一天。",
+        ])
+
+        add_memory(user_id, child["child_id"], "🌙 又一天", event_text)
+
+        embed = await build_home_embed(user_id)
+        embed.description += f"\n\n{event_text}"
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+class BackHomeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    @discord.ui.button(label="⬅️ 回到 Moon Life", style=discord.ButtonStyle.primary)
+    async def back(self, interaction, button):
+        embed = await build_home_embed(str(interaction.user.id))
+        await interaction.response.edit_message(embed=embed, view=MoonLifeFullHomeView())
+
+
+# ==========================================================
+# 🏠 在家
+# ==========================================================
+
+class HomeActionsView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    @discord.ui.button(label="🍽️ 照顧孩子", style=discord.ButtonStyle.success)
+    async def care(self, interaction, button):
+        user_id = str(interaction.user.id)
+        child = child_dict(get_child(user_id))
+
+        if not use_stamina(user_id, 1):
+            await interaction.response.send_message("❌ 體力不足。", ephemeral=True)
+            return
+
+        change_child(
+            child["child_id"],
+            relationship=child["relationship"] + random.randint(2, 4),
+            hunger=max(0, child["hunger"] - 25),
+            emotion=child["emotion"] + random.randint(0, 2)
+        )
+
+        c.execute("UPDATE moonlife_daily SET care_done=1 WHERE user_id=?", (user_id,))
+        conn.commit()
+
+        add_personality_progress(child, "溫柔", 1)
+        add_memory(user_id, child["child_id"], "🍽️ 被好好照顧", f"{child['name']}今天被你好好照顧了。")
+
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🍽️ 照顧完成",
+                description=f"🥹 {child['name']}看起來安心多了。\n❤️ 親子關係提升\n🍽️ 飢餓狀態改善",
+                color=MOONLIFE_COLOR
+            ),
+            view=BackHomeView()
+        )
+
+    @discord.ui.button(label="🧸 一起玩", style=discord.ButtonStyle.primary)
+    async def play(self, interaction, button):
+        user_id = str(interaction.user.id)
+        child = child_dict(get_child(user_id))
+
+        if not use_stamina(user_id, 2):
+            await interaction.response.send_message("❌ 體力不足。", ephemeral=True)
+            return
+
+        activity = random.choice([
+            ("玩積木", "intelligence", "探索"),
+            ("畫畫", "creativity", "繪畫"),
+            ("玩球", "fitness", "運動"),
+            ("看故事", "intelligence", "閱讀"),
+        ])
+
+        name, stat, interest = activity
+        gain = random.randint(1, 3)
+
+        changes = {
+            stat: child[stat] + gain,
+            "relationship": child["relationship"] + 2
+        }
+        change_child(child["child_id"], **changes)
+        discovered = add_interest_progress(child, interest, random.randint(5, 9))
+
+        if interest == "探索":
+            add_personality_progress(child, "好奇", 2)
+        elif interest == "繪畫":
+            add_personality_progress(child, "好奇", 1)
+        elif interest == "運動":
+            add_personality_progress(child, "活潑", 1)
+
+        c.execute("UPDATE moonlife_daily SET play_done=1 WHERE user_id=?", (user_id,))
+        conn.commit()
+
+        message = f"🧸 你和{child['name']}一起{name}！\n{STAT_EMOJIS[stat]} +{gain}\n❤️ 關係提升"
+        if discovered:
+            message += f"\n\n🌟 **發現興趣：{discovered}！**"
+
+        await interaction.response.edit_message(
+            embed=discord.Embed(title="🧸 一起玩", description=message, color=MOONLIFE_COLOR),
+            view=BackHomeView()
+        )
+
+
+# ==========================================================
+# 🌳 外出
+# ==========================================================
+
+class OutsideView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    async def go(self, interaction, place):
+        user_id = str(interaction.user.id)
+        child = child_dict(get_child(user_id))
+
+        if not use_stamina(user_id, 2):
+            await interaction.response.send_message("❌ 體力不足。", ephemeral=True)
+            return
+
+        if place == "公園":
+            stat = "fitness"
+            interest = "運動"
+            text = f"🌳 {child['name']}在公園跑來跑去，看起來非常開心。"
+            personality = "活潑"
+        elif place == "圖書館":
+            stat = "intelligence"
+            interest = "閱讀"
+            text = f"📚 {child['name']}安靜地翻著一本故事書。"
+            personality = "好奇"
+        else:
+            stat = "emotion"
+            interest = "自然"
+            text = f"🌿 {child['name']}停下來觀察周圍的小花與天空。"
+            personality = "好奇"
+
+        gain = random.randint(1, 3)
+        change_child(
+            child["child_id"],
+            **{
+                stat: child[stat] + gain,
+                "relationship": child["relationship"] + 1
+            }
+        )
+
+        discovered = add_interest_progress(child, interest, random.randint(4, 8))
+        add_personality_progress(child, personality, 1)
+
+        c.execute("UPDATE moonlife_daily SET outside_done=1 WHERE user_id=?", (user_id,))
+        conn.commit()
+
+        description = f"{text}\n\n{STAT_EMOJIS[stat]} +{gain}"
+        if discovered:
+            description += f"\n🌟 **發現興趣：{discovered}！**"
+
+        await interaction.response.edit_message(
+            embed=discord.Embed(title=f"🌳 外出｜{place}", description=description, color=MOONLIFE_COLOR),
+            view=BackHomeView()
+        )
+
+    @discord.ui.button(label="🌳 公園", style=discord.ButtonStyle.success)
+    async def park(self, interaction, button):
+        await self.go(interaction, "公園")
+
+    @discord.ui.button(label="📚 圖書館", style=discord.ButtonStyle.primary)
+    async def library(self, interaction, button):
+        await self.go(interaction, "圖書館")
+
+    @discord.ui.button(label="🌿 自然散步", style=discord.ButtonStyle.secondary)
+    async def nature(self, interaction, button):
+        await self.go(interaction, "自然")
+
+
+# ==========================================================
+# 🎒 背包使用
+# ==========================================================
+
+class InventoryView(discord.ui.View):
+    def __init__(self, rows):
+        super().__init__(timeout=180)
+        self.rows = rows
+        if rows:
+            self.add_item(InventorySelect(rows))
+
+    @discord.ui.button(label="⬅️ 回主畫面", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction, button):
+        embed = await build_home_embed(str(interaction.user.id))
+        await interaction.response.edit_message(embed=embed, view=MoonLifeFullHomeView())
+
+
+class InventorySelect(discord.ui.Select):
+    def __init__(self, rows):
+        options = []
+        for row in rows[:25]:
+            name, qty = row[0], row[1]
+            if is_durable_item(name):
+                durability = row[2] if len(row) > 2 and row[2] is not None else ITEMS.get(name, {}).get("durability", 20)
+                max_durability = row[3] if len(row) > 3 and row[3] is not None else ITEMS.get(name, {}).get("durability", 20)
+                label = f"{name}｜耐久 {durability}/{max_durability}"
+            else:
+                label = f"{name} × {qty}"
+            options.append(discord.SelectOption(label=label, value=name))
+        super().__init__(placeholder="選擇要使用的物品", options=options)
+
+    async def callback(self, interaction):
+        user_id = str(interaction.user.id)
+        item_name = self.values[0]
+        item = ITEMS.get(item_name)
+
+        if not item:
+            await interaction.response.send_message("❌ 找不到這個物品。", ephemeral=True)
+            return
+
+        child = child_dict(get_child(user_id))
+        if not child:
+            await interaction.response.send_message("❌ 目前沒有正在照顧的孩子。", ephemeral=True)
+            return
+
+        # 🎂 生日蛋糕只能在孩子生日月使用
+        if item["type"] == "birthday":
+            birthday_title = f"🎂 {child['name']} {child['age_year']}歲生日蛋糕"
+            if child["age_year"] <= 0 or child["age_month"] != 1:
+                await interaction.response.send_message(
+                    "🎂 生日蛋糕只能在孩子每滿一歲的生日月使用喔！",
+                    ephemeral=True
+                )
+                return
+            if has_memory_title(user_id, child["child_id"], birthday_title):
+                await interaction.response.send_message(
+                    "🎂 今年已經吃過生日蛋糕慶祝了，明年生日再一起慶祝吧！",
+                    ephemeral=True
+                )
+                return
+
+        if is_durable_item(item_name):
+            ok, remaining, maximum = use_durability(user_id, item_name)
+            if not ok:
+                await interaction.response.send_message(
+                    f"❌ **{item_name}** 的耐久度已經歸零，請重新購買新的物品。",
+                    ephemeral=True
+                )
+                return
+            durability_text = f"\n🔧 耐久：{remaining}/{maximum}"
+        else:
+            if not remove_inventory(user_id, item_name):
+                await interaction.response.send_message("❌ 物品使用失敗。", ephemeral=True)
+                return
+            durability_text = ""
+
+        description = f"使用了：**{item_name}**" + durability_text
+
+        updates = {}
+        if "hunger" in item:
+            updates["hunger"] = max(0, child["hunger"] - item["hunger"])
+
+        for stat in ("intelligence", "emotion", "fitness", "creativity", "social", "relationship"):
+            if item.get(stat):
+                updates[stat] = child[stat] + item[stat]
+
+        if updates:
+            change_child(child["child_id"], **updates)
+
+        discovered = None
+        if item.get("interest"):
+            discovered = add_interest_progress(
+                child,
+                item["interest"],
+                item.get("interest_gain", 0)
+            )
+
+        if item["type"] == "food":
+            description += f"\n🍽️ {child['name']}吃得很開心！"
+            if item.get("emotion"):
+                description += f"\n❤️ 心情 +{item['emotion']}"
+        elif item_name == "玩偶":
+            description += f"\n🧸 {child['name']}抱著玩偶玩了一會兒。"
+        elif item_name == "拼圖":
+            description += "\n🧩 一起完成了一次動腦挑戰。"
+        elif item["type"] == "special":
+            add_memory(
+                user_id, child["child_id"], f"🎁 {item_name}",
+                f"你和{child['name']}留下了一個特別的小回憶。"
+            )
+            description += "\n🥹 留下了一段特別的回憶。"
+        elif item["type"] == "birthday":
+            title = f"🎂 {child['name']} {child['age_year']}歲生日蛋糕"
+            memory = (
+                f"今天是{child['name']} {child['age_year']}歲的生日月。"
+                "你們一起吃了生日蛋糕，留下了一段特別的成長回憶。"
+            )
+            add_memory(user_id, child["child_id"], title, memory)
+            description += f"\n🎉 你們一起慶祝了{child['name']}的生日！"
+            description += "\n📖 已加入人生回憶。"
+
+        if discovered:
+            description += f"\n🌟 發現興趣：{discovered}"
+
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🎒 使用物品",
+                description=description,
+                color=MOONLIFE_COLOR
+            ),
+            view=BackHomeView()
+        )
+
+
+# ==========================================================
+# 🛍️ 商店
+# ==========================================================
+
+class ShopView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    @discord.ui.button(label="⚡ 購買體力", style=discord.ButtonStyle.success)
+    async def stamina(self, interaction, button):
+        user_id = str(interaction.user.id)
+        today = datetime.now(timezone.utc).date().isoformat()
+
+        c.execute("""
+            SELECT daily_stamina_buys, stamina_buy_date
+            FROM moonlife_players WHERE user_id=?
+        """, (user_id,))
+        buys, buy_date = c.fetchone()
+
+        if buy_date != today:
+            buys = 0
+            c.execute("""
+                UPDATE moonlife_players
+                SET daily_stamina_buys=0, stamina_buy_date=?
+                WHERE user_id=?
+            """, (today, user_id))
+            conn.commit()
+
+        if buys >= 10:
+            await interaction.response.send_message("❌ 今天已經購買 10 次體力。", ephemeral=True)
+            return
+
+        # 第一次 1000，第二次 2000 ... 累加
+        price = (buys + 1) * 1000
+        money = get_money(user_id)
+
+        if money < price:
+            await interaction.response.send_message(
+                f"❌ 努努幣不足。\n需要：{price:,}\n目前：{money:,}",
+                ephemeral=True
+            )
+            return
+
+        remove_money(user_id, price)
+        c.execute("""
+            UPDATE moonlife_players
+            SET stamina=stamina+10,
+                stamina_updated_at=?,
+                daily_stamina_buys=daily_stamina_buys+1,
+                stamina_buy_date=?
+            WHERE user_id=?
+        """, (now_iso(), today, user_id))
+        conn.commit()
+
+        await interaction.response.send_message(
+            f"⚡ 購買成功！\n體力 +10\n💰 消耗 {price:,} 努努幣\n\n"
+            f"購買體力可以突破自然上限 10。",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="🧸 玩具", style=discord.ButtonStyle.primary)
+    async def toys(self, interaction, button):
+        await show_shop_category(interaction, "toy")
+
+    @discord.ui.button(label="🍎 食物", style=discord.ButtonStyle.primary)
+    async def food(self, interaction, button):
+        await show_shop_category(interaction, "food")
+
+    @discord.ui.button(label="🎁 特殊物品", style=discord.ButtonStyle.secondary)
+    async def special(self, interaction, button):
+        await show_shop_category(interaction, "special")
+
+    @discord.ui.button(label="⬅️ 回主畫面", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction, button):
+        embed = await build_home_embed(str(interaction.user.id))
+        await interaction.response.edit_message(embed=embed, view=MoonLifeFullHomeView())
+
+
+async def show_shop_category(interaction, category):
+    options = []
+    lines = []
+
+    for name, data in ITEMS.items():
+        if data["type"] == category:
+            lines.append(f"**{name}**｜💰 {data['price']:,}\n{data['desc']}")
+            options.append(discord.SelectOption(
+                label=f"{name}｜{data['price']:,} 努努幣",
+                value=name
+            ))
+
+    view = discord.ui.View(timeout=180)
+    view.add_item(ShopSelect(options))
+    view.add_item(ShopBackButton())
+
+    embed = discord.Embed(
+        title="🛍️ Moon Life 商店",
+        description="\n\n".join(lines),
+        color=MOONLIFE_COLOR
+    )
+    await interaction.response.edit_message(embed=embed, view=view)
+
+
+class ShopSelect(discord.ui.Select):
+    def __init__(self, options):
+        super().__init__(placeholder="選擇要購買的物品", options=options)
+
+    async def callback(self, interaction):
+        user_id = str(interaction.user.id)
+        name = self.values[0]
+        item = ITEMS[name]
+        money = get_money(user_id)
+
+        if money < item["price"]:
+            await interaction.response.send_message(
+                f"❌ 努努幣不足。\n需要：{item['price']:,}\n目前：{money:,}",
+                ephemeral=True
+            )
+            return
+
+        remove_money(user_id, item["price"])
+        add_inventory(user_id, name)
+
+        await interaction.response.send_message(
+            f"🛍️ 購買成功！\n獲得：**{name} ×1**\n💰 消耗：{item['price']:,} 努努幣",
+            ephemeral=True
+        )
+
+
+class ShopBackButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="⬅️ 回商店", style=discord.ButtonStyle.secondary)
+
+    async def callback(self, interaction):
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🛍️ Moon Life 商店",
+                description="選擇你想購買的類別。",
+                color=MOONLIFE_COLOR
+            ),
+            view=ShopView()
+        )
+
+
+# ==========================================================
+# 🌙 Slash Command
+# ==========================================================
+
+# 🌙 Moon Life｜正式完整版擴充
+# 以下為完整遊戲循環與條件式事件系統
+# ==========================================================
+
+AGE_STAGES = [
+    (0, 2, "嬰幼兒期"),
+    (3, 5, "幼兒期"),
+    (6, 11, "童年期"),
+    (12, 17, "青少年期"),
+]
+
+ACTIVITY_LIBRARY = {
+    "親子聊天": {
+        "where": "home", "stamina": 1, "relationship": (2, 5),
+        "stats": {"emotion": (1, 3), "social": (0, 2)},
+        "personality": [("溫柔", 2), ("黏人", 1)],
+        "min_age": 0,
+        "memory": "💬 你們今天好好聊了一會兒。",
+    },
+    "一起閱讀": {
+        "where": "home", "stamina": 1, "relationship": (1, 3),
+        "stats": {"intelligence": (1, 3), "emotion": (0, 1)},
+        "interest": ("閱讀", (4, 8)),
+        "personality": [("好奇", 2)],
+        "min_age": 2,
+        "memory": "📚 今天一起讀了一本故事。",
+    },
+    "畫畫": {
+        "where": "home", "stamina": 2, "relationship": (1, 3),
+        "stats": {"creativity": (1, 4)},
+        "interest": ("繪畫", (5, 9)),
+        "personality": [("好奇", 1), ("獨立", 1)],
+        "min_age": 2,
+        "memory": "🎨 今天留下了一張小小的作品。",
+    },
+    "玩積木": {
+        "where": "home", "stamina": 2, "relationship": (1, 3),
+        "stats": {"intelligence": (1, 3), "creativity": (1, 3)},
+        "interest": ("探索", (3, 7)),
+        "personality": [("好奇", 2)],
+        "min_age": 1,
+        "memory": "🧱 今天一起完成了一個積木作品。",
+    },
+    "公園玩耍": {
+        "where": "outside", "stamina": 2, "relationship": (1, 3),
+        "stats": {"fitness": (1, 4), "social": (0, 2)},
+        "interest": ("運動", (4, 8)),
+        "personality": [("活潑", 2)],
+        "min_age": 1,
+        "memory": "🌳 今天在公園玩得很開心。",
+    },
+    "圖書館": {
+        "where": "outside", "stamina": 2, "relationship": (1, 2),
+        "stats": {"intelligence": (1, 4)},
+        "interest": ("閱讀", (5, 9)),
+        "personality": [("好奇", 1)],
+        "min_age": 3,
+        "memory": "📚 今天在圖書館安靜地看了許多書。",
+    },
+    "自然散步": {
+        "where": "outside", "stamina": 2, "relationship": (1, 3),
+        "stats": {"emotion": (1, 3), "fitness": (0, 2)},
+        "interest": ("自然", (4, 8)),
+        "personality": [("好奇", 2)],
+        "min_age": 1,
+        "memory": "🌿 今天一起觀察了周圍的自然景色。",
+    },
+    "探索新地方": {
+        "where": "outside", "stamina": 3, "relationship": (1, 3),
+        "stats": {"intelligence": (1, 3), "social": (0, 3)},
+        "interest": ("探索", (5, 10)),
+        "personality": [("勇敢", 1), ("好奇", 2)],
+        "min_age": 4,
+        "memory": "🗺️ 今天一起去了從來沒去過的地方。",
+    },
+    "一起運動": {
+        "where": "outside", "stamina": 3, "relationship": (2, 4),
+        "stats": {"fitness": (2, 5), "emotion": (0, 2)},
+        "interest": ("運動", (5, 10)),
+        "personality": [("活潑", 2), ("勇敢", 1)],
+        "min_age": 3,
+        "memory": "⚽ 今天一起流了好多汗。",
+    },
+}
+
+# 合理事件：每個事件都有年齡、數值、經驗、興趣或隱藏狀態條件。
+EVENT_LIBRARY = [
+    # ==========================================================
+    # 🍽️ 基本狀態／生活事件
+    # ==========================================================
+    {
+        "id": "hungry_child",
+        "title": "🍽️ 小小的肚子聲",
+        "condition": lambda ch, ex: ch["hunger"] >= 65 and ex.get("事件_hungry_child", 0) < 3,
+        "text": lambda ch: f"🥺 {ch['name']}摸著肚子，小聲地說：「我好像餓餓了……」",
+        "effects": {},
+    },
+    {
+        "id": "very_hungry",
+        "title": "😭 今天真的好餓",
+        "condition": lambda ch, ex: ch["hunger"] >= 85 and ex.get("事件_very_hungry", 0) < 2,
+        "text": lambda ch: f"😭 {ch['name']}今天看起來沒什麼精神，連平常喜歡的事情都提不起勁。也許該先好好吃飯。",
+        "effects": {"emotion": -1},
+    },
+    {
+        "id": "safe_home",
+        "title": "🏠 安心的小窩",
+        "condition": lambda ch, ex: ch["relationship"] >= 55 and ch["hunger"] <= 25 and ex.get("活動_照顧孩子", 0) >= 2,
+        "text": lambda ch: f"🏠 {ch['name']}今天待在你身邊時顯得很放鬆，好像已經把這裡當成安心的小窩。",
+        "effects": {"emotion": 1},
+        "personality": ("黏人", 1),
+    },
+    {
+        "id": "first_night",
+        "title": "🌙 睡前的小聲音",
+        "condition": lambda ch, ex: ch["age_year"] <= 1 and ch["relationship"] >= 35 and ex.get("事件_first_night", 0) < 1,
+        "text": lambda ch: f"🌙 睡前，{ch['name']}安靜地靠著你。這段陪伴似乎正在慢慢建立你們之間的信任。",
+        "effects": {"relationship": 2, "emotion": 1},
+    },
+
+    # ==========================================================
+    # ❤️ 親子關係事件
+    # ==========================================================
+    {
+        "id": "trust_moment",
+        "title": "❤️ 安心的時刻",
+        "condition": lambda ch, ex: ch["relationship"] >= 65 and ex.get("事件_trust_moment", 0) < 3,
+        "text": lambda ch: f"🥹 {ch['name']}自然地靠近你，這份信任已經慢慢成為習慣。",
+        "effects": {"emotion": 1},
+    },
+    {
+        "id": "asks_for_help",
+        "title": "🥹 可以幫我嗎？",
+        "condition": lambda ch, ex: ch["relationship"] >= 40 and ch["age_year"] >= 2 and ex.get("活動_照顧孩子", 0) >= 1,
+        "text": lambda ch: f"🥹 {ch['name']}遇到不會的事情時，第一個想到的是跑來找你幫忙。",
+        "effects": {"relationship": 2},
+    },
+    {
+        "id": "little_hug",
+        "title": "🤗 突然的擁抱",
+        "condition": lambda ch, ex: ch["relationship"] >= 70 and ch["emotion"] >= 15 and ex.get("事件_little_hug", 0) < 3,
+        "text": lambda ch: f"🤗 沒有特別的原因，{ch['name']}今天突然給了你一個大大的擁抱。",
+        "effects": {"relationship": 2, "emotion": 1},
+    },
+    {
+        "id": "needs_space",
+        "title": "🌱 想自己待一下",
+        "condition": lambda ch, ex: ch["age_year"] >= 7 and ch["relationship"] >= 45 and ex.get("活動_自然散步", 0) + ex.get("活動_探索", 0) >= 2,
+        "text": lambda ch: f"🌱 {ch['name']}今天說想自己安靜做一會兒事情。這不是疏遠，而是開始學習屬於自己的空間。",
+        "effects": {"social": 1},
+        "personality": ("獨立", 2),
+    },
+
+    # ==========================================================
+    # 🎨 繪畫／創造
+    # ==========================================================
+    {
+        "id": "likes_drawing",
+        "title": "🎨 一張又一張",
+        "condition": lambda ch, ex: ex.get("活動_繪畫", 0) >= 2 and int(parse_json(ch["interest_progress"], {}).get("繪畫", 0)) >= 15 and ch["creativity"] >= 12,
+        "text": lambda ch: f"🎨 {ch['name']}最近又主動拿起畫具，似乎真的很享受創作。",
+        "effects": {"creativity": 1},
+    },
+    {
+        "id": "color_story",
+        "title": "🌈 這是我的故事",
+        "condition": lambda ch, ex: ex.get("活動_繪畫", 0) >= 4 and ch["creativity"] >= 18 and ex.get("事件_color_story", 0) < 2,
+        "text": lambda ch: f"🌈 {ch['name']}指著自己的作品，一點一點告訴你畫裡發生了什麼。原來創作對{ch['name']}來說，也是一種說故事的方法。",
+        "effects": {"creativity": 2, "emotion": 1},
+        "personality": ("好奇", 1),
+    },
+    {
+        "id": "messy_art",
+        "title": "😂 顏料跑得到處都是",
+        "condition": lambda ch, ex: ex.get("活動_繪畫", 0) >= 2 and ch["age_year"] <= 6 and ex.get("事件_messy_art", 0) < 2,
+        "text": lambda ch: f"😂 {ch['name']}今天創作得太投入，結果桌上、手上甚至臉上都沾到了一點顏料。",
+        "effects": {"creativity": 1, "emotion": 1},
+        "personality": ("調皮", 1),
+    },
+
+    # ==========================================================
+    # 📚 閱讀／智慧
+    # ==========================================================
+    {
+        "id": "book_question",
+        "title": "📚 為什麼呢？",
+        "condition": lambda ch, ex: ch["age_year"] >= 3 and ex.get("活動_閱讀", 0) >= 2 and int(parse_json(ch["interest_progress"], {}).get("閱讀", 0)) >= 10,
+        "text": lambda ch: f"📖 {ch['name']}讀完故事後，開始問你書裡發生的事情。",
+        "effects": {"intelligence": 1, "emotion": 1},
+    },
+    {
+        "id": "favorite_page",
+        "title": "📖 再念一次！",
+        "condition": lambda ch, ex: ex.get("活動_閱讀", 0) >= 4 and ch["intelligence"] >= 16 and ex.get("事件_favorite_page", 0) < 3,
+        "text": lambda ch: f"📖 {ch['name']}翻到熟悉的頁面，立刻叫你再念一次。看來這個故事已經成為小小的最愛。",
+        "effects": {"intelligence": 1, "relationship": 1},
+    },
+    {
+        "id": "deep_question",
+        "title": "🤔 一個認真的問題",
+        "condition": lambda ch, ex: ch["age_year"] >= 8 and ex.get("活動_閱讀", 0) >= 5 and ch["intelligence"] >= 25,
+        "text": lambda ch: f"🤔 {ch['name']}今天問了一個讓你也忍不住思考很久的問題。",
+        "effects": {"intelligence": 2},
+        "personality": ("好奇", 2),
+    },
+
+    # ==========================================================
+    # ⚽ 運動／體能
+    # ==========================================================
+    {
+        "id": "sport_energy",
+        "title": "⚽ 還想再玩！",
+        "condition": lambda ch, ex: ex.get("活動_運動", 0) >= 2 and ch["fitness"] >= 12 and int(parse_json(ch["interest_progress"], {}).get("運動", 0)) >= 10,
+        "text": lambda ch: f"⚽ {ch['name']}玩完後還精神滿滿，似乎完全不想回家。",
+        "effects": {"fitness": 1},
+    },
+    {
+        "id": "small_race",
+        "title": "🏃 比賽！",
+        "condition": lambda ch, ex: ch["age_year"] >= 3 and ex.get("活動_運動", 0) >= 4 and ch["fitness"] >= 18,
+        "text": lambda ch: f"🏃 {ch['name']}突然拉著你說要比賽跑步，還沒開始就已經興奮得不得了。",
+        "effects": {"fitness": 2, "relationship": 1},
+        "personality": ("活潑", 2),
+    },
+    {
+        "id": "tired_but_happy",
+        "title": "😆 累死了，但很好玩",
+        "condition": lambda ch, ex: ex.get("活動_運動", 0) >= 3 and ch["fitness"] >= 15 and ch["hunger"] < 60,
+        "text": lambda ch: f"😆 {ch['name']}玩到滿頭大汗，坐下來後卻笑著說今天很好玩。",
+        "effects": {"emotion": 1, "fitness": 1},
+    },
+
+    # ==========================================================
+    # 🌿 自然／探索
+    # ==========================================================
+    {
+        "id": "nature_notice",
+        "title": "🌿 小小發現",
+        "condition": lambda ch, ex: ex.get("活動_自然", 0) >= 2 and int(parse_json(ch["interest_progress"], {}).get("自然", 0)) >= 10,
+        "text": lambda ch: f"🌿 {ch['name']}停下腳步，認真觀察了一片葉子。",
+        "effects": {"emotion": 1},
+    },
+    {
+        "id": "tiny_treasure",
+        "title": "🍃 小小的寶物",
+        "condition": lambda ch, ex: ex.get("活動_自然", 0) >= 3 and ex.get("事件_tiny_treasure", 0) < 3,
+        "text": lambda ch: f"🍃 {ch['name']}今天撿到了一個覺得非常特別的小東西，認真地說要好好收藏。",
+        "effects": {"emotion": 1},
+        "personality": ("好奇", 1),
+    },
+    {
+        "id": "lost_in_wonder",
+        "title": "🌤️ 為什麼天空會變色？",
+        "condition": lambda ch, ex: ch["age_year"] >= 4 and ex.get("活動_自然", 0) >= 4 and ch["intelligence"] >= 14,
+        "text": lambda ch: f"🌤️ {ch['name']}抬頭看著天空，開始好奇地問起世界為什麼會是這個樣子。",
+        "effects": {"intelligence": 1, "emotion": 1},
+        "personality": ("好奇", 2),
+    },
+    {
+        "id": "explorer_route",
+        "title": "🗺️ 我們走這邊！",
+        "condition": lambda ch, ex: ex.get("活動_探索", 0) >= 3 and ch["age_year"] >= 5,
+        "text": lambda ch: f"🗺️ {ch['name']}今天很有主見地指出另一條路，想看看那邊有什麼。",
+        "effects": {"social": 1, "intelligence": 1},
+        "personality": ("勇敢", 1),
+    },
+
+    # ==========================================================
+    # 🌟 個性發展
+    # ==========================================================
+    {
+        "id": "curious_question",
+        "title": "🤔 十萬個為什麼",
+        "condition": lambda ch, ex: ch["intelligence"] >= 15 and ch["age_year"] >= 2 and ex.get("事件_curious_question", 0) < 3,
+        "text": lambda ch: f"🤔 {ch['name']}今天對身邊的事情充滿問題。",
+        "effects": {"intelligence": 1},
+        "personality": ("好奇", 2),
+    },
+    {
+        "id": "growing_independent",
+        "title": "🌱 我自己來",
+        "condition": lambda ch, ex: ch["age_year"] >= 6 and ch["relationship"] >= 40 and ex.get("事件_growing_independent", 0) < 3,
+        "text": lambda ch: f"🌱 {ch['name']}今天說想試著自己完成一件事情。",
+        "effects": {"social": 1},
+        "personality": ("獨立", 2),
+    },
+    {
+        "id": "shy_hello",
+        "title": "😳 躲在你後面",
+        "condition": lambda ch, ex: ch["age_year"] >= 2 and ch["relationship"] >= 30 and ch["social"] <= 18,
+        "text": lambda ch: f"😳 遇到陌生環境時，{ch['name']}下意識靠近你，悄悄躲在你的身後。",
+        "effects": {"relationship": 1},
+        "personality": ("害羞", 2),
+    },
+    {
+        "id": "brave_step",
+        "title": "💪 我試試看",
+        "condition": lambda ch, ex: ch["age_year"] >= 5 and ch["fitness"] >= 18 and ex.get("活動_運動", 0) + ex.get("活動_探索", 0) >= 4,
+        "text": lambda ch: f"💪 面對以前可能會猶豫的事情，{ch['name']}今天深呼吸後說：「我想試試看。」",
+        "effects": {"emotion": 1},
+        "personality": ("勇敢", 2),
+    },
+    {
+        "id": "gentle_choice",
+        "title": "🥹 小小的體貼",
+        "condition": lambda ch, ex: ch["emotion"] >= 20 and ch["relationship"] >= 55 and ex.get("活動_照顧孩子", 0) >= 3,
+        "text": lambda ch: f"🥹 {ch['name']}今天注意到你的狀態，還主動問你是不是累了。",
+        "effects": {"emotion": 2},
+        "personality": ("溫柔", 2),
+    },
+    {
+        "id": "playful_idea",
+        "title": "😂 一個奇怪的主意",
+        "condition": lambda ch, ex: ch["creativity"] >= 16 and ch["age_year"] >= 3 and ex.get("活動_繪畫", 0) >= 2,
+        "text": lambda ch: f"😂 {ch['name']}今天突然想出一個讓你哭笑不得的玩法，還很認真地邀請你一起加入。",
+        "effects": {"creativity": 1, "emotion": 1},
+        "personality": ("調皮", 2),
+    },
+
+    # ==========================================================
+    # 🎂 成長階段事件
+    # ==========================================================
+    {
+        "id": "first_word_like",
+        "title": "🗣️ 小小的表達",
+        "condition": lambda ch, ex: 1 <= ch["age_year"] <= 2 and ch["social"] >= 10 and ex.get("事件_first_word_like", 0) < 1,
+        "text": lambda ch: f"🗣️ {ch['name']}今天比以前更努力地表達自己的想法，你忍不住發現：真的長大了一點。",
+        "effects": {"social": 1, "emotion": 1},
+    },
+    {
+        "id": "preschool_friend",
+        "title": "👋 第一次主動打招呼",
+        "condition": lambda ch, ex: 3 <= ch["age_year"] <= 6 and ch["social"] >= 16 and ex.get("事件_preschool_friend", 0) < 2,
+        "text": lambda ch: f"👋 {ch['name']}今天主動向別人打招呼。雖然可能有點緊張，但已經踏出了自己的第一步。",
+        "effects": {"social": 2},
+    },
+    {
+        "id": "big_kid_thought",
+        "title": "🌙 我已經不是小孩子了",
+        "condition": lambda ch, ex: 7 <= ch["age_year"] <= 12 and ch["intelligence"] + ch["social"] >= 45 and ex.get("事件_big_kid_thought", 0) < 2,
+        "text": lambda ch: f"🌙 {ch['name']}今天突然認真地說自己已經長大了，讓你有一瞬間不知道該高興還是感傷。",
+        "effects": {"emotion": 1, "social": 1},
+    },
+    {
+        "id": "teen_dream",
+        "title": "✨ 關於以後",
+        "condition": lambda ch, ex: 13 <= ch["age_year"] < 18 and len(parse_json(ch["interests"], [])) >= 1 and ex.get("事件_teen_dream", 0) < 3,
+        "text": lambda ch: f"✨ {ch['name']}今天開始和你聊起未來想做的事情。那些曾經的小興趣，似乎正在慢慢變成真正的方向。",
+        "effects": {"social": 1, "emotion": 1},
+    },
+    {
+        "id": "almost_adult",
+        "title": "🌅 快要長大了",
+        "condition": lambda ch, ex: ch["age_year"] >= 16 and ch["relationship"] >= 60 and ex.get("事件_almost_adult", 0) < 2,
+        "text": lambda ch: f"🌅 你突然發現，{ch['name']}已經不是以前那個需要你一直牽著手的小孩子了。",
+        "effects": {"emotion": 1},
+    },
+]
+
+def get_age_stage(child):
+    age = child["age_year"]
+    for low, high, name in AGE_STAGES:
+        if low <= age <= high:
+            return name
+    return "成年"
+
+def has_memory_title(user_id, child_id, title):
+    c.execute("""
+        SELECT 1 FROM moonlife_memories
+        WHERE user_id=? AND child_id=? AND title=?
+        LIMIT 1
+    """, (str(user_id), child_id, title))
+    return c.fetchone() is not None
+
+def add_experience(child_id, key, amount=1):
+    c.execute("SELECT experiences FROM moonlife_children WHERE child_id=?", (child_id,))
+    row = c.fetchone()
+    experiences = parse_json(row[0] if row else "{}", {})
+    experiences[key] = int(experiences.get(key, 0)) + amount
+    change_child(child_id, experiences=dump_json(experiences))
+    return experiences
+
+def apply_stat_changes(child, stats):
+    changes = {}
+    for stat, value in stats.items():
+        current = int(child.get(stat, 0))
+        if isinstance(value, tuple):
+            gain = random.randint(value[0], value[1])
+        else:
+            gain = int(value)
+        changes[stat] = current + gain
+    if changes:
+        change_child(child["child_id"], **changes)
+    return changes
+
+def eligible_activities(child, where):
+    result = []
+    for name, data in ACTIVITY_LIBRARY.items():
+        if data["where"] == where and child["age_year"] >= data.get("min_age", 0):
+            result.append((name, data))
+    return result
+
+def run_activity(user_id, activity_name):
+    child = child_dict(get_child(user_id))
+    if not child:
+        return False, "❌ 找不到目前的孩子。", None
+
+    data = ACTIVITY_LIBRARY.get(activity_name)
+    if not data:
+        return False, "❌ 找不到這個活動。", None
+
+    if child["age_year"] < data.get("min_age", 0):
+        return False, f"❌ {child['name']}目前年紀還太小，還不能進行這個活動。", None
+
+    if not use_stamina(user_id, data["stamina"]):
+        return False, "❌ 體力不足。", None
+
+    stat_changes = apply_stat_changes(child, data.get("stats", {}))
+    change_child(
+        child["child_id"],
+        relationship=child["relationship"] + random.randint(*data.get("relationship", (0, 0))),
+        hunger=child["hunger"] + random.randint(3, 8),
+    )
+
+    if data.get("interest"):
+        interest, amount_range = data["interest"]
+        add_experience(child["child_id"], f"活動_{interest}", 1)
+        child_after = child_dict(get_child(user_id))
+        discovered = add_interest_progress(child_after, interest, random.randint(*amount_range))
+    else:
+        discovered = None
+
+    for personality, amount in data.get("personality", []):
+        child_after = child_dict(get_child(user_id))
+        add_personality_progress(child_after, personality, amount)
+
+    add_experience(child["child_id"], f"活動_{activity_name}", 1)
+    add_memory(user_id, child["child_id"], f"✨ {activity_name}", data["memory"])
+
+    child_after = child_dict(get_child(user_id))
+    event = roll_reasonable_event(user_id, child_after)
+
+    message = f"{data['memory']}\n"
+    if stat_changes:
+        message += "\n".join(
+            f"{STAT_EMOJIS.get(stat, '✨')} {stat} +{new_value - child[stat]}"
+            for stat, new_value in stat_changes.items()
+        )
+    if discovered:
+        message += f"\n\n🌟 **正式發現興趣：{discovered}！**"
+        add_memory(user_id, child["child_id"], f"🌟 發現興趣｜{discovered}", f"{child['name']}經過一段時間的接觸與累積，正式發現自己喜歡{discovered}。")
+
+    if event:
+        message += f"\n\n{event['text']}"
+
+    return True, message, event
+
+def roll_reasonable_event(user_id, child):
+    experiences = parse_json(child["experiences"], {})
+    eligible = [
+        event for event in EVENT_LIBRARY
+        if event["condition"](child, experiences)
+    ]
+
+    if not eligible:
+        return None
+
+    # 不讓每次活動都硬塞事件，維持自然感。
+    if random.random() > 0.35:
+        return None
+
+    event = random.choice(eligible)
+    effects = event.get("effects", {})
+    changes = {}
+    for key, amount in effects.items():
+        if key == "relationship":
+            changes[key] = child[key] + amount
+        else:
+            changes[key] = child[key] + amount
+    if changes:
+        change_child(child["child_id"], **changes)
+
+    if event.get("personality"):
+        fresh = child_dict(get_child(user_id))
+        p, amount = event["personality"]
+        add_personality_progress(fresh, p, amount)
+
+    text = event["text"](child)
+    add_memory(user_id, child["child_id"], event["title"], text)
+    add_experience(child["child_id"], f"事件_{event['id']}", 1)
+    return {"title": event["title"], "text": text}
+
+def child_status_lines(child):
+    lines = []
+    if child["hunger"] >= 80:
+        lines.append(f"😭 {child['name']}看起來非常餓，最好趕快吃點東西。")
+    elif child["hunger"] >= 60:
+        lines.append(f"🥺 {child['name']}摸摸肚子：「我有點餓……」")
+    elif child["hunger"] >= 40:
+        lines.append(f"🙂 {child['name']}偶爾會看看食物。")
+
+    if child["relationship"] < 20:
+        lines.append(f"🤍 {child['name']}還需要更多時間認識你。")
+    elif child["relationship"] >= 80:
+        lines.append(f"❤️ {child['name']}在你身邊看起來非常安心。")
+
+    personalities = parse_json(child["personalities"], [])
+    if personalities:
+        lines.append("🌟 目前個性：" + "、".join(personalities))
+
+    interests = parse_json(child["interests"], [])
+    if interests:
+        lines.append("🎨 已發現興趣：" + "、".join(interests))
+
+    return lines or [f"😊 {child['name']}今天看起來精神不錯。"]
+
+# ==========================================================
+# 👨‍👩‍👧 家庭紀錄與成年保存
+# ==========================================================
+
+def get_child_history(user_id):
+    c.execute("""
+        SELECT name, gender, age_year, age_month, relationship,
+               personalities, interests, is_adult, created_at
+        FROM moonlife_children
+        WHERE user_id=?
+        ORDER BY child_id ASC
+    """, (str(user_id),))
+    return c.fetchall()
+
+class ActivitySelect(discord.ui.Select):
+    def __init__(self, where, child):
+        options = []
+        for name, data in eligible_activities(child, where)[:25]:
+            options.append(discord.SelectOption(
+                label=name,
+                description=f"⚡ 體力 {data['stamina']}｜{data['where']}"
+            ))
+        super().__init__(placeholder="選擇今天的活動", options=options)
+        self.where = where
+
+    async def callback(self, interaction):
+        ok, message, event = run_activity(str(interaction.user.id), self.values[0])
+        if not ok:
+            await interaction.response.send_message(message, ephemeral=True)
+            return
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title=f"🌙 {self.values[0]}",
+                description=message[:4000],
+                color=MOONLIFE_COLOR
+            ),
+            view=BackHomeView()
+        )
+
+class FullActivityView(discord.ui.View):
+    def __init__(self, where, child):
+        super().__init__(timeout=180)
+        acts = eligible_activities(child, where)
+        if acts:
+            self.add_item(ActivitySelect(where, child))
+
+class FamilyHistoryView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    @discord.ui.button(label="⬅️ 回主畫面", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction, button):
+        embed = await build_home_embed(str(interaction.user.id))
+        if embed:
+            await interaction.response.edit_message(embed=embed, view=MoonLifeFullHomeView())
+        else:
+            await interaction.response.edit_message(
+                embed=discord.Embed(title="🌙 Moon Life", description="你目前沒有正在照顧的未成年孩子。", color=MOONLIFE_COLOR),
+                view=None
+            )
+
+# ==========================================================
+# 🧩 正式完整版 UI 擴充
+# ==========================================================
+
+class MoonLifeFullHomeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="🏠 在家", style=discord.ButtonStyle.primary, row=0)
+    async def home(self, interaction, button):
+        child = child_dict(get_child(str(interaction.user.id)))
+        await interaction.response.edit_message(
+            embed=discord.Embed(title="🏠 在家", description="選擇一個適合孩子目前年齡的活動。", color=MOONLIFE_COLOR),
+            view=FullActivityView("home", child)
+        )
+
+    @discord.ui.button(label="🌳 外出", style=discord.ButtonStyle.success, row=0)
+    async def outside(self, interaction, button):
+        child = child_dict(get_child(str(interaction.user.id)))
+        await interaction.response.edit_message(
+            embed=discord.Embed(title="🌳 外出", description="每一次外出都會留下不同的人生經驗。", color=MOONLIFE_COLOR),
+            view=FullActivityView("outside", child)
+        )
+
+    @discord.ui.button(label="👶 孩子狀態", style=discord.ButtonStyle.secondary, row=0)
+    async def child(self, interaction, button):
+        child = child_dict(get_child(str(interaction.user.id)))
+        if not child:
+            await interaction.response.send_message("❌ 目前沒有未成年的孩子。", ephemeral=True)
+            return
+        lines = child_status_lines(child)
+        interests = parse_json(child["interests"], [])
+        personalities = parse_json(child["personalities"], [])
+        embed = discord.Embed(
+            title=f"👶 {child['name']}｜{get_age_stage(child)}",
+            description=(
+                f"{gender_emoji(child['gender'])} 性別：{child['gender']}\n"
+                f"🎂 年齡：{child['age_year']}歲{child['age_month']}個月\n"
+                f"🌱 成長：{child['growth']}/100\n"
+                f"❤️ 關係：{relationship_name(child['relationship'])}\n\n"
+                f"🧠 智慧：{child['intelligence']}/100\n"
+                f"❤️ 情感：{child['emotion']}/100\n"
+                f"💪 體能：{child['fitness']}/100\n"
+                f"🎨 創造：{child['creativity']}/100\n"
+                f"✨ 社交：{child['social']}/100\n\n"
+                f"🌟 個性：{'、'.join(personalities) if personalities else '正在形成'}\n"
+                f"🎨 興趣：{'、'.join(interests) if interests else '正在慢慢發現'}\n\n"
+                + "\n".join(lines)
+            ),
+            color=MOONLIFE_COLOR
+        )
+        await interaction.response.edit_message(embed=embed, view=BackHomeView())
+
+    @discord.ui.button(label="🎒 背包", style=discord.ButtonStyle.secondary, row=1)
+    async def inventory(self, interaction, button):
+        user_id = str(interaction.user.id)
+        c.execute("SELECT item_name, quantity, durability, max_durability FROM moonlife_inventory WHERE user_id=? AND quantity>0 ORDER BY item_name", (user_id,))
+        rows = c.fetchall()
+        lines = []
+        for name, qty, durability, max_durability in rows:
+            if is_durable_item(name):
+                current = int(durability if durability is not None else ITEMS.get(name, {}).get("durability", 20))
+                maximum = int(max_durability if max_durability is not None else ITEMS.get(name, {}).get("durability", 20))
+                lines.append(f"• {name}【耐久 {current}/{maximum}】")
+            else:
+                lines.append(f"• {name} × {qty}")
+        desc = "\n".join(lines) if lines else "目前背包是空的。"
+        await interaction.response.edit_message(
+            embed=discord.Embed(title="🎒 背包", description=desc, color=MOONLIFE_COLOR),
+            view=InventoryView(rows)
+        )
+
+    @discord.ui.button(label="🛍️ 商店", style=discord.ButtonStyle.secondary, row=1)
+    async def shop(self, interaction, button):
+        await interaction.response.edit_message(
+            embed=discord.Embed(title="🛍️ Moon Life 商店", description="玩具、食物與特殊物品都會慢慢影響孩子的生活經驗。", color=MOONLIFE_COLOR),
+            view=ShopView()
+        )
+
+    @discord.ui.button(label="📖 人生回憶", style=discord.ButtonStyle.secondary, row=1)
+    async def memories(self, interaction, button):
+        user_id = str(interaction.user.id)
+        child = child_dict(get_child(user_id))
+        c.execute("""
+            SELECT title, content FROM moonlife_memories
+            WHERE user_id=? AND child_id=?
+            ORDER BY memory_id DESC LIMIT 15
+        """, (user_id, child["child_id"]))
+        rows = c.fetchall()
+        text = "\n\n".join(f"**{title}**\n{content}" for title, content in rows) or "還沒有留下回憶。"
+        await interaction.response.edit_message(
+            embed=discord.Embed(title=f"📖 {child['name']}的人生回憶", description=text[:4000], color=MOONLIFE_COLOR),
+            view=BackHomeView()
+        )
+
+    @discord.ui.button(label="👨‍👩‍👧 家庭紀錄", style=discord.ButtonStyle.secondary, row=2)
+    async def family(self, interaction, button):
+        rows = get_child_history(str(interaction.user.id))
+        if not rows:
+            desc = "目前還沒有家庭紀錄。"
+        else:
+            lines = []
+            for name, gender, age_y, age_m, rel, p_json, i_json, adult, created in rows:
+                status = "🌙 已成年" if adult else "👶 目前照顧中"
+                lines.append(
+                    f"**{name}**｜{gender_emoji(gender)} {gender}｜{status}\n"
+                    f"最後年齡：{age_y}歲{age_m}個月｜關係：{relationship_name(rel)}"
+                )
+            desc = "\n\n".join(lines)
+        await interaction.response.edit_message(
+            embed=discord.Embed(title="👨‍👩‍👧 家庭紀錄", description=desc[:4000], color=MOONLIFE_COLOR),
+            view=FamilyHistoryView()
+        )
+
+    @discord.ui.button(label="🌙 結束今天", style=discord.ButtonStyle.danger, row=2)
+    async def end_day(self, interaction, button):
+        user_id = str(interaction.user.id)
+        child = child_dict(get_child(user_id))
+        if not child:
+            await interaction.response.send_message("❌ 目前沒有孩子。", ephemeral=True)
+            return
+
+        daily = get_daily(user_id)
+        if not daily[3]:
+            await interaction.response.send_message(
+                "❌ 今天還沒有完成基本照顧，先好好照顧孩子吧。",
+                ephemeral=True
+            )
+            return
+
+        change_child(
+            child["child_id"],
+            hunger=min(100, child["hunger"] + random.randint(10, 18))
+        )
+        child = child_dict(get_child(user_id))
+        adult = add_growth(user_id, child, random.randint(8, 15))
+
+        c.execute("""
+            UPDATE moonlife_daily
+            SET game_day=game_day+1, last_day_at=?, care_done=0, play_done=0, outside_done=0
+            WHERE user_id=?
+        """, (now_iso(), user_id))
+        conn.commit()
+
+        if adult:
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="🌙 18歲｜正式成年",
+                    description=(
+                        f"🥹 **{child['name']}成年了。**\n\n"
+                        "從第一次相遇開始，到今天為止留下的所有回憶都會保存在家庭紀錄中。\n"
+                        "你現在可以再次領養新的孩子，並且再次選擇自己的男／女／貓／狗身份與名字。"
+                    ),
+                    color=MOONLIFE_COLOR
+                ),
+                view=None
+            )
+            return
+
+        child = child_dict(get_child(user_id))
+
+        # 🎂 每滿一歲：同一個孩子、同一歲只會慶祝一次
+        birthday_text = ""
+        if child["age_month"] == 1 and child["age_year"] > 0:
+            birthday_title = f"🎂 {child['name']} {child['age_year']}歲生日"
+            if not has_memory_title(user_id, child["child_id"], birthday_title):
+                birthday_text = (
+                    f"🎂 今天是{child['name']} {child['age_year']}歲的生日月！"
+                    "又陪伴孩子走過了一個成長階段。"
+                )
+                add_memory(user_id, child["child_id"], birthday_title, birthday_text)
+
+        # 🏆 成長里程碑：首次達成時留下回憶
+        milestone_rules = [
+            ("🌱 第一次發現興趣", len(parse_json(child["interests"], [])) >= 1),
+            ("❤️ 非常親密", child["relationship"] >= 80),
+            ("🧠 智慧小達人", child["intelligence"] >= 50),
+            ("🎨 創意小達人", child["creativity"] >= 50),
+            ("💪 體能小達人", child["fitness"] >= 50),
+        ]
+        experiences = parse_json(child["experiences"], {})
+        for milestone_title, reached in milestone_rules:
+            key = f"里程碑_{milestone_title}"
+            if reached and experiences.get(key, 0) < 1:
+                add_memory(
+                    user_id,
+                    child["child_id"],
+                    f"🏆 {milestone_title}",
+                    f"{child['name']}達成了新的成長里程碑：{milestone_title}！"
+                )
+                add_experience(child["child_id"], key, 1)
+
+        event = roll_reasonable_event(user_id, child)
+        text = f"🌙 今天結束了，{child['name']}又慢慢長大了一點。\n🎂 現在：{child['age_year']}歲{child['age_month']}個月"
+        if event:
+            text += f"\n\n{event['text']}"
+        add_memory(user_id, child["child_id"], "🌙 又過了一天", text)
+
+        embed = await build_home_embed(user_id)
+        embed.description += "\n\n" + text
+        await interaction.response.edit_message(embed=embed, view=MoonLifeFullHomeView())
+
+
+# ==========================================================
+# 🔧 完整版啟動函式覆寫
+# ==========================================================
+
+# 🌙 正式對外入口
+# main.py 請使用：
+# from systems.moon_life import setup_moon_life
+# setup_moon_life(bot)
+# ==========================================================
+
+def setup_moon_life(bot):
+    init_moonlife_tables()
+
+    # 防止 on_ready 因重新連線再次執行時重複註冊指令
+    if getattr(bot, "_moon_life_loaded", False):
+        return
+    bot._moon_life_loaded = True
+
+    @bot.tree.command(name="moonlife", description="進入 Moon Life")
+    async def moonlife(interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        player = get_player(user_id)
+        child = get_child(user_id)
+
+        if not player or not child:
+            embed = discord.Embed(
+                title="🌙 Moon Life｜人生養成",
+                description=(
+                    "這是一段陪伴孩子從小慢慢長大的旅程。\n\n"
+                    "每次領養時，你都可以重新選擇自己：\n"
+                    "👨 男　👩 女　🐱 貓　🐶 狗\n\n"
+                    "✏️ 你可以取自己的名字，也可以替孩子取名字。\n"
+                    "👶 孩子的性別由系統隨機決定。\n"
+                    "🌱 孩子會透過生活、活動、素質與經驗慢慢形成個性與興趣。\n"
+                    "📖 所有重要經歷都會留下人生回憶。"
+                ),
+                color=MOONLIFE_COLOR
+            )
+            await interaction.response.send_message(embed=embed, view=AdoptionIdentityView(), ephemeral=True)
+            return
+
+        embed = await build_home_embed(user_id)
+        await interaction.response.send_message(embed=embed, view=MoonLifeFullHomeView(), ephemeral=True)
+
+    print("🌙 Moon Life 正式完整版已載入")
