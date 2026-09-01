@@ -19,6 +19,12 @@ try:
 except ImportError:
     raise ImportError("❌ Moon Life 無法載入 database.py 的 conn、c")
 
+try:
+    from config import BOT_ADMINS
+except ImportError:
+    BOT_ADMINS = []
+    print("⚠️ Moon Life 無法載入 config.py 的 BOT_ADMINS，管理員測試無限體力功能已停用。")
+
 # ==========================================================
 # ⚙️ 基本設定
 # ==========================================================
@@ -60,12 +66,16 @@ ITEMS = {
     "畫具": {"price": 500, "type": "toy", "durability": 20, "desc": "開始創作的畫具。", "creativity": 2, "interest": "繪畫", "interest_gain": 8},
     "故事書": {"price": 450, "type": "toy", "durability": 30, "desc": "一起閱讀的故事書。", "intelligence": 2, "interest": "閱讀", "interest_gain": 8},
 
-    # 🍱 食物：不同恢復效果
-    "水果": {"price": 120, "type": "food", "hunger": 20, "relationship": 1, "emotion": 1, "desc": "清爽的水果，恢復一些飢餓並讓心情變好。"},
-    "便當": {"price": 300, "type": "food", "hunger": 45, "relationship": 1, "desc": "好好吃一頓，能大幅緩解飢餓。"},
-    "小蛋糕": {"price": 500, "type": "food", "hunger": 25, "emotion": 3, "relationship": 1, "desc": "甜甜的親子點心，除了填飽肚子也能帶來好心情。"},
-    "糖果": {"price": 80, "type": "food", "hunger": 8, "emotion": 1, "desc": "少量甜食，只能稍微止餓。"},
-    "麵包": {"price": 100, "type": "food", "hunger": 15, "desc": "簡單又方便的小點心。"},
+    # 🍼🍱 食物：依孩子年齡選擇，不能亂餵
+    "配方奶": {"price": 80, "type": "food", "hunger": 35, "relationship": 2, "emotion": 1, "min_age": 0, "max_age": 1, "food_stage": "嬰兒", "desc": "👶 0～1歲適用。溫暖的一瓶奶，適合還在喝奶的孩子。"},
+    "嬰兒副食品": {"price": 110, "type": "food", "hunger": 28, "emotion": 1, "min_age": 0, "max_age": 1, "food_stage": "嬰兒", "desc": "🥣 0～1歲適用。軟嫩好入口的嬰兒副食品。"},
+    "幼兒粥": {"price": 140, "type": "food", "hunger": 32, "relationship": 1, "min_age": 1, "max_age": 3, "food_stage": "幼兒", "desc": "🥣 1～3歲適用。溫暖又容易入口的一餐。"},
+    "香蕉": {"price": 90, "type": "food", "hunger": 16, "emotion": 1, "min_age": 1, "max_age": 4, "food_stage": "幼兒", "desc": "🍌 1～4歲適用。簡單方便的小點心。"},
+    "水果": {"price": 120, "type": "food", "hunger": 20, "relationship": 1, "emotion": 1, "min_age": 2, "food_stage": "兒童", "desc": "🍎 2歲以上。清爽的水果，恢復一些飢餓並讓心情變好。"},
+    "麵包": {"price": 100, "type": "food", "hunger": 15, "min_age": 3, "food_stage": "兒童", "desc": "🥖 3歲以上。簡單又方便的小點心。"},
+    "小蛋糕": {"price": 500, "type": "food", "hunger": 25, "emotion": 3, "relationship": 1, "min_age": 3, "food_stage": "兒童", "desc": "🧁 3歲以上。甜甜的親子點心，除了填飽肚子也能帶來好心情。"},
+    "便當": {"price": 300, "type": "food", "hunger": 45, "relationship": 1, "min_age": 4, "food_stage": "兒童", "desc": "🍱 4歲以上。好好吃一頓，能大幅緩解飢餓。"},
+    "糖果": {"price": 80, "type": "food", "hunger": 8, "emotion": 1, "min_age": 5, "food_stage": "兒童", "desc": "🍬 5歲以上。少量甜食，只能稍微止餓。"},
 
     # 🎁 特殊物品
     "氣球": {"price": 250, "type": "special", "desc": "可能帶來特別的回憶。"},
@@ -803,6 +813,42 @@ class MoonLifeHomeView(discord.ui.View):
         )
         await interaction.response.edit_message(embed=embed, view=BackHomeView())
 
+    @discord.ui.button(label="🍼 餵食", style=discord.ButtonStyle.success, row=0)
+    async def feed(self, interaction, button):
+        user_id = str(interaction.user.id)
+        child = child_dict(get_child(user_id))
+        if not child:
+            await interaction.response.send_message("❌ 目前沒有正在照顧的孩子。", ephemeral=True)
+            return
+
+        c.execute(
+            "SELECT item_name, quantity FROM moonlife_inventory "
+            "WHERE user_id=? AND quantity>0 ORDER BY item_name",
+            (user_id,)
+        )
+        rows = [
+            row for row in c.fetchall()
+            if ITEMS.get(row[0], {}).get("type") == "food"
+            and is_food_suitable(child, ITEMS.get(row[0], {}))
+        ]
+
+        age_label = "🍼 餵奶" if child["age_year"] <= 1 else "🍽️ 餵食"
+        if rows:
+            description = (
+                f"目前 {child['name']}是 **{child['age_year']}歲{child['age_month']}個月**。\n"
+                "請從背包中選擇適合年齡的食物。"
+            )
+        else:
+            description = (
+                f"目前背包裡沒有適合 **{child['age_year']}歲** 的食物。\n"
+                "可以直接到商店購買。"
+            )
+
+        await interaction.response.edit_message(
+            embed=discord.Embed(title=age_label, description=description, color=MOONLIFE_COLOR),
+            view=FeedingView(rows)
+        )
+
     @discord.ui.button(label="🎒 背包", style=discord.ButtonStyle.secondary, row=1)
     async def inventory(self, interaction, button):
         user_id = str(interaction.user.id)
@@ -1067,6 +1113,117 @@ class OutsideView(discord.ui.View):
 
 
 # ==========================================================
+# 🍼 餵食／年齡適合食物
+# ==========================================================
+
+def is_food_suitable(child, item):
+    if item.get("type") != "food":
+        return False
+    age = int(child["age_year"])
+    if age < int(item.get("min_age", 0)):
+        return False
+    max_age = item.get("max_age")
+    if max_age is not None and age > int(max_age):
+        return False
+    return True
+
+
+def food_age_text(item):
+    min_age = item.get("min_age", 0)
+    max_age = item.get("max_age")
+    if max_age is None:
+        return f"{min_age}歲以上"
+    return f"{min_age}～{max_age}歲"
+
+
+async def consume_food(interaction, item_name):
+    user_id = str(interaction.user.id)
+    item = ITEMS.get(item_name)
+    child = child_dict(get_child(user_id))
+
+    if not item or item.get("type") != "food" or not child:
+        await interaction.response.send_message("❌ 目前無法使用這個食物。", ephemeral=True)
+        return
+
+    if not is_food_suitable(child, item):
+        await interaction.response.send_message(
+            f"❌ **{item_name}** 適合 {food_age_text(item)} 的孩子，"
+            f"{child['name']}目前 {child['age_year']}歲，不能這樣餵喔。",
+            ephemeral=True
+        )
+        return
+
+    if not remove_inventory(user_id, item_name):
+        await interaction.response.send_message("❌ 背包裡沒有這個食物了。", ephemeral=True)
+        return
+
+    hunger_before = child["hunger"]
+    new_hunger = max(0, hunger_before - int(item.get("hunger", 0)))
+    updates = {"hunger": new_hunger}
+    for stat in ("intelligence", "emotion", "fitness", "creativity", "social", "relationship"):
+        if item.get(stat):
+            updates[stat] = child[stat] + item[stat]
+
+    change_child(child["child_id"], **updates)
+
+    # 餵食算完成今天的一次基本照顧
+    c.execute("UPDATE moonlife_daily SET care_done=1 WHERE user_id=?", (user_id,))
+    conn.commit()
+
+    add_memory(
+        user_id, child["child_id"], f"🍽️ 餵食｜{item_name}",
+        f"今天餵{child['name']}吃了{item_name}，好好照顧了肚子。"
+    )
+
+    description = (
+        f"使用：**{item_name}**\n"
+        f"👶 適用年齡：{food_age_text(item)}\n"
+        f"🍽️ 飢餓：{hunger_before} → {new_hunger}\n"
+        f"🥰 {child['name']}吃得很安心！"
+    )
+    if item.get("emotion"):
+        description += f"\n❤️ 情緒 +{item['emotion']}"
+
+    await interaction.response.edit_message(
+        embed=discord.Embed(title="🍽️ 餵食完成", description=description, color=MOONLIFE_COLOR),
+        view=BackHomeView()
+    )
+
+
+class FeedingSelect(discord.ui.Select):
+    def __init__(self, rows):
+        options = []
+        for row in rows[:25]:
+            name, qty = row[0], row[1]
+            item = ITEMS.get(name, {})
+            options.append(discord.SelectOption(
+                label=f"{name} × {qty}",
+                description=f"適用：{food_age_text(item)}｜飢餓 -{item.get('hunger', 0)}",
+                value=name
+            ))
+        super().__init__(placeholder="選擇要餵給孩子的食物", options=options)
+
+    async def callback(self, interaction):
+        await consume_food(interaction, self.values[0])
+
+
+class FeedingView(discord.ui.View):
+    def __init__(self, rows):
+        super().__init__(timeout=180)
+        if rows:
+            self.add_item(FeedingSelect(rows))
+
+    @discord.ui.button(label="🛍️ 去商店買食物", style=discord.ButtonStyle.success)
+    async def shop_food(self, interaction, button):
+        await show_shop_category(interaction, "food")
+
+    @discord.ui.button(label="⬅️ 回主畫面", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction, button):
+        embed = await build_home_embed(str(interaction.user.id))
+        await interaction.response.edit_message(embed=embed, view=MoonLifeFullHomeView())
+
+
+# ==========================================================
 # 🎒 背包使用
 # ==========================================================
 
@@ -1109,6 +1266,17 @@ class InventorySelect(discord.ui.Select):
         child = child_dict(get_child(user_id))
         if not child:
             await interaction.response.send_message("❌ 目前沒有正在照顧的孩子。", ephemeral=True)
+            return
+
+        if item.get("type") == "food":
+            if not is_food_suitable(child, item):
+                await interaction.response.send_message(
+                    f"❌ **{item_name}** 適合 {food_age_text(item)} 的孩子。\n"
+                    f"{child['name']}目前 {child['age_year']}歲，請選擇適合年齡的食物。",
+                    ephemeral=True
+                )
+                return
+            await consume_food(interaction, item_name)
             return
 
         # 🎂 生日蛋糕只能在孩子生日月使用
@@ -1228,11 +1396,20 @@ class ShopView(discord.ui.View):
             """, (today, user_id))
             conn.commit()
 
-        if buys >= 10:
-            await interaction.response.send_message("❌ 今天已經購買 10 次體力。", ephemeral=True)
+        # 🔧 Moon Bot 指定管理員測試：不受每日 10 次限制
+        # 使用 config.py 的 BOT_ADMINS，不採用 Discord Administrator 權限。
+        # 一般玩家仍維持每日最多購買 10 次。
+        is_admin = interaction.user.id in BOT_ADMINS
+
+        if not is_admin and buys >= 10:
+            await interaction.response.send_message(
+                "❌ 今天已經購買 10 次體力。",
+                ephemeral=True
+            )
             return
 
-        # 第一次 1000，第二次 2000 ... 累加
+        # 第一次 1000，第二次 2000 ... 依購買次數累加
+        # 管理員測試帳號可以無限購買，價格規則照常計算。
         price = (buys + 1) * 1000
         money = get_money(user_id)
 
@@ -1254,9 +1431,10 @@ class ShopView(discord.ui.View):
         """, (now_iso(), today, user_id))
         conn.commit()
 
+        admin_note = "\n🔧 BOT 管理員測試模式：今日購買次數不受限制。" if is_admin else ""
         await interaction.response.send_message(
             f"⚡ 購買成功！\n體力 +10\n💰 消耗 {price:,} 努努幣\n\n"
-            f"購買體力可以突破自然上限 10。",
+            f"購買體力可以突破自然上限 10。{admin_note}",
             ephemeral=True
         )
 
@@ -1264,7 +1442,7 @@ class ShopView(discord.ui.View):
     async def toys(self, interaction, button):
         await show_shop_category(interaction, "toy")
 
-    @discord.ui.button(label="🍎 食物", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="🍼🍎 年齡食物", style=discord.ButtonStyle.primary)
     async def food(self, interaction, button):
         await show_shop_category(interaction, "food")
 
@@ -1282,9 +1460,16 @@ async def show_shop_category(interaction, category):
     options = []
     lines = []
 
+    child = child_dict(get_child(str(interaction.user.id)))
+
     for name, data in ITEMS.items():
-        if data["type"] == category:
-            lines.append(f"**{name}**｜💰 {data['price']:,}\n{data['desc']}")
+        matches = data["type"] == category
+        if category == "food":
+            matches = data["type"] == "food" and child and is_food_suitable(child, data)
+
+        if matches:
+            extra = f"\n👶 適用：{food_age_text(data)}" if data["type"] == "food" else ""
+            lines.append(f"**{name}**｜💰 {data['price']:,}{extra}\n{data['desc']}")
             options.append(discord.SelectOption(
                 label=f"{name}｜{data['price']:,} 努努幣",
                 value=name
