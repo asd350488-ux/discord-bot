@@ -326,21 +326,24 @@ def add_reputation(user_id, amount):
 # ==========================================================
 
 SHOP_ITEMS = {
-    "energy_drink": {"name":"🧃 能量飲料","price":500,"stamina":15,"desc":"快速補充體力。"},
-    "meal": {"name":"🍱 精緻餐點","price":1000,"stamina":30,"desc":"補充更多體力。"},
-    "premium_rest": {"name":"✨ 高級恢復券","price":2000,"stamina":60,"desc":"大幅恢復體力。"},
-    "flower": {"name":"🌹 精緻花束","price":500,"gift":3,"bonus":{"emotion":1},"desc":"小小心意，讓他心情更好。"},
-    "coffee": {"name":"☕ 精品咖啡組","price":1000,"gift":4,"bonus":{"social":1},"desc":"適合悠閒聊天的小禮物。"},
-    "chocolate": {"name":"🍫 精品巧克力","price":1500,"gift":5,"bonus":{"emotion":2},"desc":"甜蜜的小驚喜。"},
-    "books": {"name":"📚 精選書籍","price":2000,"gift":4,"bonus":{"intelligence":2},"desc":"兼顧心意與知識。"},
-    "sports": {"name":"🏋️ 運動裝備組","price":2500,"gift":5,"bonus":{"fitness":2},"desc":"適合重視體能與訓練的他。"},
-    "creative_box": {"name":"🎨 創作禮盒","price":3000,"gift":6,"bonus":{"creativity":3},"desc":"給靈感與創意的一份支持。"},
-    "perfume": {"name":"🌙 高級香水","price":3500,"gift":7,"bonus":{"social":2},"desc":"精緻又有個人風格。"},
-    "watch": {"name":"⌚ 精品手錶","price":4000,"gift":8,"bonus":{"intelligence":2},"desc":"重要時刻的高級禮物。"},
-    "headphones": {"name":"🎧 頂級耳機","price":5000,"gift":8,"bonus":{"creativity":3},"desc":"陪伴練習、休息與靈感時光。"},
-    "tailored_suit": {"name":"🤵 高級訂製服","price":7000,"gift":10,"bonus":{"social":4},"desc":"提升公開場合的自信與社交表現。"},
-    "luxury_gift": {"name":"💎 奢華禮盒","price":10000,"gift":15,"bonus":{"emotion":5},"desc":"昂貴但不是用來快速刷滿好感度。"},
+    # 體力用品：價格固定 1,000／2,000／3,000，效果清楚顯示給玩家。
+    "energy_drink": {"name":"🧃 能量飲料", "price":1000, "stamina":20, "desc":"⚡ 使用後恢復 20 點體力。"},
+    "meal": {"name":"🍱 精緻餐點", "price":2000, "stamina":50, "desc":"⚡ 使用後恢復 50 點體力。"},
+    "premium_rest": {"name":"✨ 高級恢復券", "price":3000, "stamina":100, "desc":"⚡ 使用後恢復 100 點體力（最高不超過 100）。"},
+
+    "flower": {"name":"🌹 精緻花束", "price":500,"gift":3,"bonus":{"emotion":1},"desc":"小小心意，讓他心情更好。"},
+    "coffee": {"name":"☕ 精品咖啡組", "price":1000,"gift":4,"bonus":{"social":1},"desc":"適合悠閒聊天的小禮物。"},
+    "chocolate": {"name":"🍫 精品巧克力", "price":1500,"gift":5,"bonus":{"emotion":2},"desc":"甜蜜的小驚喜。"},
+    "books": {"name":"📚 精選書籍", "price":2000,"gift":4,"bonus":{"intelligence":2},"desc":"兼顧心意與知識。"},
+    "sports": {"name":"🏋️ 運動裝備組", "price":2500,"gift":5,"bonus":{"fitness":2},"desc":"適合重視體能與訓練的他。"},
+    "creative_box": {"name":"🎨 創作禮盒", "price":3000,"gift":6,"bonus":{"creativity":3},"desc":"給靈感與創意的一份支持。"},
+    "perfume": {"name":"🌙 高級香水", "price":3500,"gift":7,"bonus":{"social":2},"desc":"精緻又有個人風格。"},
+    "watch": {"name":"⌚ 精品手錶", "price":4000,"gift":8,"bonus":{"intelligence":2},"desc":"重要時刻的高級禮物。"},
+    "headphones": {"name":"🎧 頂級耳機", "price":5000,"gift":8,"bonus":{"creativity":3},"desc":"陪伴練習、休息與靈感時光。"},
+    "tailored_suit": {"name":"🤵 高級訂製服", "price":7000,"gift":10,"bonus":{"social":4},"desc":"提升公開場合的自信與社交表現。"},
+    "luxury_gift": {"name":"💎 奢華禮盒", "price":10000,"gift":15,"bonus":{"emotion":5},"desc":"昂貴但不是用來快速刷滿好感度。"},
 }
+
 def get_money(user_id):
     try:
         c.execute("SELECT money FROM users WHERE user_id=?", (str(user_id),))
@@ -409,19 +412,34 @@ def spend_for_action(user_id, amount):
 # 🛒 商店 UI
 # --------------------------
 def build_shop_embed(user_id):
-    lines=[]
-    for key,data in SHOP_ITEMS.items():
-        lines.append(f"{data['name']}｜💰 **{data['price']:,}**\\n{data['desc']}")
+    lines = [
+        "**⚡ 體力用品**",
+        "🧃 **能量飲料**｜💰 **1,000 努努幣**\n⚡ 使用後恢復 **20 點體力**",
+        "🍱 **精緻餐點**｜💰 **2,000 努努幣**\n⚡ 使用後恢復 **50 點體力**",
+        "✨ **高級恢復券**｜💰 **3,000 努努幣**\n⚡ 使用後恢復 **100 點體力**（最高不超過 100）",
+        "\n**🎁 禮物**",
+    ]
+    for key, data in SHOP_ITEMS.items():
+        if "gift" in data:
+            lines.append(f"{data['name']}｜💰 **{data['price']:,} 努努幣**\n{data['desc']}")
     return discord.Embed(
         title="🛒 Moon Club｜商店",
-        description=f"💳 目前努努幣：**{get_money(user_id):,}**\\n\\n" + "\\n\\n".join(lines),
-        color=MOONCLUB_COLOR)
+        description=f"💳 目前努努幣：**{get_money(user_id):,}**\n\n" + "\n\n".join(lines),
+        color=MOONCLUB_COLOR,
+    )
 
 class ShopItemSelect(discord.ui.Select):
     def __init__(self, category):
         self.category=category
         keys=[k for k,v in SHOP_ITEMS.items() if ("stamina" in v if category=="energy" else "gift" in v)]
-        options=[discord.SelectOption(label=f"{SHOP_ITEMS[k]['name']}｜{SHOP_ITEMS[k]['price']:,} 努努幣",value=k,description=SHOP_ITEMS[k]["desc"]) for k in keys]
+        options=[]
+        for k in keys:
+            data=SHOP_ITEMS[k]
+            if "stamina" in data:
+                desc=f"{data['price']:,} 努努幣｜恢復 {data['stamina']} 點體力"
+            else:
+                desc=f"{data['price']:,} 努努幣｜{data['desc']}"
+            options.append(discord.SelectOption(label=data["name"], value=k, description=desc[:100]))
         super().__init__(placeholder="選擇要購買的物品…",options=options)
     async def callback(self,interaction):
         user_id=str(interaction.user.id); key=self.values[0]; data=SHOP_ITEMS[key]
@@ -430,7 +448,7 @@ class ShopItemSelect(discord.ui.Select):
             await interaction.response.send_message(f"❌ 努努幣不足，需要 **{data['price']:,}**，目前 **{get_money(user_id):,}**。",ephemeral=True); return
         add_inventory(user_id,key,1)
         await interaction.response.edit_message(
-            embed=discord.Embed(title="🛒 購買成功",description=f"獲得 **{data['name']} ×1**\\n💰 {'測試免費' if testing else f'努努幣 -{data['price']:,}'}\\n🎒 已放入背包。",color=MOONCLUB_COLOR),
+            embed=discord.Embed(title="🛒 購買成功",description=f"獲得 **{data['name']} ×1**\n💰 {'測試免費' if testing else f'努努幣 -{data['price']:,}'}\n🎒 已放入背包。",color=MOONCLUB_COLOR),
             view=ShopView())
 
 class InventorySelect(discord.ui.Select):
@@ -460,7 +478,7 @@ class InventorySelect(discord.ui.Select):
             change_model(model["model_id"], **updates)
             text=f"❤️ 好感度：**{before} → {after} / 1000**" + bonus_text
         add_memory(user_id,model["model_id"],f"🎁 使用 {data['name']}",text)
-        await interaction.response.edit_message(embed=discord.Embed(title=data["name"],description=f"👤 **{model['name']}**\\n{text}",color=MOONCLUB_COLOR),view=ShopView())
+        await interaction.response.edit_message(embed=discord.Embed(title=data["name"],description=f"👤 **{model['name']}**\n{text}",color=MOONCLUB_COLOR),view=ShopView())
 
 class ShopView(discord.ui.View):
     def __init__(self):
@@ -489,7 +507,6 @@ class ShopBackButton(discord.ui.Button):
     def __init__(self): super().__init__(label="⬅️ 回商店",style=discord.ButtonStyle.secondary)
     async def callback(self,interaction):
         await interaction.response.edit_message(embed=build_shop_embed(str(interaction.user.id)),view=ShopView())
-
 
 # ==========================================================
 # 🌙 初始建立
@@ -1567,10 +1584,6 @@ def setup_moon_club(bot):
             embed=build_moonclub_entrance_embed(),
             view=MoonClubEntranceView(),
         )
-
-    @bot.tree.command(name="moonclub", description="進入 Moon Club｜男模會館")
-    async def moonclub(interaction: discord.Interaction):
-        await open_moonclub_game(interaction)
 
     print("🌙 Moon Club V14｜三選一隨機新人招募正式版已載入")
 
