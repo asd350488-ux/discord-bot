@@ -594,24 +594,31 @@ class AdoptionModal(discord.ui.Modal, title="🌙 Moon Life｜領養孩子"):
         )
 
 
-class ChildNamingModal(discord.ui.Modal):
+class ChildNamingModal(discord.ui.Modal, title="🎉 Moon Life｜幫孩子取名字"):
+    # 和第一個領養表單使用相同的固定 TextInput 結構，
+    # 避免 Modal 元件在部分 Discord API 環境中動態 add_item 出錯。
+    child_name = discord.ui.TextInput(
+        label="請輸入孩子的名字",
+        placeholder="現在知道孩子性別後，再幫孩子取名字吧！",
+        max_length=30
+    )
+
     def __init__(self, identity, parent_name, gender):
+        super().__init__()
         self.identity = identity
         self.parent_name = parent_name
         self.gender = gender
 
-        gender_text = "男孩 👦" if gender == "男" else "女孩 👧"
-        super().__init__(title=f"🎉 抽中了！孩子是{gender_text}")
-
-        self.child_name = discord.ui.TextInput(
-            label=f"請幫這位{gender_text}取名字",
-            placeholder="現在知道性別後，再幫孩子取名字吧！",
-            max_length=30
-        )
-        self.add_item(self.child_name)
-
     async def on_submit(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
+        child_name = str(self.child_name.value).strip()
+
+        if not child_name:
+            await interaction.response.send_message(
+                "❌ 請先幫孩子取一個名字。",
+                ephemeral=True
+            )
+            return
 
         c.execute("""
             SELECT current_child_id FROM moonlife_players
@@ -632,7 +639,6 @@ class ChildNamingModal(discord.ui.Modal):
                 )
                 return
 
-        # 初始素質稍微隨機，避免每個孩子完全一樣
         stats = [random.randint(3, 8) for _ in range(5)]
 
         personality_scores = {
@@ -655,8 +661,8 @@ class ChildNamingModal(discord.ui.Modal):
             user_id,
             self.parent_name,
             self.identity,
-            str(self.child_name.value).strip(),
-            gender,
+            child_name,
+            self.gender,
             stats[0], stats[1], stats[2], stats[3], stats[4],
             25,
             20,
@@ -707,14 +713,17 @@ class ChildNamingModal(discord.ui.Modal):
             user_id,
             child_id,
             "👶 第一次相遇",
-            f"{self.parent_name} 領養了 {self.child_name.value}。"
+            f"{self.parent_name} 領養了 {child_name}。"
         )
+
+        gender_text = "男孩 👦" if self.gender == "男" else "女孩 👧"
 
         embed = discord.Embed(
             title="🌙 領養成功！",
             description=(
                 f"{identity_emoji(self.identity)} 你：**{self.parent_name}**\n"
-                f"{gender_emoji(gender)} 孩子：**{self.child_name.value}**\n\n"
+                f"{gender_emoji(self.gender)} 孩子：**{child_name}**\n"
+                f"🎉 性別：**{gender_text}**\n\n"
                 f"🎂 **0歲1個月**\n"
                 f"🌱 從今天開始，你們要一起慢慢長大。"
             ),
@@ -725,7 +734,6 @@ class ChildNamingModal(discord.ui.Modal):
             view=MoonLifeFullHomeView(),
             ephemeral=True
         )
-
 
 class AdoptionIdentityView(discord.ui.View):
     def __init__(self):
@@ -1544,24 +1552,23 @@ async def show_shop_category(interaction, category):
     await interaction.response.edit_message(embed=embed, view=view)
 
 
-class ShopQuantityModal(discord.ui.Modal):
+class ShopQuantityModal(discord.ui.Modal, title="🛍️ Moon Life｜購買數量"):
     """商店數量購買：每次 1～50。"""
 
+    # 使用與目前已正常運作的 AdoptionModal 相同寫法，
+    # 避免某些 Discord.py / Discord API 組合對動態 add_item Modal 元件產生 Invalid Form Body。
+    quantity = discord.ui.TextInput(
+        label="購買數量（1～50）",
+        placeholder="例如：10",
+        default="1",
+        required=True,
+        max_length=2
+    )
+
     def __init__(self, item_name):
+        super().__init__()
         self.item_name = item_name
-        item = ITEMS[item_name]
-        super().__init__(title=f"🛍️ 購買 {item_name}")
-
-        self.quantity = discord.ui.TextInput(
-            label="購買數量（1～50）",
-            placeholder="例如：10",
-            default="1",
-            required=True,
-            max_length=2
-        )
-        self.add_item(self.quantity)
-
-        self.item_price = int(item["price"])
+        self.item_price = int(ITEMS[item_name]["price"])
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
@@ -1587,8 +1594,6 @@ class ShopQuantityModal(discord.ui.Modal):
             await interaction.response.send_message("❌ 找不到這個物品。", ephemeral=True)
             return
 
-        # 🧸 玩具是耐久物品，目前背包設計為每種玩具一件並共用耐久度。
-        # 因此避免玩家花錢買 50 件，實際上卻只得到一件。
         if is_durable_item(self.item_name) and amount > 1:
             await interaction.response.send_message(
                 "🧸 **耐久玩具目前每次只能購買 1 件。**\n"
@@ -1613,7 +1618,6 @@ class ShopQuantityModal(discord.ui.Modal):
             )
             return
 
-        # 一次扣款、一次加入。測試人員 remove_money 會直接免費通過。
         if not remove_money(user_id, total_price):
             await interaction.response.send_message(
                 "❌ 購買失敗，請重新確認努努幣餘額。",
@@ -1632,7 +1636,6 @@ class ShopQuantityModal(discord.ui.Modal):
             f"💳 剩餘：{get_money(user_id):,} 努努幣",
             ephemeral=True
         )
-
 
 class ShopSelect(discord.ui.Select):
     def __init__(self, options):
