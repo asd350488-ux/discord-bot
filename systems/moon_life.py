@@ -385,14 +385,16 @@ def inventory_amount(user_id, item_key):
     row=c.fetchone()
     return int(row[0]) if row else 0
 
-def consume_inventory(user_id, item_key):
-    qty=inventory_amount(user_id,item_key)
-    if qty <= 0: return False
-    if qty == 1:
-        c.execute("DELETE FROM moonclub_inventory WHERE user_id=? AND item_name=?",(str(user_id),item_key))
+def consume_inventory(user_id, item_key, amount=1):
+    amount = int(amount)
+    qty = inventory_amount(user_id, item_key)
+    if amount <= 0 or qty < amount:
+        return False
+    remaining = qty - amount
+    if remaining == 0:
+        c.execute("DELETE FROM moonclub_inventory WHERE user_id=? AND item_name=?", (str(user_id), item_key))
     else:
-        c.execute("UPDATE moonclub_inventory SET quantity=quantity-1 WHERE user_id=? AND item_name=?",
-                  (str(user_id),item_key))
+        c.execute("UPDATE moonclub_inventory SET quantity=? WHERE user_id=? AND item_name=?", (remaining, str(user_id), item_key))
     conn.commit()
     return True
 
@@ -428,57 +430,87 @@ def build_shop_embed(user_id):
         color=MOONCLUB_COLOR,
     )
 
+class QuantityModal(discord.ui.Modal):
+    def __init__(self, key, mode):
+        self.key = key
+        self.mode = mode
+        data = SHOP_ITEMS[key]
+        title = "🛒 選擇購買數量" if mode == "buy" else "🎒 選擇使用數量"
+        super().__init__(title=title)
+        max_text = "最多 50 個" if mode == "buy" else f"背包目前有 {inventory_amount('PLACEHOLDER', key)} 個"
+        self.quantity = discord.ui.TextInput(
+            label="數量（1～50）",
+            placeholder="請輸入數量，例如 5",
+            default="1",
+            max_length=2,
+            required=True,
+        )
+        self.add_item(self.quantity)
+
+    async def on_submit(self, interaction):
+        user_id = str(interaction.user.id)
+        data = SHOP_ITEMS[self.key]
+        try:
+            qty = int(str(self.quantity.value).strip())
+        except ValueError:
+            await interaction.response.send_message("❌ 請輸入 1～50 的整數。", ephemeral=True); return
+        if qty < 1 or qty > 50:
+            await interaction.response.send_message("❌ 數量必須介於 **1～50**。", ephemeral=True); return
+
+        if self.mode == "buy":
+            total = data["price"] * qty
+            ok, _, testing = spend_for_action(user_id, total)
+            if not ok:
+                await interaction.response.send_message(f"❌ 努努幣不足，需要 **{total:,}**，目前 **{get_money(user_id):,}**。", ephemeral=True); return
+            add_inventory(user_id, self.key, qty)
+            await interaction.response.send_message(
+                embed=discord.Embed(title="🛒 購買成功", description=f"獲得 **{data['name']} ×{qty}**\n💰 {'測試免費' if testing else f'努努幣 -{total:,}'}\n🎒 已放入背包。", color=MOONCLUB_COLOR), ephemeral=True)
+            return
+
+        owned = inventory_amount(user_id, self.key)
+        if qty > owned:
+            await interaction.response.send_message(f"❌ 背包目前只有 **{owned} 個**，不能使用 {qty} 個。", ephemeral=True); return
+        model = model_dict(get_model(user_id))
+        if not consume_inventory(user_id, self.key, qty):
+            await interaction.response.send_message("❌ 使用失敗，請再試一次。", ephemeral=True); return
+        if "stamina" in data:
+            before = model.get("model_stamina", 100); after = clamp(before + data["stamina"] * qty, 0, 100)
+            change_model(model["model_id"], model_stamina=after)
+            text = f"⚡ 體力：**{before} → {after} / 100**\n📦 本次使用：**×{qty}**"
+        else:
+            before = model.get("affection", 0); after = clamp(before + data["gift"] * qty, 0, 1000)
+            updates = {"affection": after}; bonus_text = ""
+            for stat, amount in data.get("bonus", {}).items():
+                old_value = int(model.get(stat, 0)); new_value = clamp(old_value + int(amount) * qty, 0, 1000)
+                updates[stat] = new_value
+                bonus_text += f"\n✨ {stat}：**{old_value} → {new_value}**"
+            change_model(model["model_id"], **updates)
+            text = f"❤️ 好感度：**{before} → {after} / 1000**\n📦 本次使用：**×{qty}**" + bonus_text
+        add_memory(user_id, model["model_id"], f"🎁 使用 {data['name']} ×{qty}", text)
+        await interaction.response.send_message(embed=discord.Embed(title=data["name"], description=f"👤 **{model['name']}**\n{text}", color=MOONCLUB_COLOR), ephemeral=True)
+
 class ShopItemSelect(discord.ui.Select):
     def __init__(self, category):
-        self.category=category
-        keys=[k for k,v in SHOP_ITEMS.items() if ("stamina" in v if category=="energy" else "gift" in v)]
-        options=[]
+        self.category = category
+        keys = [k for k,v in SHOP_ITEMS.items() if ("stamina" in v if category == "energy" else "gift" in v)]
+        options = []
         for k in keys:
-            data=SHOP_ITEMS[k]
-            if "stamina" in data:
-                desc=f"{data['price']:,} 努努幣｜恢復 {data['stamina']} 點體力"
-            else:
-                desc=f"{data['price']:,} 努努幣｜{data['desc']}"
+            data = SHOP_ITEMS[k]
+            desc = f"{data['price']:,} 努努幣｜恢復 {data['stamina']} 點體力" if "stamina" in data else f"{data['price']:,} 努努幣｜好感度 +{data['gift']}"
             options.append(discord.SelectOption(label=data["name"], value=k, description=desc[:100]))
-        super().__init__(placeholder="選擇要購買的物品…",options=options)
-    async def callback(self,interaction):
-        user_id=str(interaction.user.id); key=self.values[0]; data=SHOP_ITEMS[key]
-        ok,_,testing=spend_for_action(user_id,data["price"])
-        if not ok:
-            await interaction.response.send_message(f"❌ 努努幣不足，需要 **{data['price']:,}**，目前 **{get_money(user_id):,}**。",ephemeral=True); return
-        add_inventory(user_id,key,1)
-        await interaction.response.edit_message(
-            embed=discord.Embed(title="🛒 購買成功",description=f"獲得 **{data['name']} ×1**\n💰 {'測試免費' if testing else f'努努幣 -{data['price']:,}'}\n🎒 已放入背包。",color=MOONCLUB_COLOR),
-            view=ShopView())
+        super().__init__(placeholder="選擇要購買的物品…", options=options)
+    async def callback(self, interaction):
+        await interaction.response.send_modal(QuantityModal(self.values[0], "buy"))
 
 class InventorySelect(discord.ui.Select):
-    def __init__(self,user_id):
+    def __init__(self, user_id):
         options=[]
         for key,data in SHOP_ITEMS.items():
             qty=inventory_amount(user_id,key)
-            if qty>0:
-                options.append(discord.SelectOption(label=f"{data['name']} ×{qty}",value=key))
-        super().__init__(placeholder="選擇要使用的物品…",options=options)
-    async def callback(self,interaction):
-        user_id=str(interaction.user.id); key=self.values[0]; data=SHOP_ITEMS[key]
-        model=model_dict(get_model(user_id))
-        if not consume_inventory(user_id,key):
-            await interaction.response.send_message("❌ 背包中沒有這個物品。",ephemeral=True); return
-        if "stamina" in data:
-            before=model.get("model_stamina",100); after=clamp(before+data["stamina"],0,100)
-            change_model(model["model_id"],model_stamina=after)
-            text=f"⚡ 體力：**{before} → {after} / 100**"
-        else:
-            before=model.get("affection",0); after=clamp(before+data["gift"],0,1000)
-            updates={"affection": after}; bonus_text=""
-            for stat, amount in data.get("bonus", {}).items():
-                old_value=int(model.get(stat,0)); new_value=clamp(old_value+int(amount),0,1000)
-                updates[stat]=new_value
-                bonus_text += f"\n✨ {stat}：**{old_value} → {new_value}**"
-            change_model(model["model_id"], **updates)
-            text=f"❤️ 好感度：**{before} → {after} / 1000**" + bonus_text
-        add_memory(user_id,model["model_id"],f"🎁 使用 {data['name']}",text)
-        await interaction.response.edit_message(embed=discord.Embed(title=data["name"],description=f"👤 **{model['name']}**\n{text}",color=MOONCLUB_COLOR),view=ShopView())
+            if qty>0: options.append(discord.SelectOption(label=f"{data['name']} ×{qty}", value=key))
+        super().__init__(placeholder="選擇要使用的物品…", options=options)
+    async def callback(self, interaction):
+        await interaction.response.send_modal(QuantityModal(self.values[0], "use"))
 
 class ShopView(discord.ui.View):
     def __init__(self):
@@ -498,7 +530,7 @@ class ShopView(discord.ui.View):
         if not opts:
             await interaction.response.send_message("🎒 背包目前是空的。",ephemeral=True); return
         v=discord.ui.View(timeout=180); v.add_item(InventorySelect(user_id)); v.add_item(ShopBackButton())
-        await interaction.response.edit_message(embed=discord.Embed(title="🎒 Moon Club｜背包",description="選擇物品後立即使用。",color=MOONCLUB_COLOR),view=v)
+        await interaction.response.edit_message(embed=discord.Embed(title="🎒 Moon Club｜背包",description="選擇物品後，可自行輸入使用數量（1～50）。",color=MOONCLUB_COLOR),view=v)
     @discord.ui.button(label="⬅️ 回主畫面",style=discord.ButtonStyle.secondary,row=1)
     async def back(self,interaction,button):
         await refresh_home(interaction)
