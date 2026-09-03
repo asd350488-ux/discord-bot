@@ -206,10 +206,25 @@ def setup_slot(
         # ==========================
         # 📋 結算訊息
         # ==========================
-        if net_change > 0:
-            judgment = f"獲得 {NUNU_EMOJI} `{net_change:,}`"
+        # 玩家看到的是完整帳務：
+        # 本局贏／輸 → 扣本金 → 扣手續費 → 最終變化
+        if reward > 0:
+            round_result_name = "💰 本局贏"
+            round_result_value = f"{NUNU_EMOJI} `{reward:,}`"
+        elif reward < 0:
+            round_result_name = "💀 本局輸"
+            round_result_value = f"{NUNU_EMOJI} `{abs(reward):,}`"
         else:
-            judgment = f"損失 {NUNU_EMOJI} `{abs(net_change):,}`"
+            round_result_name = "💰 本局贏"
+            round_result_value = f"{NUNU_EMOJI} `0`"
+
+        final_change = (
+            f"+{NUNU_EMOJI} `{net_change:,}`"
+            if net_change > 0
+            else f"-{NUNU_EMOJI} `{abs(net_change):,}`"
+            if net_change < 0
+            else f"{NUNU_EMOJI} `0`"
+        )
 
         embed = discord.Embed(
             title="🎰 星月老虎機",
@@ -234,20 +249,26 @@ def setup_slot(
         )
 
         embed.add_field(
-            name="💰 賭注",
+            name=round_result_name,
+            value=round_result_value,
+            inline=False,
+        )
+
+        embed.add_field(
+            name="💵 扣本金",
             value=f"{NUNU_EMOJI} `{amount:,}`",
             inline=True,
         )
 
         embed.add_field(
-            name="💸 手續費",
+            name="💸 扣手續費",
             value=f"{NUNU_EMOJI} `{fee:,}`",
             inline=True,
         )
 
         embed.add_field(
-            name="💵 本局",
-            value=judgment,
+            name="🪙 最終變化",
+            value=final_change,
             inline=False,
         )
 
