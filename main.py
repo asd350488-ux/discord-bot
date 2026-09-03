@@ -3967,13 +3967,13 @@ async def work(interaction: discord.Interaction):
 
     # 📜 工作列表
     jobs = [
-        ("整理月神圖書館", 120, 250),
-        ("護送星月商隊", 180, 320),
-        ("照顧月光花園", 100, 220),
-        ("清理古代遺跡", 200, 380),
-        ("協助魔法研究", 220, 450),
-        ("採集月光礦石", 150, 300),
-        ("巡邏星空城區", 180, 350),
+        ("整理月神圖書館", 800, 1300),
+        ("護送星月商隊", 1000, 1600),
+        ("照顧月光花園", 700, 1200),
+        ("清理古代遺跡", 1200, 1900),
+        ("協助魔法研究", 1300, 2200),
+        ("採集月光礦石", 900, 1500),
+        ("巡邏星空城區", 1000, 1700),
     ]
 
     job_name, low, high = random.choice(jobs)
@@ -4016,7 +4016,7 @@ async def work(interaction: discord.Interaction):
     else:
 
         reward = random.randint(500, 1500)
-
+        reward = random.randint(1500, 3000)
         title = "☠️ 災難事件"
         desc = "任務失敗造成重大損失"
         event_type = "loss"
