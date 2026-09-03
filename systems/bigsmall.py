@@ -52,33 +52,39 @@ def setup_bigsmall(bot, *, get_money, add_money, remove_money, c, conn, discord,
         roll = random.randint(1, 100)
         fee = int(amount * CASINO_FEE_RATE)
 
-        # 勝負後的事件機率：70%／25%／5%
-        # 以下數值是玩家錢包的「最終變化」比例；下注 10,000 時
-        # 分別對應 +1,000／+2,500／+4,000／-12,000／-13,500／-15,000。
+        # 最終變化是玩家錢包實際增加／減少的金額。
+        # 勝利時顯示「本局贏」為返還總額，扣掉本金與手續費後，
+        # 才得到玩家真正的最終變化。
         if win:
-            if roll <= 70:
-                event_name = "🎉 小勝"
-                final_change = int(amount * 0.10)
-            elif roll <= 95:
-                event_name = "✨ 大勝"
-                final_change = int(amount * 0.25)
-            else:
+            if roll <= 3:
                 event_name = "⭐ 神運"
-                final_change = int(amount * 0.40)
+                net_change = int(amount * 0.4)
+            elif roll <= 20:
+                event_name = "✨ 大勝"
+                net_change = int(amount * 0.25)
+            else:
+                event_name = "🎉 小勝"
+                net_change = int(amount * 0.1)
+
+            payout = amount + fee + net_change
+            money = money - amount - fee + payout
+            display_amount = payout
         else:
             if roll <= 70:
                 event_name = "💀 失敗"
-                final_change = -int(amount * 1.20)
+                net_change = -int(amount * 1.2)
             elif roll <= 95:
                 event_name = "☠️ 爆死"
-                final_change = -int(amount * 1.35)
+                net_change = -int(amount * 1.35)
             else:
                 event_name = "💥 極衰"
-                final_change = -int(amount * 1.50)
+                net_change = -int(amount * 1.5)
 
-        # 錢包直接套用「最終變化」，本金與手續費已包含在最終結果中。
-        money += final_change
+            # 失敗時本金與手續費已包含在最終損失中，避免重複扣款。
+            money += net_change
+            display_amount = abs(net_change)
 
+        change = net_change
         if money < 0:
             money = 0
 
@@ -92,13 +98,13 @@ def setup_bigsmall(bot, *, get_money, add_money, remove_money, c, conn, discord,
         embed.add_field(name="🎯 你的選擇", value=f"```{choice}```", inline=True)
         embed.add_field(name="🎲 骰子結果", value=f"```{dice}```", inline=True)
         embed.add_field(name="✨ 判定", value=f"```{event_name}```", inline=False)
-        if final_change >= 0:
-            embed.add_field(name="🎉 本局贏", value=f"{NUNU_EMOJI} `{final_change:,}`", inline=False)
+        if change >= 0:
+            embed.add_field(name="🎉 本局贏", value=f"{NUNU_EMOJI} `{display_amount:,}`", inline=False)
         else:
-            embed.add_field(name="💀 本局輸", value=f"{NUNU_EMOJI} `{final_change:,}`", inline=False)
+            embed.add_field(name="💀 本局輸", value=f"{NUNU_EMOJI} `-{display_amount:,}`", inline=False)
         embed.add_field(name="💵 扣本金", value=f"{NUNU_EMOJI} `-{amount:,}`", inline=False)
         embed.add_field(name="💸 扣手續費", value=f"{NUNU_EMOJI} `-{fee:,}`", inline=False)
-        embed.add_field(name="🪙 最終變化", value=f"{NUNU_EMOJI} `{final_change:+,}`", inline=False)
+        embed.add_field(name="🪙 最終變化", value=f"{NUNU_EMOJI} `{change:+,}`", inline=False)
         embed.add_field(name="👛 餘額", value=f"{NUNU_EMOJI} `{money:,}`", inline=False)
         fee_percent = CASINO_FEE_RATE * 100
         embed.set_footer(text=f"極曜月葵 ✦ 星月賭場｜每局收取 {fee_percent:g}% 手續費")
