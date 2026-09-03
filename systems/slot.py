@@ -125,11 +125,15 @@ def setup_slot(
 
         if title == "☠️ 爆機":
             slot = ["💀", "💀", "💀"]
-            reward = -(amount * 2)
+            # 含手續費實際總損失為下注的 2.1 倍
+            # 例：下注 10,000 + 手續費 1,000 + 額外扣 10,000 = -21,000
+            reward = -amount
 
         elif title == "⭐ 神運 JACKPOT":
             slot = ["💎", "💎", "💎"]
-            reward = int(amount * 2.5)
+            # 獎金為下注 3 倍；扣本金與 10% 手續費後實拿 1.9 倍
+            # 例：30,000 - 10,000 - 1,000 = +19,000
+            reward = amount * 3
 
         elif title == "✨ 大勝":
             slot = ["⭐", "⭐", "⭐"]
@@ -150,7 +154,9 @@ def setup_slot(
         else:
             # 失敗顯示三個不同圖案
             slot = random.sample(symbols, 3)
-            reward = -amount
+            # 含手續費實際總損失為下注的 1.6 倍
+            # 例：10,000 + 1,000 手續費 + 5,000 額外扣款 = -16,000
+            reward = int(-(amount * 0.5))
 
         result_text = " ".join(slot)
 
@@ -179,7 +185,9 @@ def setup_slot(
         # 💰 最終結算
         # ==========================
         # 手續費每局都收，不論輸贏。
-        money = money - total_cost + reward
+        # reward 是獎金／額外扣款；實際本局盈虧 = reward - 本金 - 手續費。
+        net_change = reward - total_cost
+        money = money + net_change
 
         if money < 0:
             money = 0
@@ -198,12 +206,10 @@ def setup_slot(
         # ==========================
         # 📋 結算訊息
         # ==========================
-        if title == "☠️ 爆機":
-            judgment = f"損失 {NUNU_EMOJI} `{abs(reward):,}`"
-        elif reward > 0:
-            judgment = f"獲得 {NUNU_EMOJI} `{reward:,}`"
+        if net_change > 0:
+            judgment = f"獲得 {NUNU_EMOJI} `{net_change:,}`"
         else:
-            judgment = f"損失 {NUNU_EMOJI} `{abs(reward):,}`"
+            judgment = f"損失 {NUNU_EMOJI} `{abs(net_change):,}`"
 
         embed = discord.Embed(
             title="🎰 星月老虎機",
