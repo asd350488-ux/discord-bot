@@ -8,6 +8,7 @@ from systems.mommy_roles import setup_mommy_roles
 from systems.character_exam import setup_character_exam
 from systems.bigsmall import setup_bigsmall
 from systems.duel import setup_duel
+from systems.slot import setup_slot
 from config import EXCLUDED_USERS
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -4450,147 +4451,6 @@ async def my_husbands(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# 🎰 老虎機
-@bot.tree.command(name="老虎機")
-@app_commands.rename(amount="金額")
-@app_commands.describe(amount="請輸入下注金額")
-async def slot_machine(interaction: discord.Interaction, amount: int):
-
-    if interaction.channel.id != SLOT_CHANNEL:
-
-        embed = discord.Embed(
-            title="🎰 星月賭場",
-            description=f"請前往 <#{SLOT_CHANNEL}> 使用老虎機",
-            color=discord.Color.red(),
-        )
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-
-    # 💰 賭注限制
-    if amount < MIN_BET or amount > MAX_BET:
-        await interaction.response.send_message(
-            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
-            ephemeral=True,
-        )
-        return
-
-    user_id = str(interaction.user.id)
-
-    c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
-
-    data = c.fetchone()
-
-    if not data:
-
-        await interaction.response.send_message("❌ 找不到帳戶資料", ephemeral=True)
-        return
-
-    money = data[0]
-
-    if money < amount:
-
-        await interaction.response.send_message("❌ 努努幣不足", ephemeral=True)
-        return
-
-    symbols = ["🍒", "🌙", "⭐", "💎"]
-
-    slot = [random.choice(symbols), random.choice(symbols), random.choice(symbols)]
-
-    result_text = " ".join(slot)
-
-    reward = 0
-    title = ""
-
-    # ☠️ 爆機事件
-    if random.randint(1, 100) <= 10:
-
-        title = "☠️ 爆機"
-        reward = -(amount * 2)
-
-        slot = ["💀", "💀", "💀"]
-
-        result_text = " ".join(slot)
-
-    elif slot == ["💎", "💎", "💎"]:
-
-        title = "⭐ 神運 JACKPOT"
-        reward = amount * 10
-
-    elif slot[0] == slot[1] == slot[2]:
-
-        title = "✨ 大勝"
-        reward = amount * 5
-
-    elif slot[0] == slot[1] or slot[0] == slot[2] or slot[1] == slot[2]:
-
-        title = "🎉 小勝"
-        reward = amount * 2
-
-    else:
-
-        title = "💀 失敗"
-        reward = -amount
-
-    money += reward
-
-    if money < 0:
-        money = 0
-
-    c.execute(
-        """
-        UPDATE users
-        SET money=?
-        WHERE user_id=?
-        """,
-        (money, user_id),
-    )
-
-    conn.commit()
-
-    embed = discord.Embed(title="🎰 星月老虎機", color=discord.Color.gold())
-
-    embed.add_field(name="🎰 結果", value=f"```{result_text}```", inline=False)
-
-    embed.add_field(name="✨ 判定", value=f"```{title}```", inline=False)
-
-    if reward >= 0:
-
-        embed.add_field(
-            name="🎉 本次獲得", value=f"{NUNU_EMOJI} `{reward:,}`", inline=False
-        )
-
-    else:
-
-        embed.add_field(
-            name="💸 本次損失", value=f"{NUNU_EMOJI} `{abs(reward):,}`", inline=False
-        )
-
-    embed.add_field(name="💰 錢包餘額", value=f"{NUNU_EMOJI} `{money:,}`", inline=False)
-
-    embed.set_footer(text="極曜月葵 ✦ 星月賭場")
-
-    await interaction.response.send_message("🎰 啟動老虎機...")
-
-    msg = await interaction.original_response()
-
-    await asyncio.sleep(1)
-
-    await msg.edit(content="🎰 🍒 ❔ ❔")
-
-    await asyncio.sleep(1)
-
-    await msg.edit(content="🎰 🍒 🌙 ❔")
-
-    await asyncio.sleep(1)
-
-    await msg.edit(content=f"🎰 {result_text}")
-
-    await asyncio.sleep(1)
-
-    await msg.edit(content=None, embed=embed)
-
-
 # 🎁 驚喜箱
 
 
@@ -5221,6 +5081,20 @@ setup_duel(
     CASINO_FEE_RATE=CASINO_FEE_RATE,
     NUNU_EMOJI=NUNU_EMOJI,
     DUEL_CHANNEL=DUEL_CHANNEL,
+)
+
+setup_slot(
+    bot,
+    c=c,
+    conn=conn,
+    discord=discord,
+    app_commands=app_commands,
+    asyncio=asyncio,
+    MIN_BET=MIN_BET,
+    MAX_BET=MAX_BET,
+    CASINO_FEE_RATE=CASINO_FEE_RATE,
+    NUNU_EMOJI=NUNU_EMOJI,
+    SLOT_CHANNEL=SLOT_CHANNEL,
 )
 
 bot.run(os.getenv("TOKEN"))
