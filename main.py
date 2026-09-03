@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import discord
 from systems.moon_life import setup_moon_life
 from systems.streak_lottery import setup_streak_lottery
