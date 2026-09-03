@@ -6,6 +6,8 @@ from systems.limited_lottery import setup_limited_lottery
 from systems.character_test import setup_character_test
 from systems.mommy_roles import setup_mommy_roles
 from systems.character_exam import setup_character_exam
+from systems.bigsmall import setup_bigsmall
+from systems.duel import setup_duel
 from config import EXCLUDED_USERS
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -191,15 +193,6 @@ except sqlite3.OperationalError:
     pass
 
 conn.commit()
-
-# =========================
-# 🚨 通緝系統
-# =========================
-
-
-
-
-
 
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
@@ -1219,190 +1212,6 @@ class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
             "✅ 自訂抽獎建立成功！",
             ephemeral=True,
         )
-
-
-# ==========================
-# 🌙 星月盲盒面板
-# ==========================
-
-
-class BlindBoxPanelView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(
-        label="🎁 開啟星月盲盒",
-        style=discord.ButtonStyle.success,
-        custom_id="blindbox_open",
-    )
-    async def open_blindbox(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-
-        await interaction.response.send_message(
-            "🌙 星月盲盒功能開發中...", ephemeral=True
-        )
-
-
-class DuelView(discord.ui.View):
-
-    def __init__(self, challenger, target, amount):
-        super().__init__(timeout=60)
-
-        self.challenger = challenger
-        self.target = target
-        self.amount = amount
-
-    @discord.ui.button(label="⚔️ 接受對賭", style=discord.ButtonStyle.danger)
-    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        if interaction.user.id != self.target.id:
-
-            await interaction.response.send_message("❌ 這不是你的對賭", ephemeral=True)
-            return
-
-        challenger_id = str(self.challenger.id)
-
-        target_id = str(self.target.id)
-
-        # 餘額檢查
-        c.execute("SELECT money FROM users WHERE user_id=?", (challenger_id,))
-
-        challenger_money = c.fetchone()
-
-        c.execute("SELECT money FROM users WHERE user_id=?", (target_id,))
-
-        target_money = c.fetchone()
-
-        if not challenger_money or not target_money:
-            await interaction.response.send_message("❌ 帳戶不存在")
-            return
-
-        challenger_money = challenger_money[0]
-        target_money = target_money[0]
-
-        if challenger_money < self.amount:
-
-            await interaction.response.send_message(
-                f"❌ {self.challenger.display_name} 的努努幣不足\n"
-                f"需要：{self.amount:,}\n"
-                f"目前：{challenger_money:,}",
-                ephemeral=True,
-            )
-            return
-
-        if target_money < self.amount:
-
-            await interaction.response.send_message(
-                f"❌ {self.target.display_name} 的努努幣不足\n"
-                f"需要：{self.amount:,}\n"
-                f"目前：{target_money:,}",
-                ephemeral=True,
-            )
-            return
-
-        # 🎲 勝負
-        await interaction.response.edit_message(content="⚔️ 決鬥準備中...", view=None)
-
-        await asyncio.sleep(1)
-
-        await interaction.edit_original_response(content="🎲 擲骰中...")
-
-        await asyncio.sleep(1)
-
-        await interaction.edit_original_response(content="💥 勝負判定中...")
-
-        await asyncio.sleep(1)
-
-        winner = random.choice([self.challenger, self.target])
-
-        loser = self.target if winner == self.challenger else self.challenger
-
-        winner_id = str(winner.id)
-        loser_id = str(loser.id)
-
-        # 💰 雙方下注
-        pot = self.amount * 2
-
-        roll = random.randint(1, 100)
-
-        if roll <= 5:
-
-            title = "⭐ 神運"
-            reward = int(pot * 2.5)
-
-        elif roll <= 25:
-
-            title = "✨ 大勝"
-            reward = int(pot * 1.5)
-
-        else:
-
-            title = "🎉 小勝"
-            reward = pot
-
-        # 💸 雙方先扣下注
-        c.execute(
-            """
-            UPDATE users
-            SET money = money - ?
-            WHERE user_id=?
-            """,
-            (self.amount, challenger_id),
-        )
-
-        c.execute(
-            """
-            UPDATE users
-            SET money = money - ?
-            WHERE user_id=?
-            """,
-            (self.amount, target_id),
-        )
-
-        # 🎁 勝者獲得獎池
-        c.execute(
-            """
-            UPDATE users
-            SET money = money + ?
-            WHERE user_id=?
-            """,
-            (reward, winner_id),
-        )
-
-        conn.commit()
-
-        embed = discord.Embed(title="⚔️ 星月對賭結果", color=discord.Color.red())
-
-        embed.add_field(name="🏆 勝者", value=winner.mention, inline=False)
-
-        embed.add_field(name="✨ 結果", value=title, inline=False)
-
-        embed.add_field(name="🏦 獎池", value=f"{NUNU_EMOJI} `{pot:,}`", inline=False)
-
-        embed.add_field(
-            name="🎁 最終獎勵", value=f"{NUNU_EMOJI} `{reward:,}`", inline=False
-        )
-
-        embed.add_field(name="💀 敗者", value=loser.mention, inline=False)
-
-        await interaction.edit_original_response(content=None, embed=embed, view=None)
-
-    @discord.ui.button(label="❌ 拒絕對賭", style=discord.ButtonStyle.secondary)
-    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        if interaction.user.id != self.target.id:
-
-            await interaction.response.send_message("❌ 這不是你的對賭", ephemeral=True)
-            return
-
-        embed = discord.Embed(
-            title="❌ 對賭取消",
-            description=f"{self.target.display_name} 拒絕了這場對賭",
-            color=discord.Color.greyple(),
-        )
-
-        await interaction.response.edit_message(embed=embed, view=None)
 
 
 c.execute("""
@@ -4641,243 +4450,6 @@ async def my_husbands(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# 🎲 猜大小
-@bot.tree.command(name="猜大小")
-@app_commands.rename(choice="選擇", amount="金額")
-@app_commands.describe(choice="選擇大小", amount="下注金額")
-@app_commands.choices(
-    choice=[
-        app_commands.Choice(name="🔺 大", value="大"),
-        app_commands.Choice(name="🔻 小", value="小"),
-    ]
-)
-async def guess_big_small(interaction: discord.Interaction, choice: str, amount: int):
-    if interaction.channel.id != BIGSMALL_CHANNEL:
-
-        embed = discord.Embed(
-            title="🎲 星月賭場",
-            description=f"請前往 <#{BIGSMALL_CHANNEL}> 使用猜大小",
-            color=discord.Color.red(),
-        )
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-
-    choice = choice.strip()
-
-    if choice not in ["大", "小"]:
-
-        await interaction.response.send_message("❌ 請輸入：大 或 小", ephemeral=True)
-        return
-
-    # 💰 賭注限制
-    if amount < MIN_BET or amount > MAX_BET:
-        await interaction.response.send_message(
-            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
-            ephemeral=True,
-        )
-        return
-
-    user_id = str(interaction.user.id)
-
-    c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
-
-    data = c.fetchone()
-
-    if not data:
-
-        await interaction.response.send_message("❌ 找不到帳戶資料", ephemeral=True)
-        return
-
-    money = data[0]
-
-    if money < amount:
-
-        await interaction.response.send_message("❌ 努努幣不足", ephemeral=True)
-        return
-
-    # 🎲 骰子
-    dice = random.randint(1, 6)
-
-    result = "大" if dice >= 4 else "小"
-
-    win = choice == result
-
-    # ⭐ 結果池
-    roll = random.randint(1, 100)
-
-    event_name = ""
-    change = 0
-    # 💸 賭場手續費（10%）
-    fee = int(amount * CASINO_FEE_RATE)
-
-    if win:
-
-        if roll <= 3:
-
-            event_name = "⭐ 神運"
-            change = int(amount * 4)
-
-        elif roll <= 20:
-
-            event_name = "✨ 大勝"
-            change = int(amount * 2)
-
-        else:
-
-            event_name = "🎉 小勝"
-            change = int(amount * 1.2)
-
-    else:
-
-        if roll <= 80:
-
-            event_name = "💀 失敗"
-            change = -amount
-
-        else:
-
-            event_name = "☠️ 爆死"
-            change = -(amount * 2)
-
-    # 💰 扣除本次輸贏
-    money += change
-
-    # 💸 扣除賭場手續費
-    money -= fee
-
-    if money < 0:
-        money = 0
-
-    c.execute(
-        """
-        UPDATE users
-        SET money=?
-        WHERE user_id=?
-        """,
-        (money, user_id),
-    )
-
-    conn.commit()
-
-    embed = discord.Embed(
-        title="🎲 星月賭場・猜大小", color=discord.Color.from_rgb(186, 85, 211)
-    )
-
-    embed.add_field(name="🎯 你的選擇", value=f"```{choice}```", inline=True)
-
-    embed.add_field(name="🎲 骰子結果", value=f"```{dice}```", inline=True)
-
-    embed.add_field(name="✨ 判定", value=f"```{event_name}```", inline=False)
-
-    if change >= 0:
-
-        embed.add_field(
-            name="🎉 本次獲得", value=f"{NUNU_EMOJI} `{change:,}`", inline=False
-        )
-
-    else:
-
-        embed.add_field(
-            name="💸 本次損失",
-            value=f"{NUNU_EMOJI} `{abs(change):,}`",
-            inline=False,
-        )
-    embed.add_field(
-        name="💸 賭場手續費",
-        value=f"{NUNU_EMOJI} `{fee:,}`",
-        inline=False,
-    )
-    embed.add_field(name="💰 錢包餘額", value=f"{NUNU_EMOJI} `{money:,}`", inline=False)
-
-    embed.set_footer(text="極曜月葵 ✦ 星月賭場｜每局收取 10% 手續費")
-    await interaction.response.send_message("🎲 擲骰準備中...")
-
-    msg = await interaction.original_response()
-
-    await asyncio.sleep(1)
-
-    await msg.edit(content="🎲 骰子滾動中...")
-
-    await asyncio.sleep(1)
-
-    await msg.edit(content="🎲 🎲 ...")
-
-    await asyncio.sleep(1)
-
-    await msg.edit(content="👀 正在判定大小...")
-
-    await asyncio.sleep(1)
-
-    if result == "大":
-
-        await msg.edit(content=f"🎲 骰子停在 {dice} 點（大）")
-
-    else:
-
-        await msg.edit(content=f"🎲 骰子停在 {dice} 點（小）")
-
-    await asyncio.sleep(1)
-
-    await msg.edit(content=None, embed=embed)
-
-
-# ⚔️ 對賭
-@bot.tree.command(name="對賭")
-@app_commands.rename(target="玩家", amount="金額")
-@app_commands.describe(target="要挑戰的玩家", amount="下注金額")
-async def duel(interaction: discord.Interaction, target: discord.Member, amount: int):
-
-    if interaction.channel.id != DUEL_CHANNEL:
-
-        await interaction.response.send_message(
-            f"❌ 請前往 <#{DUEL_CHANNEL}>", ephemeral=True
-        )
-        return
-
-    if target.bot:
-
-        await interaction.response.send_message("❌ 不能挑戰機器人")
-        return
-
-    if target.id == interaction.user.id:
-
-        await interaction.response.send_message("❌ 不能挑戰自己")
-        return
-
-    # 💰 賭注限制
-    if amount < MIN_BET or amount > MAX_BET:
-        await interaction.response.send_message(
-            f"❌ 賭注必須介於 {NUNU_EMOJI} `{MIN_BET:,}` ~ `{MAX_BET:,}`",
-            ephemeral=True,
-        )
-        return
-
-    embed = discord.Embed(title="⚔️ 星月對賭", color=discord.Color.red())
-
-    embed.add_field(name="挑戰者", value=interaction.user.mention, inline=False)
-
-    embed.add_field(name="被挑戰者", value=target.mention, inline=False)
-
-    embed.add_field(name="賭注", value=f"{NUNU_EMOJI} `{amount:,}`", inline=False)
-
-    embed.set_footer(text="60秒內接受挑戰")
-
-    await interaction.response.send_message(
-        embed=embed, view=DuelView(interaction.user, target, amount)
-    )
-
-    embed = discord.Embed(title="⚔️ 星月對賭", color=discord.Color.red())
-
-    embed.add_field(name="挑戰者", value=interaction.user.mention, inline=False)
-
-    embed.add_field(name="被挑戰者", value=target.mention, inline=False)
-
-    embed.add_field(name="賭注", value=f"{NUNU_EMOJI} `{amount:,}`", inline=False)
-
-    embed.set_footer(text="60秒內接受挑戰")
-
-
 # 🎰 老虎機
 @bot.tree.command(name="老虎機")
 @app_commands.rename(amount="金額")
@@ -5522,27 +5094,6 @@ async def give_money(
     await interaction.followup.send(embed=embed)
 
 
-# 💣 黑市投資
-
-
-# 🎯 猜心情
-
-
-
-
-# 🧪 實驗
-
-
-# 🗡 搶劫
-
-
-# =========================
-# 📋 我的通緝
-# =========================
-
-
-
-
 # ==========================
 # 🌙 建立抽獎
 # ==========================
@@ -5590,64 +5141,6 @@ async def lottery_create(interaction: discord.Interaction):
 
 
 # ==========================
-# 🌙 建立星月盲盒面板
-# ==========================
-
-
-@bot.tree.command(name="建立盲盒面板", description="建立星月盲盒面板")
-async def create_blindbox_panel(interaction: discord.Interaction):
-
-    # 只有 BOT 管理員可使用
-    if interaction.user.id not in BOT_ADMINS:
-        await interaction.response.send_message(
-            "❌ 你沒有權限使用此指令！", ephemeral=True
-        )
-        return
-
-    embed = discord.Embed(
-        title="🌙 星月盲盒中心",
-        description=(
-            "歡迎來到 **星月盲盒中心**！\n\n"
-            f"💰 **開啟價格：{BLINDBOX_PRICE:,} 努努幣**"
-        ),
-        color=discord.Color.purple(),
-    )
-
-    embed.add_field(
-        name="🎁 可獲得獎勵",
-        value=(
-            "📹 影片合集\n"
-            "📸 照片合集\n"
-            "💍 結婚證書\n"
-            "🏅 雙人徽章\n\n"
-            "💰 努努幣100萬\n"
-            "💰 努努幣200萬\n"
-            "💰 努努幣300萬\n"
-            "💰 努努幣400萬\n"
-            "💰 努努幣500萬"
-        ),
-        inline=False,
-    )
-
-    embed.add_field(
-        name="📜 抽獎規則",
-        value=(
-            "① 每次開啟需消耗 500 萬努努幣。\n"
-            "② 特殊獎勵將進入第二階段角色抽選。\n"
-            "③ 努努幣獎勵將立即發放。\n"
-            "④ 抽獎期間不可重複開啟。"
-        ),
-        inline=False,
-    )
-
-    embed.set_footer(text="🌙 Moon Bot v2｜星月盲盒中心")
-
-    await interaction.channel.send(embed=embed, view=BlindBoxPanelView())
-
-    await interaction.response.send_message("✅ 星月盲盒面板建立完成！", ephemeral=True)
-
-
-# ==========================
 # 🌐 Render 保活服務
 # ==========================
 
@@ -5685,5 +5178,49 @@ setup_streak_lottery(
     LOTTERY_PING_ROLE,
 )
 
+
+# ==========================
+# 🎲⚔️ 獨立遊戲系統載入
+# ==========================
+
+setup_bigsmall(
+    bot,
+    get_money=get_money,
+    add_money=add_money,
+    remove_money=remove_money,
+    c=c,
+    conn=conn,
+    discord=discord,
+    app_commands=app_commands,
+    random=random,
+    asyncio=asyncio,
+    datetime=datetime,
+    timedelta=timedelta,
+    MIN_BET=MIN_BET,
+    MAX_BET=MAX_BET,
+    CASINO_FEE_RATE=CASINO_FEE_RATE,
+    NUNU_EMOJI=NUNU_EMOJI,
+    BIGSMALL_CHANNEL=BIGSMALL_CHANNEL,
+)
+
+setup_duel(
+    bot,
+    get_money=get_money,
+    add_money=add_money,
+    remove_money=remove_money,
+    c=c,
+    conn=conn,
+    discord=discord,
+    app_commands=app_commands,
+    random=random,
+    asyncio=asyncio,
+    datetime=datetime,
+    timedelta=timedelta,
+    MIN_BET=MIN_BET,
+    MAX_BET=MAX_BET,
+    CASINO_FEE_RATE=CASINO_FEE_RATE,
+    NUNU_EMOJI=NUNU_EMOJI,
+    DUEL_CHANNEL=DUEL_CHANNEL,
+)
 
 bot.run(os.getenv("TOKEN"))
