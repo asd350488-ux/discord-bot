@@ -14,6 +14,11 @@ import discord
 from discord import app_commands
 
 try:
+    from systems.moon_achievement_ui_v2 import MommySelectView, SPECIAL_REWARDS, REWARD_NAMES
+except ImportError:
+    from moon_achievement_ui_v2 import MommySelectView, SPECIAL_REWARDS, REWARD_NAMES
+
+try:
     from systems.moon_achievements import (
         AchievementStore,
         AchievementEngine,
@@ -866,10 +871,8 @@ def achievement_draw_count(user_id):
     return store.get_draw_count(int(user_id))
 
 
-MOON_ADD_MONEY = None
-
 def achievement_reward_to_player(user_id, reward, source_achievement_id=None):
-    """把盲盒結果落地；努努幣統一交給 main.py 的 add_money()。"""
+    """把盲盒結果落地；特殊獎勵先記錄，努努幣直接進 users.money。"""
     uid = str(user_id)
     if reward == REWARD_NUNU_30000:
         amount = 30000
@@ -885,11 +888,9 @@ def achievement_reward_to_player(user_id, reward, source_achievement_id=None):
         conn.commit()
         return reward
 
-    # 正式帳號由 main.py 的 add_money() 統一入帳，避免 Moon Life 自己寫 users.money。
+    # 測試帳號也會顯示「實際獲得」，正式帳號才寫入 users.money。
     if not is_moonclub_tester(uid):
-        if MOON_ADD_MONEY is None:
-            raise RuntimeError("Moon Life 尚未接入 main.py 的 add_money()")
-        MOON_ADD_MONEY(int(uid), amount)
+        c.execute("UPDATE users SET money=money+? WHERE user_id=?", (amount, uid))
     c.execute(
         "INSERT INTO moonclub_achievement_rewards (user_id,reward,source_achievement_id,created_at) VALUES (?,?,?,?)",
         (uid, reward, source_achievement_id, now_iso()),
@@ -917,17 +918,39 @@ class AchievementBoxView(discord.ui.View):
             )
             return
         # 難度由 MA 保存的這一張資格決定，玩家不能選擇。
-        reward = store.draw_box(self.owner_user_id, pending[0])
+        difficulty = pending[0]
+        reward = store.draw_box(self.owner_user_id)
         if reward is None:
             await interaction.response.send_message("❌ 盲盒開啟失敗，請再試一次。", ephemeral=True)
             return
+
+        # 先把本次獎品正式記錄。
         achievement_reward_to_player(self.owner_user_id, reward)
+
+        # 四種媽咪獎品：抽中後立即進入「選媽咪 → 填角色 → 通知媽咪」流程。
+        if reward in SPECIAL_REWARDS:
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="🎉 恭喜你抽中特殊獎品！",
+                    description=(
+                        f"🎁 **{REWARD_NAMES[reward]}**\n\n"
+                        "請選擇負責的媽咪，再填寫角色名稱。"
+                    ),
+                    color=MOONCLUB_COLOR,
+                ),
+                view=MommySelectView(conn, self.owner_user_id, reward),
+            )
+            return
+
+        # 努努幣等一般獎品維持原本流程。
         await interaction.response.edit_message(
             embed=discord.Embed(
                 title="🎁 成就盲盒｜開啟成功！",
-                description=(f"🎟️ 使用：**{difficulty}** 成就資格\n\n"
-                             f"✨ 獲得：**{reward}**\n\n"
-                             f"🎟️ 剩餘資格：**{achievement_draw_count(self.owner_user_id)}**"),
+                description=(
+                    f"🎟️ 使用：**{difficulty}** 成就資格\n\n"
+                    f"✨ 獲得：**{REWARD_NAMES.get(reward, reward)}**\n\n"
+                    f"🎟️ 剩餘資格：**{achievement_draw_count(self.owner_user_id)}**"
+                ),
                 color=MOONCLUB_COLOR,
             ),
             view=BackHomeView(),
@@ -1899,9 +1922,7 @@ class MoonClubEntranceView(discord.ui.View):
 # 🚀 指令註冊
 # ==========================================================
 
-def setup_moon_club(bot, add_money=None):
-    global MOON_ADD_MONEY
-    MOON_ADD_MONEY = add_money
+def setup_moon_club(bot):
     init_moonclub_tables()
     _achievement_objects()
 
@@ -2308,5 +2329,5 @@ MOONCLUB_ALL_EVENTS = [{'id': 'bond_01', 'name': '💬 第一次真正的聊天'
 # 🌙 Moon Life 系統相容入口
 # main.py 使用此名稱載入 Moon Club 系統
 # ==========================================================
-def setup_moon_life(bot, add_money=None):
-    return setup_moon_club(bot, add_money=add_money)
+def setup_moon_life(bot):
+    return setup_moon_club(bot)
