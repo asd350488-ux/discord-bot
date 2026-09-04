@@ -1,329 +1,285 @@
 # -*- coding: utf-8 -*-
-"""
-Moon Life｜成就盲盒 Discord 測試器
-只供開發測試使用。
-"""
+"""🌙 Moon Club｜成就盲盒 UI"""
 
-import sqlite3
+import datetime
 import discord
-from discord.ext import commands
-from discord import app_commands
 
-from systems.moon_achievements import (
+from .moon_achievements import (
     AchievementStore,
-    EASY,
-    MEDIUM,
-    MEDIUM_HIGH,
-    HIGH,
-    LOOT_WEIGHTS,
+    ACHIEVEMENTS,
+    REWARD_VIDEO, REWARD_PHOTO, REWARD_CERTIFICATE, REWARD_BADGE,
+    REWARD_NUNU_30000, REWARD_NUNU_40000, REWARD_NUNU_50000,
 )
 
-# ============================================================
-# 測試者 Discord User ID
-# ============================================================
-TESTER_ID = 1301905168094335028
+MOMMY_LIST = {
+    "🫧 韓馨": 1153640526063607820,
+    "☀️ 星弦": 1218542666879598613,
+    "🌻 曦兒": 1301905168094335028,
+    "🐈 小貓": 806960151578804275,
+}
+
+SPECIAL_REWARDS = {
+    REWARD_VIDEO, REWARD_PHOTO, REWARD_CERTIFICATE, REWARD_BADGE
+}
+
+REWARD_NAMES = {
+    REWARD_VIDEO: "🎬 影片合集",
+    REWARD_PHOTO: "📷 照片合集",
+    REWARD_CERTIFICATE: "💍 結婚證書",
+    REWARD_BADGE: "🪪 雙人徽章",
+    REWARD_NUNU_30000: "💰 30,000 努努幣",
+    REWARD_NUNU_40000: "💰 40,000 努努幣",
+    REWARD_NUNU_50000: "💰 50,000 努努幣",
+}
 
 
-# ============================================================
-# 建立資格：選難度
-# ============================================================
-
-class AddDifficultyView(discord.ui.View):
-    def __init__(self, cog):
-        super().__init__(timeout=120)
-        self.cog = cog
-
-    async def choose(self, interaction, difficulty):
-        await interaction.response.send_modal(
-            CountModal(self.cog, difficulty)
+def ensure_redemption_table(db):
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS moon_achievement_redemptions (
+            redemption_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            reward TEXT NOT NULL,
+            mommy_name TEXT NOT NULL,
+            mommy_id INTEGER NOT NULL,
+            character_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'submitted',
+            created_at TEXT NOT NULL,
+            submitted_at TEXT
         )
-
-    @discord.ui.button(label="🟢 簡單", style=discord.ButtonStyle.success, row=0)
-    async def easy(self, interaction, button):
-        await self.choose(interaction, EASY)
-
-    @discord.ui.button(label="🟡 中", style=discord.ButtonStyle.primary, row=0)
-    async def medium(self, interaction, button):
-        await self.choose(interaction, MEDIUM)
-
-    @discord.ui.button(label="🟠 中高", style=discord.ButtonStyle.primary, row=1)
-    async def medium_high(self, interaction, button):
-        await self.choose(interaction, MEDIUM_HIGH)
-
-    @discord.ui.button(label="🔴 高", style=discord.ButtonStyle.danger, row=1)
-    async def high(self, interaction, button):
-        await self.choose(interaction, HIGH)
+    """)
+    db.commit()
 
 
-# ============================================================
-# 建立資格：輸入次數 Modal
-# ============================================================
+def get_completed_names(db, user_id):
+    rows = db.execute(
+        "SELECT achievement_id FROM moon_achievements "
+        "WHERE user_id=? AND completed=1 ORDER BY completed_at ASC",
+        (int(user_id),)
+    ).fetchall()
+    ids = {r[0] for r in rows}
+    return [a.name for a in ACHIEVEMENTS if a.achievement_id in ids]
 
-class CountModal(discord.ui.Modal, title="建立測試盲盒資格"):
-    count = discord.ui.TextInput(
-        label="要建立幾次資格？",
-        placeholder="請輸入 1～100，例如：10",
-        required=True,
-        min_length=1,
-        max_length=3,
+
+def build_achievement_box_embed(db, user_id):
+    store = AchievementStore(db)
+    names = get_completed_names(db, user_id)
+    completed = "\n".join(f"🏆 {x}" for x in names) or "目前還沒有完成的成就。"
+
+    return discord.Embed(
+        title="🎁 成就盲盒",
+        description=(
+            f"🎟️ **目前抽獎次數：{store.get_draw_count(user_id)} 次**\n\n"
+            f"🏆 **已完成成就**\n{completed}\n\n"
+            "🎁 **獎品內容**\n"
+            "💰 30,000 努努幣\n"
+            "💰 40,000 努努幣\n"
+            "💰 50,000 努努幣\n"
+            "🎬 影片合集\n"
+            "📷 照片合集\n"
+            "💍 結婚證書\n"
+            "🪪 雙人徽章"
+        )
     )
 
-    def __init__(self, cog, difficulty):
+
+class MommySelect(discord.ui.Select):
+    def __init__(self, db, user_id, reward):
+        super().__init__(
+            placeholder="👩‍💼 選擇負責媽咪",
+            options=[
+                discord.SelectOption(label=name, value=str(mid))
+                for name, mid in MOMMY_LIST.items()
+            ],
+        )
+        self.db, self.user_id, self.reward = db, int(user_id), reward
+
+    async def callback(self, interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的兌換流程。", ephemeral=True)
+            return
+
+        mommy_id = int(self.values[0])
+        mommy_name = next(k for k, v in MOMMY_LIST.items() if v == mommy_id)
+        await interaction.response.send_modal(
+            CharacterNameModal(
+                self.db, self.user_id, self.reward, mommy_name, mommy_id
+            )
+        )
+
+
+class MommySelectView(discord.ui.View):
+    def __init__(self, db, user_id, reward):
+        super().__init__(timeout=180)
+        self.add_item(MommySelect(db, user_id, reward))
+
+
+class CharacterNameModal(discord.ui.Modal, title="📝 填寫角色名稱"):
+    character_name = discord.ui.TextInput(
+        label="角色名稱",
+        placeholder="請輸入要指定的角色名稱",
+        min_length=2,
+        max_length=30,
+        required=True,
+    )
+
+    def __init__(self, db, user_id, reward, mommy_name, mommy_id):
         super().__init__()
-        self.cog = cog
-        self.difficulty = difficulty
+        self.db, self.user_id, self.reward = db, int(user_id), reward
+        self.mommy_name, self.mommy_id = mommy_name, int(mommy_id)
 
     async def on_submit(self, interaction):
-        try:
-            count = int(self.count.value)
-            if count < 1 or count > 100:
-                raise ValueError
-        except ValueError:
-            await interaction.response.send_message(
-                "❌ 請輸入 1～100 的正整數。",
-                ephemeral=True,
-            )
-            return
-
-        now = __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ).isoformat()
-
-        for _ in range(count):
-            self.cog.store.db.execute(
-                """
-                INSERT INTO moon_achievement_draws
-                (user_id, difficulty, created_at, used)
-                VALUES (?, ?, ?, 0)
-                """,
-                (TESTER_ID, self.difficulty, now),
-            )
-
-        self.cog.store.db.commit()
-
-        remaining = self.cog.store.get_draw_count(TESTER_ID)
-
+        name = self.character_name.value.strip()
         await interaction.response.send_message(
-            f"✅ 已建立 **{count} 次**「{self.difficulty}」測試資格。\n"
-            f"🎟️ 目前剩餘資格：**{remaining} 次**",
-            ephemeral=True,
-        )
-
-
-# ============================================================
-# 開啟盲盒：選難度
-# ============================================================
-
-class DrawDifficultyView(discord.ui.View):
-    def __init__(self, cog):
-        super().__init__(timeout=120)
-        self.cog = cog
-
-    async def choose(self, interaction, difficulty):
-        await self.cog.do_draw(interaction, difficulty)
-
-    @discord.ui.button(label="🟢 簡單", style=discord.ButtonStyle.success, row=0)
-    async def easy(self, interaction, button):
-        await self.choose(interaction, EASY)
-
-    @discord.ui.button(label="🟡 中", style=discord.ButtonStyle.primary, row=0)
-    async def medium(self, interaction, button):
-        await self.choose(interaction, MEDIUM)
-
-    @discord.ui.button(label="🟠 中高", style=discord.ButtonStyle.primary, row=1)
-    async def medium_high(self, interaction, button):
-        await self.choose(interaction, MEDIUM_HIGH)
-
-    @discord.ui.button(label="🔴 高", style=discord.ButtonStyle.danger, row=1)
-    async def high(self, interaction, button):
-        await self.choose(interaction, HIGH)
-
-
-# ============================================================
-# 測試中心主面板
-# ============================================================
-
-class AchievementTestView(discord.ui.View):
-    def __init__(self, cog):
-        super().__init__(timeout=600)
-        self.cog = cog
-
-    @discord.ui.button(
-        label="🎟️ 建立測試資格",
-        style=discord.ButtonStyle.primary,
-        row=0,
-    )
-    async def add_qualification(self, interaction, button):
-        await interaction.response.send_message(
-            "🎟️ **建立測試盲盒資格**\n"
-            "請點下面按鈕選擇成就難度；選完會立刻跳出輸入次數視窗。",
-            view=AddDifficultyView(self.cog),
-            ephemeral=True,
-        )
-
-    @discord.ui.button(
-        label="🎁 開啟盲盒",
-        style=discord.ButtonStyle.success,
-        row=0,
-    )
-    async def draw_box(self, interaction, button):
-        count = self.cog.store.get_draw_count(TESTER_ID)
-
-        if count <= 0:
-            await interaction.response.send_message(
-                "❌ 目前沒有測試盲盒資格。\n"
-                "請先按「🎟️ 建立測試資格」。",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.send_message(
-            f"🎁 目前有 **{count} 次**測試資格。\n"
-            "請選擇本次要測試的盲盒難度：",
-            view=DrawDifficultyView(self.cog),
-            ephemeral=True,
-        )
-
-    @discord.ui.button(
-        label="📊 查看資格",
-        style=discord.ButtonStyle.secondary,
-        row=1,
-    )
-    async def status(self, interaction, button):
-        count = self.cog.store.get_draw_count(TESTER_ID)
-        await interaction.response.send_message(
-            f"🎟️ 目前測試盲盒資格：**{count} 次**",
-            ephemeral=True,
-        )
-
-    @discord.ui.button(
-        label="🎲 查看機率",
-        style=discord.ButtonStyle.secondary,
-        row=1,
-    )
-    async def probability(self, interaction, button):
-        lines = ["🎲 **目前盲盒機率**"]
-
-        for difficulty, weights in LOOT_WEIGHTS.items():
-            total = sum(weights.values())
-            lines.append(f"\n**{difficulty}**")
-
-            for reward, weight in weights.items():
-                lines.append(
-                    f"• {reward}：{weight / total * 100:.1f}%"
+            embed=discord.Embed(
+                title="📋 確認獎品兌換",
+                description=(
+                    f"🎁 獎品：**{REWARD_NAMES[self.reward]}**\n"
+                    f"👩‍💼 負責媽咪：**{self.mommy_name}**\n"
+                    f"🎭 指定角色：**{name}**\n\n"
+                    "確認後，機器人會自動通知媽咪。"
                 )
-
-        await interaction.response.send_message(
-            "\n".join(lines),
-            ephemeral=True,
-        )
-
-    @discord.ui.button(
-        label="🗑️ 清除測試資料",
-        style=discord.ButtonStyle.danger,
-        row=2,
-    )
-    async def reset(self, interaction, button):
-        self.cog.store.db.execute(
-            "DELETE FROM moon_achievement_draws WHERE user_id=?",
-            (TESTER_ID,),
-        )
-        self.cog.store.db.execute(
-            "DELETE FROM moon_achievements WHERE user_id=?",
-            (TESTER_ID,),
-        )
-        self.cog.store.db.commit()
-
-        await interaction.response.send_message(
-            "🗑️ 測試資料已全部清除。",
-            ephemeral=True,
-        )
-
-
-# ============================================================
-# Discord Cog
-# ============================================================
-
-class AchievementTestCog(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        self.db = sqlite3.connect(":memory:")
-        self.store = AchievementStore(self.db)
-
-    async def cog_check(self, interaction):
-        if interaction.user.id != TESTER_ID:
-            await interaction.response.send_message(
-                "❌ 這是開發測試功能，你沒有使用權限。",
-                ephemeral=True,
-            )
-            return False
-
-        return True
-
-    @app_commands.command(
-        name="成就盲盒測試",
-        description="開啟成就盲盒開發測試中心",
-    )
-    async def achievement_box_test(self, interaction):
-        embed = discord.Embed(
-            title="🧪 成就盲盒測試中心",
-            description=(
-                "這裡是開發測試功能。\n\n"
-                "🎟️ 建立測試資格 → 選難度 → 輸入次數\n"
-                "🎁 開啟盲盒 → 選難度 → 直接抽獎"
             ),
-        )
-        embed.set_footer(text="只有開發測試者可以使用")
-
-        await interaction.response.send_message(
-            embed=embed,
-            view=AchievementTestView(self),
+            view=RedemptionConfirmView(
+                self.db, self.user_id, self.reward,
+                self.mommy_name, self.mommy_id, name
+            ),
             ephemeral=True,
         )
 
-    async def do_draw(self, interaction, difficulty):
-        count = self.store.get_draw_count(TESTER_ID)
 
-        if count <= 0:
-            await interaction.response.send_message(
-                "❌ 沒有剩餘測試資格。",
-                ephemeral=True,
-            )
+class RedemptionConfirmView(discord.ui.View):
+    def __init__(self, db, user_id, reward, mommy_name, mommy_id, character_name):
+        super().__init__(timeout=120)
+        self.db = db
+        self.user_id = int(user_id)
+        self.reward = reward
+        self.mommy_name = mommy_name
+        self.mommy_id = int(mommy_id)
+        self.character_name = character_name
+
+    @discord.ui.button(label="✅ 確定送出", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的兌換流程。", ephemeral=True)
             return
 
-        # 目前 moon_achievements.py 使用總資格數，
-        # 測試模式依你選的難度抽獎。
-        reward = self.store.draw_box(TESTER_ID, difficulty)
+        ensure_redemption_table(self.db)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        cur = self.db.execute("""
+            INSERT INTO moon_achievement_redemptions
+            (user_id, reward, mommy_name, mommy_id, character_name,
+             status, created_at, submitted_at)
+            VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?)
+        """, (
+            self.user_id, self.reward, self.mommy_name, self.mommy_id,
+            self.character_name, now, now
+        ))
+        redemption_id = cur.lastrowid
+        self.db.commit()
+
+        notify_ok = False
+        try:
+            mommy = interaction.client.get_user(self.mommy_id)
+            if mommy is None:
+                mommy = await interaction.client.fetch_user(self.mommy_id)
+            await mommy.send(
+                "🔔 **成就盲盒獎勵通知**\n\n"
+                f"👤 玩家：{interaction.user.mention}\n"
+                f"🎁 獎品：{REWARD_NAMES[self.reward]}\n"
+                f"🎭 指定角色：{self.character_name}\n"
+                f"📌 兌換編號：`#{redemption_id}`\n\n"
+                "請協助後續獎勵處理。"
+            )
+            notify_ok = True
+        except Exception:
+            pass
+
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="✅ 兌換已送出",
+                description=(
+                    f"🎁 **{REWARD_NAMES[self.reward]}**\n"
+                    f"👩‍💼 負責媽咪：**{self.mommy_name}**\n"
+                    f"🎭 指定角色：**{self.character_name}**\n\n"
+                    + ("🔔 已通知媽咪。" if notify_ok
+                       else "⚠️ 兌換已記錄，但目前無法發送媽咪通知。")
+                )
+            ),
+            view=None,
+        )
+
+    @discord.ui.button(label="❌ 取消", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的兌換流程。", ephemeral=True)
+            return
+        await interaction.response.edit_message(content="已取消這次兌換。", embed=None, view=None)
+
+
+class AchievementBoxView(discord.ui.View):
+    def __init__(self, db, user_id):
+        super().__init__(timeout=300)
+        self.db, self.user_id = db, int(user_id)
+
+    @discord.ui.button(label="🎁 抽獎", style=discord.ButtonStyle.success)
+    async def draw(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的成就盲盒。", ephemeral=True)
+            return
+
+        store = AchievementStore(self.db)
+        reward, _difficulty = store.consume_draw_and_get_reward(self.user_id)
 
         if reward is None:
-            await interaction.response.send_message(
-                "❌ 抽獎失敗。",
-                ephemeral=True,
+            await interaction.response.send_message("❌ 目前沒有抽獎次數。", ephemeral=True)
+            return
+
+        if reward in SPECIAL_REWARDS:
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="🎉 恭喜你抽中特殊獎品！",
+                    description=(
+                        f"🎁 **{REWARD_NAMES[reward]}**\n\n"
+                        "請選擇負責的媽咪，再填寫角色名稱。"
+                    )
+                ),
+                view=MommySelectView(self.db, self.user_id, reward),
             )
             return
 
-        remaining = self.store.get_draw_count(TESTER_ID)
-
-        embed = discord.Embed(
-            title="🎁 成就盲盒開啟！",
-            description=f"✨ 獲得：**{reward}**",
-        )
-        embed.add_field(
-            name="測試難度",
-            value=difficulty,
-            inline=True,
-        )
-        embed.add_field(
-            name="剩餘資格",
-            value=str(remaining),
-            inline=True,
-        )
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True,
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🎉 成就盲盒開獎！",
+                description=(
+                    f"恭喜你獲得：\n\n"
+                    f"## {REWARD_NAMES[reward]}\n\n"
+                    f"🎟️ 剩餘抽獎次數：**{store.get_draw_count(self.user_id)} 次**"
+                )
+            ),
+            view=None,
         )
 
 
-async def setup(bot):
-    await bot.add_cog(AchievementTestCog(bot))
+def make_achievement_box_button(db, user_id):
+    if not AchievementStore(db).has_unclaimed_draw(int(user_id)):
+        return None
+
+    class AchievementBoxButton(discord.ui.Button):
+        def __init__(self):
+            super().__init__(
+                label="🎁 成就盲盒",
+                style=discord.ButtonStyle.success,
+                row=2,
+            )
+
+        async def callback(self, interaction):
+            if interaction.user.id != int(user_id):
+                await interaction.response.send_message("❌ 這不是你的成就盲盒。", ephemeral=True)
+                return
+            await interaction.response.edit_message(
+                embed=build_achievement_box_embed(db, int(user_id)),
+                view=AchievementBoxView(db, int(user_id)),
+            )
+
+    return AchievementBoxButton()
