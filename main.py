@@ -1747,7 +1747,7 @@ async def on_ready():
     setup_character_exam(bot)
     
     # 🌙 Moon Life
-    setup_moon_life(bot, add_money=add_money)
+    setup_moon_life(bot)
 
     # 🧪 成就盲盒 Discord 測試系統
     await setup_achievement_box_test(bot)
