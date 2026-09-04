@@ -160,6 +160,8 @@ CREATE TABLE IF NOT EXISTS lotteries (
 
     winner_count INTEGER NOT NULL,
 
+    winner_count INTEGER NOT NULL,
+
     end_time TEXT NOT NULL,
 
     status TEXT DEFAULT 'running',
