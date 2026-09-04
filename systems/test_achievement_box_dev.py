@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-🧪 Moon Club｜成就盲盒開發測試版
+🧪 Moon Life｜成就盲盒 Discord 測試器
 
 用途：
-1. 測試成就完成後是否取得盲盒資格
-2. 測試不同成就等級的盲盒
-3. 測試抽獎後資格是否正確扣除
-4. 模擬大量抽獎，檢查各等級機率
+- 讓管理者直接在 Discord 手機上測試成就盲盒
+- 可快速建立指定難度的測試資格
+- 可直接抽獎、查看資格、清除測試資料
+- 使用獨立 :memory: 資料庫，不碰正式玩家資料
 
-這個檔案只供測試，不需要接進 main.py。
+⚠️ 這是開發測試 Cog，不是正式玩家功能。
 """
+
+import sqlite3
+import discord
+from discord.ext import commands
+from discord import app_commands
 
 from moon_achievements import (
     AchievementStore,
@@ -23,313 +28,255 @@ from moon_achievements import (
     roll_loot,
 )
 
-import sqlite3
-from collections import Counter
+# ============================================================
+# 🔒 把這裡改成你的 Discord User ID
+# ============================================================
+TESTER_ID = 1301905168094335028
 
 
-TEST_USER_ID = 999999999
+class AchievementTestView(discord.ui.View):
+    def __init__(self, cog):
+        super().__init__(timeout=300)
+        self.cog = cog
+
+    @discord.ui.button(label="🎟️ 建立測試資格", style=discord.ButtonStyle.primary, row=0)
+    async def add_qualification(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog.add_qualification_menu(interaction)
+
+    @discord.ui.button(label="🎁 開啟盲盒", style=discord.ButtonStyle.success, row=0)
+    async def draw_box(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog.draw_menu(interaction)
+
+    @discord.ui.button(label="📊 查看資格", style=discord.ButtonStyle.secondary, row=1)
+    async def status(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog.show_status(interaction)
+
+    @discord.ui.button(label="🎲 查看機率", style=discord.ButtonStyle.secondary, row=1)
+    async def probability(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog.show_probability(interaction)
+
+    @discord.ui.button(label="🗑️ 清除測試資料", style=discord.ButtonStyle.danger, row=2)
+    async def reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog.reset_data(interaction)
 
 
-def show_achievements():
-    print("\n" + "=" * 55)
-    print("🏆 Moon Club｜80 個成就")
-    print("=" * 55)
+class DifficultySelect(discord.ui.Select):
+    def __init__(self, cog, action):
+        self.cog = cog
+        self.action = action
+        options = [
+            discord.SelectOption(label="簡單", value="easy", emoji="🟢"),
+            discord.SelectOption(label="中", value="medium", emoji="🟡"),
+            discord.SelectOption(label="中高", value="medium_high", emoji="🟠"),
+            discord.SelectOption(label="高", value="high", emoji="🔴"),
+        ]
+        super().__init__(placeholder="選擇測試難度", options=options)
 
-    groups = [
-        ("🟢 簡單", EASY),
-        ("🟡 中", MEDIUM),
-        ("🟠 中高", MEDIUM_HIGH),
-        ("🔴 高", HIGH),
-    ]
-
-    for title, difficulty in groups:
-        print(f"\n{title}")
-        for a in ACHIEVEMENTS:
-            if a.difficulty == difficulty:
-                print(f"{a.achievement_id}｜{a.name}")
-                print(f"   └─ {a.description}")
-
-
-def show_status(store):
-    count = store.get_draw_count(TEST_USER_ID)
-
-    completed = []
-    for a in ACHIEVEMENTS:
-        row = store.db.execute(
-            """
-            SELECT completed
-            FROM moon_achievements
-            WHERE user_id = ? AND achievement_id = ?
-            """,
-            (TEST_USER_ID, a.achievement_id),
-        ).fetchone()
-
-        if row and row[0]:
-            completed.append(a)
-
-    print("\n" + "=" * 55)
-    print("📊 測試玩家狀態")
-    print("=" * 55)
-    print(f"已完成成就：{len(completed)} / {len(ACHIEVEMENTS)}")
-    print(f"🎟️ 成就盲盒資格：{count} 次")
-
-    if completed:
-        print("\n已完成：")
-        for a in completed:
-            print(f"  • {a.achievement_id}｜{a.name}｜{a.difficulty}")
+    async def callback(self, interaction: discord.Interaction):
+        mapping = {
+            "easy": EASY,
+            "medium": MEDIUM,
+            "medium_high": MEDIUM_HIGH,
+            "high": HIGH,
+        }
+        difficulty = mapping[self.values[0]]
+        await self.action(interaction, difficulty)
 
 
-def add_test_draws(store, difficulty, count=1):
-    """開發測試用：直接建立指定難度的盲盒資格。"""
-    if count <= 0:
-        print("❌ 次數必須大於 0。")
-        return
-
-    for _ in range(count):
-        store.add_draw_qualification(TEST_USER_ID, difficulty)
-
-    print(f"🎟️ 已加入 {count} 次「{difficulty}」盲盒資格。")
+class DifficultyView(discord.ui.View):
+    def __init__(self, cog, action):
+        super().__init__(timeout=120)
+        self.add_item(DifficultySelect(cog, action))
 
 
-def complete_test_achievement(store, achievement_id):
-    achievement = next(
-        (a for a in ACHIEVEMENTS if a.achievement_id == achievement_id),
-        None,
+class CountModal(discord.ui.Modal, title="建立測試資格"):
+    count = discord.ui.TextInput(
+        label="要建立幾次資格？",
+        placeholder="例如：10",
+        min_length=1,
+        max_length=4,
     )
 
-    if achievement is None:
-        print("❌ 找不到這個成就。")
-        return
+    def __init__(self, cog, difficulty):
+        super().__init__()
+        self.cog = cog
+        self.difficulty = difficulty
 
-    first_time = store.complete_achievement(
-        TEST_USER_ID,
-        achievement_id,
-    )
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            count = int(self.count.value)
+            if count <= 0:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message("❌ 請輸入正整數。", ephemeral=True)
+            return
 
-    if first_time:
-        print(f"\n🏆 成就完成！")
-        print(f"{achievement.name}")
-        print(f"難度：{achievement.difficulty}")
-        print("🎁 成就盲盒資格 +1")
-    else:
-        print("\n⚠️ 這個成就之前已完成。")
-        print("不會再次增加盲盒資格。")
+        for _ in range(count):
+            self.cog.store.add_draw_qualification(
+                self.cog.test_user_id,
+                self.difficulty,
+            )
 
-
-def draw_box(store):
-    count = store.get_draw_count(TEST_USER_ID)
-
-    if count <= 0:
-        print("\n❌ 目前沒有成就盲盒資格。")
-        print("請先完成測試成就。")
-        return
-
-    print("\n選擇本次盲盒要模擬哪個成就等級：")
-    print("1️⃣ 簡單")
-    print("2️⃣ 中")
-    print("3️⃣ 中高")
-    print("4️⃣ 高")
-
-    choice = input("請輸入：").strip()
-
-    difficulty_map = {
-        "1": EASY,
-        "2": MEDIUM,
-        "3": MEDIUM_HIGH,
-        "4": HIGH,
-    }
-
-    difficulty = difficulty_map.get(choice)
-
-    if difficulty is None:
-        print("❌ 選項錯誤。")
-        return
-
-    reward = store.draw_box(TEST_USER_ID, difficulty)
-
-    if reward is None:
-        print("❌ 抽獎失敗：沒有剩餘資格。")
-        return
-
-    print("\n" + "🎁" * 10)
-    print("       成就盲盒開啟！")
-    print("🎁" * 10)
-    print(f"\n✨ 獲得：{reward}")
-    print(f"剩餘盲盒資格：{store.get_draw_count(TEST_USER_ID)}")
-
-
-def show_probabilities():
-    print("\n" + "=" * 55)
-    print("🎲 成就盲盒｜目前機率")
-    print("=" * 55)
-
-    for difficulty, weights in LOOT_WEIGHTS.items():
-        total = sum(weights.values())
-
-        print(f"\n【{difficulty}】")
-        for reward, weight in weights.items():
-            percentage = weight / total * 100
-            print(f"{reward:<18} {percentage:>5.1f}%")
-
-
-def simulate():
-    print("\n" + "=" * 55)
-    print("🧪 大量抽獎機率模擬")
-    print("=" * 55)
-
-    raw = input("要模擬幾次？（例如 1000）：").strip()
-
-    try:
-        times = int(raw)
-        if times <= 0:
-            raise ValueError
-    except ValueError:
-        print("❌ 請輸入正整數。")
-        return
-
-    print("\n選擇等級：")
-    print("1️⃣ 簡單")
-    print("2️⃣ 中")
-    print("3️⃣ 中高")
-    print("4️⃣ 高")
-
-    choice = input("請輸入：").strip()
-
-    difficulty_map = {
-        "1": EASY,
-        "2": MEDIUM,
-        "3": MEDIUM_HIGH,
-        "4": HIGH,
-    }
-
-    difficulty = difficulty_map.get(choice)
-
-    if difficulty is None:
-        print("❌ 選項錯誤。")
-        return
-
-    results = Counter(
-        roll_loot(difficulty)
-        for _ in range(times)
-    )
-
-    print(f"\n📊 {difficulty}｜模擬 {times:,} 次")
-    print("-" * 55)
-
-    for reward, weight in LOOT_WEIGHTS[difficulty].items():
-        actual = results[reward] / times * 100
-        expected = weight / sum(LOOT_WEIGHTS[difficulty].values()) * 100
-
-        print(
-            f"{reward:<18}"
-            f"預期 {expected:>5.1f}%  "
-            f"實際 {actual:>5.1f}%"
+        await interaction.response.send_message(
+            f"✅ 已建立 **{count} 次**「{self.difficulty}」測試盲盒資格。",
+            ephemeral=True,
         )
 
 
-def reset_test_data(store):
-    store.db.execute(
-        "DELETE FROM moon_achievements WHERE user_id = ?",
-        (TEST_USER_ID,),
-    )
-    store.db.execute(
-        "DELETE FROM moon_achievement_loot WHERE user_id = ?",
-        (TEST_USER_ID,),
-    )
-    store.db.commit()
+class AchievementTestCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.db = sqlite3.connect(":memory:")
+        self.store = AchievementStore(self.db)
+        self.engine = AchievementEngine(self.store)
+        self.test_user_id = TESTER_ID
 
-    print("\n🗑️ 測試資料已清除。")
+    async def cog_check(self, interaction: discord.Interaction):
+        if TESTER_ID == 0:
+            await interaction.response.send_message(
+                "⚠️ 尚未設定 TESTER_ID，請先在測試檔填入你的 Discord User ID。",
+                ephemeral=True,
+            )
+            return False
 
+        if interaction.user.id != TESTER_ID:
+            await interaction.response.send_message(
+                "❌ 這是開發測試功能，你沒有使用權限。",
+                ephemeral=True,
+            )
+            return False
 
-def main():
-    db = sqlite3.connect(":memory:")
-    store = AchievementStore(db)
-    AchievementEngine(store)
+        return True
 
-    print("\n🌙 Moon Club｜成就盲盒測試器")
-    print("⚠️ 這是獨立開發測試，不會修改正式資料；可快速建立指定難度資格。")
+    @app_commands.command(name="成就盲盒測試", description="開啟成就盲盒開發測試中心")
+    async def achievement_box_test(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="🧪 成就盲盒測試中心",
+            description=(
+                "這裡是開發測試功能。\n\n"
+                "可以快速建立不同難度的盲盒資格，"
+                "不用真的完成成就即可測試抽獎。"
+            ),
+        )
+        embed.add_field(
+            name="🎟️ 測試資格",
+            value="可快速建立指定難度、指定次數。",
+            inline=False,
+        )
+        embed.add_field(
+            name="🎁 盲盒抽獎",
+            value="直接測試實際盲盒獎品與資格扣除。",
+            inline=False,
+        )
+        embed.set_footer(text="只有開發測試者可以使用")
+        await interaction.response.send_message(
+            embed=embed,
+            view=AchievementTestView(self),
+            ephemeral=True,
+        )
 
-    while True:
-        print("\n" + "=" * 55)
-        print("🧪 測試選單")
-        print("=" * 55)
-        print("1️⃣ 查看 80 個成就")
-        print("2️⃣ 完成測試成就")
-        print("3️⃣ 查看目前資格／完成狀態")
-        print("4️⃣ 開啟成就盲盒")
-        print("5️⃣ 查看目前盲盒機率")
-        print("6️⃣ 模擬大量抽獎")
-        print("7️⃣ 清除測試資料")
-        print("8️⃣ 快速建立測試資格")
-        print("0️⃣ 離開")
+    async def add_qualification_menu(self, interaction):
+        await interaction.response.send_message(
+            "🎟️ **建立測試盲盒資格**\n請選擇要測試的成就難度：",
+            view=DifficultyView(self, self.add_qualification_count),
+            ephemeral=True,
+        )
 
-        choice = input("\n請選擇：").strip()
+    async def add_qualification_count(self, interaction, difficulty):
+        await interaction.response.send_modal(CountModal(self, difficulty))
 
-        if choice == "1":
-            show_achievements()
+    async def draw_menu(self, interaction):
+        count = self.store.get_draw_count(self.test_user_id)
+        if count <= 0:
+            await interaction.response.send_message(
+                "❌ 目前沒有測試盲盒資格。\n請先建立測試資格。",
+                ephemeral=True,
+            )
+            return
 
-        elif choice == "2":
-            achievement_id = input(
-                "\n輸入要完成的成就 ID（例如 ACH_001）："
-            ).strip().upper()
+        await interaction.response.send_message(
+            f"🎁 目前有 **{count} 次**測試資格。\n請選擇本次要測試的難度：",
+            view=DifficultyView(self, self.do_draw),
+            ephemeral=True,
+        )
 
-            complete_test_achievement(
-                store,
-                achievement_id,
+    async def do_draw(self, interaction, difficulty):
+        reward = self.store.draw_box(self.test_user_id, difficulty)
+        if reward is None:
+            await interaction.response.send_message(
+                "❌ 抽獎失敗：沒有剩餘資格。",
+                ephemeral=True,
+            )
+            return
+
+        remaining = self.store.get_draw_count(self.test_user_id)
+        embed = discord.Embed(
+            title="🎁 成就盲盒開啟！",
+            description=f"✨ 獲得：**{reward}**",
+        )
+        embed.add_field(name="剩餘測試資格", value=str(remaining))
+        embed.add_field(name="測試難度", value=difficulty, inline=False)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def show_status(self, interaction):
+        count = self.store.get_draw_count(self.test_user_id)
+        completed = []
+
+        for a in ACHIEVEMENTS:
+            row = self.db.execute(
+                """
+                SELECT completed
+                FROM moon_achievements
+                WHERE user_id = ? AND achievement_id = ?
+                """,
+                (self.test_user_id, a.achievement_id),
+            ).fetchone()
+
+            if row and row[0]:
+                completed.append(a)
+
+        text = f"🎟️ 測試盲盒資格：**{count} 次**\n"
+        text += f"🏆 測試完成成就：**{len(completed)} / {len(ACHIEVEMENTS)}**"
+
+        if completed:
+            text += "\n\n已完成：\n"
+            text += "\n".join(
+                f"• {a.achievement_id}｜{a.name}｜{a.difficulty}"
+                for a in completed[:20]
             )
 
-        elif choice == "3":
-            show_status(store)
+        await interaction.response.send_message(text, ephemeral=True)
 
-        elif choice == "4":
-            draw_box(store)
+    async def show_probability(self, interaction):
+        lines = ["🎲 **目前盲盒機率**"]
+        for difficulty, weights in LOOT_WEIGHTS.items():
+            total = sum(weights.values())
+            lines.append(f"\n**{difficulty}**")
+            for reward, weight in weights.items():
+                lines.append(f"• {reward}：{weight / total * 100:.1f}%")
 
-        elif choice == "5":
-            show_probabilities()
+        await interaction.response.send_message(
+            "\n".join(lines),
+            ephemeral=True,
+        )
 
-        elif choice == "6":
-            simulate()
+    async def reset_data(self, interaction):
+        self.db.execute(
+            "DELETE FROM moon_achievements WHERE user_id = ?",
+            (self.test_user_id,),
+        )
+        self.db.execute(
+            "DELETE FROM moon_achievement_loot WHERE user_id = ?",
+            (self.test_user_id,),
+        )
+        self.db.commit()
 
-        elif choice == "7":
-            reset_test_data(store)
-
-        elif choice == "8":
-            print("\n選擇要快速建立的盲盒等級：")
-            print("1️⃣ 簡單")
-            print("2️⃣ 中")
-            print("3️⃣ 中高")
-            print("4️⃣ 高")
-
-            difficulty_map = {
-                "1": EASY,
-                "2": MEDIUM,
-                "3": MEDIUM_HIGH,
-                "4": HIGH,
-            }
-
-            d_choice = input("請輸入：").strip()
-            difficulty = difficulty_map.get(d_choice)
-
-            if difficulty is None:
-                print("❌ 選項錯誤。")
-                continue
-
-            raw_count = input("要建立幾次資格？（例如 5）：").strip()
-            try:
-                count = int(raw_count)
-            except ValueError:
-                print("❌ 請輸入正整數。")
-                continue
-
-            add_test_draws(store, difficulty, count)
-
-        elif choice == "0":
-            print("\n🌙 測試結束。")
-            break
-
-        else:
-            print("\n❌ 無效選項。")
+        await interaction.response.send_message(
+            "🗑️ 測試資料已全部清除。",
+            ephemeral=True,
+        )
 
 
-if __name__ == "__main__":
-    main()
+async def setup(bot):
+    await bot.add_cog(AchievementTestCog(bot))
