@@ -4,7 +4,7 @@
 import datetime
 import discord
 
-from .moon_achievements_v2 import (
+from .moon_achievements import (
     AchievementStore,
     ACHIEVEMENTS,
     REWARD_VIDEO, REWARD_PHOTO, REWARD_CERTIFICATE, REWARD_BADGE,
