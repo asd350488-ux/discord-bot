@@ -253,7 +253,7 @@ CREATE TABLE IF NOT EXISTS moon_achievement_loot (
 
 
 class AchievementStore:
-    """成就／盲盒資格持久化；每張資格保留來源成就等級。"""
+    """成就／盲盒資格持久化；每一張資格都保留取得時的成就等級。"""
 
     def __init__(self, db: sqlite3.Connection):
         self.db = db
@@ -270,11 +270,17 @@ class AchievementStore:
         """)
         self.db.commit()
 
+    def ensure_user(self, user_id: int) -> None:
+        return
+
     def complete_achievement(self, user_id: int, achievement_id: str) -> bool:
+        """首次完成成就時，建立一張帶有該成就難度的盲盒資格。"""
         row = self.db.execute(
-            "SELECT completed FROM moon_achievements "
-            "WHERE user_id=? AND achievement_id=?",
-            (user_id, achievement_id),
+            """
+            SELECT completed FROM moon_achievements
+            WHERE user_id=? AND achievement_id=?
+            """,
+            (int(user_id), achievement_id),
         ).fetchone()
 
         if row and row[0]:
@@ -284,49 +290,108 @@ class AchievementStore:
         if achievement is None:
             return False
 
-        import datetime
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
 
-        self.db.execute("""
+        self.db.execute(
+            """
             INSERT INTO moon_achievements
-            (user_id, achievement_id, completed, reward_claimed, completed_at)
+                (user_id, achievement_id, completed, reward_claimed, completed_at)
             VALUES (?, ?, 1, 0, ?)
             ON CONFLICT(user_id, achievement_id)
             DO UPDATE SET completed=1, completed_at=excluded.completed_at
-        """, (user_id, achievement_id, now))
+            """,
+            (int(user_id), achievement_id, now),
+        )
 
-        self.db.execute("""
+        self.db.execute(
+            """
             INSERT INTO moon_achievement_draws
-            (user_id, difficulty, created_at)
+                (user_id, difficulty, created_at)
             VALUES (?, ?, ?)
-        """, (user_id, achievement.difficulty, now))
-
+            """,
+            (int(user_id), achievement.difficulty, now),
+        )
         self.db.commit()
         return True
 
     def has_unclaimed_draw(self, user_id: int) -> bool:
-        return self.db.execute(
-            "SELECT 1 FROM moon_achievement_draws "
-            "WHERE user_id=? AND used=0 LIMIT 1",
-            (int(user_id),),
-        ).fetchone() is not None
+        return self.get_draw_count(user_id) > 0
 
     def get_draw_count(self, user_id: int) -> int:
         row = self.db.execute(
-            "SELECT COUNT(*) FROM moon_achievement_draws "
-            "WHERE user_id=? AND used=0",
+            """
+            SELECT COUNT(*) FROM moon_achievement_draws
+            WHERE user_id=? AND used=0
+            """,
             (int(user_id),),
         ).fetchone()
         return int(row[0]) if row else 0
 
-    def consume_draw_and_get_reward(self, user_id: int):
-        row = self.db.execute("""
+    def get_pending_difficulties(self, user_id: int) -> list[str]:
+        rows = self.db.execute(
+            """
+            SELECT difficulty FROM moon_achievement_draws
+            WHERE user_id=? AND used=0
+            ORDER BY draw_id ASC
+            """,
+            (int(user_id),),
+        ).fetchall()
+        return [str(row[0]) for row in rows]
+
+    def draw_box(self, user_id: int, difficulty: Optional[str] = None) -> Optional[str]:
+        """
+        消耗最早的一張未使用資格。
+        difficulty 僅保留舊版 API 相容性，實際一律以資料庫保存的等級為準。
+        玩家無法選擇難度。
+        """
+        row = self.db.execute(
+            """
             SELECT draw_id, difficulty
             FROM moon_achievement_draws
             WHERE user_id=? AND used=0
             ORDER BY draw_id ASC
             LIMIT 1
-        """, (int(user_id),)).fetchone()
+            """,
+            (int(user_id),),
+        ).fetchone()
+
+        if not row:
+            return None
+
+        draw_id, stored_difficulty = row
+        reward = roll_loot(stored_difficulty)
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+
+        cur = self.db.execute(
+            """
+            UPDATE moon_achievement_draws
+            SET used=1, used_at=?
+            WHERE draw_id=? AND used=0
+            """,
+            (now, int(draw_id)),
+        )
+
+        if cur.rowcount != 1:
+            self.db.rollback()
+            return None
+
+        self.db.commit()
+        return reward
+
+    def consume_draw_and_get_reward(self, user_id: int):
+        row = self.db.execute(
+            """
+            SELECT draw_id, difficulty
+            FROM moon_achievement_draws
+            WHERE user_id=? AND used=0
+            ORDER BY draw_id ASC
+            LIMIT 1
+            """,
+            (int(user_id),),
+        ).fetchone()
 
         if not row:
             return None, None
@@ -334,14 +399,16 @@ class AchievementStore:
         draw_id, difficulty = row
         reward = roll_loot(difficulty)
 
-        import datetime
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-
-        cur = self.db.execute("""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        cur = self.db.execute(
+            """
             UPDATE moon_achievement_draws
             SET used=1, used_at=?
             WHERE draw_id=? AND used=0
-        """, (now, draw_id))
+            """,
+            (now, int(draw_id)),
+        )
 
         if cur.rowcount != 1:
             self.db.rollback()
