@@ -22,6 +22,8 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
 
+import discord
+
 
 # ============================================================
 # 🎁 固定盲盒獎池
@@ -44,6 +46,145 @@ LOOT_POOL: tuple[str, ...] = (
     REWARD_NUNU_40000,
     REWARD_NUNU_50000,
 )
+
+
+# ============================================================
+# 💌 媽咪獎品聯動
+# ============================================================
+# 玩家抽到以下四種非努努幣獎品後，可以選擇要通知哪位媽咪，
+# 再自行填寫角色名稱。角色不需要由後台事先建立。
+
+MOMMY_REWARDS = {
+    REWARD_VIDEO,
+    REWARD_PHOTO,
+    REWARD_CERTIFICATE,
+    REWARD_BADGE,
+}
+
+MOMMY_LIST = {
+    "🫧 韓馨媽咪": 1153640526063607820,
+    "☀️ 星弦媽咪": 1218542666879598613,
+    "🌻 曦兒媽咪": 1301905168094335028,
+    "🐈 小貓媽咪": 806960151578804275,
+}
+
+
+def is_mommy_reward(reward: str) -> bool:
+    """判斷是否需要進入媽咪選擇流程。"""
+    return reward in MOMMY_REWARDS
+
+
+class MommyRewardCharacterModal(discord.ui.Modal, title="💌 填寫角色名稱"):
+    character_name = discord.ui.TextInput(
+        label="角色名稱",
+        placeholder="請輸入你要指定的角色名稱",
+        required=True,
+        max_length=100,
+    )
+
+    def __init__(self, bot, player_id: int, reward: str, mommy_name: str, mommy_id: int):
+        super().__init__()
+        self.bot = bot
+        self.player_id = int(player_id)
+        self.reward = reward
+        self.mommy_name = mommy_name
+        self.mommy_id = int(mommy_id)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        character = self.character_name.value.strip()
+        if not character:
+            await interaction.response.send_message(
+                "❌ 請填寫角色名稱。",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            mommy = self.bot.get_user(self.mommy_id)
+            if mommy is None:
+                mommy = await self.bot.fetch_user(self.mommy_id)
+
+            await mommy.send(
+                "💌 **Moon Club 成就盲盒通知**\n\n"
+                f"🎁 玩家：<@{self.player_id}>\n"
+                f"🏆 獲得獎品：**{self.reward}**\n"
+                f"👩 媽咪：**{self.mommy_name}**\n"
+                f"👤 指定角色：**{character}**\n\n"
+                "請媽咪協助後續處理。"
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "❌ 無法私訊該媽咪，請確認媽咪允許 Bot 傳送私人訊息。",
+                ephemeral=True,
+            )
+            return
+        except discord.HTTPException:
+            await interaction.response.send_message(
+                "❌ 通知媽咪時發生 Discord 通訊錯誤，請稍後再試。",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            "✅ 已送出！\n"
+            f"🎁 獎品：**{self.reward}**\n"
+            f"👩 媽咪：**{self.mommy_name}**\n"
+            f"👤 角色：**{character}**\n\n"
+            "🤖 機器人已自動通知媽咪。",
+            ephemeral=True,
+        )
+
+
+class MommyRewardSelect(discord.ui.Select):
+    def __init__(self, bot, player_id: int, reward: str):
+        self.bot = bot
+        self.player_id = int(player_id)
+        self.reward = reward
+        options = [
+            discord.SelectOption(label=name, value=str(uid))
+            for name, uid in MOMMY_LIST.items()
+        ]
+        super().__init__(
+            placeholder="👩 請選擇要通知的媽咪",
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message(
+                "❌ 這不是你的獎品操作。",
+                ephemeral=True,
+            )
+            return
+
+        mommy_id = int(self.values[0])
+        mommy_name = next(
+            name for name, uid in MOMMY_LIST.items()
+            if uid == mommy_id
+        )
+
+        await interaction.response.send_modal(
+            MommyRewardCharacterModal(
+                self.bot,
+                self.player_id,
+                self.reward,
+                mommy_name,
+                mommy_id,
+            )
+        )
+
+
+class MommyRewardView(discord.ui.View):
+    def __init__(self, bot, player_id: int, reward: str):
+        super().__init__(timeout=300)
+        self.add_item(MommyRewardSelect(bot, player_id, reward))
+
+
+def build_mommy_reward_view(bot, player_id: int, reward: str) -> Optional[discord.ui.View]:
+    """建立媽咪獎品操作 UI；非媽咪獎品則回傳 None。"""
+    if not is_mommy_reward(reward):
+        return None
+    return MommyRewardView(bot, int(player_id), reward)
 
 
 # ============================================================
