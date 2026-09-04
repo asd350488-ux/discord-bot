@@ -1745,7 +1745,7 @@ async def on_ready():
     # 📝 角色考試系統
     setup_character_exam(bot)
     
-    setup_moon_life(bot)
+    setup_moon_life(bot, add_money=add_money)
     
     # 🎓 角色考試系統
     setup_character_test(bot)
