@@ -14,6 +14,25 @@ import discord
 from discord import app_commands
 
 try:
+    from systems.moon_achievements import (
+        AchievementStore,
+        AchievementEngine,
+        ACHIEVEMENTS,
+        EASY, MEDIUM, MEDIUM_HIGH, HIGH,
+        REWARD_VIDEO, REWARD_PHOTO, REWARD_CERTIFICATE, REWARD_BADGE,
+        REWARD_NUNU_30000, REWARD_NUNU_40000, REWARD_NUNU_50000,
+    )
+except ImportError:
+    from moon_achievements import (
+        AchievementStore,
+        AchievementEngine,
+        ACHIEVEMENTS,
+        EASY, MEDIUM, MEDIUM_HIGH, HIGH,
+        REWARD_VIDEO, REWARD_PHOTO, REWARD_CERTIFICATE, REWARD_BADGE,
+        REWARD_NUNU_30000, REWARD_NUNU_40000, REWARD_NUNU_50000,
+    )
+
+try:
     from database import conn, c
 except ImportError:
     raise ImportError("❌ Moon Club 無法載入 database.py 的 conn、c")
@@ -201,6 +220,29 @@ def init_moonclub_tables():
         c.execute("ALTER TABLE moonclub_players ADD COLUMN reputation INTEGER NOT NULL DEFAULT 0")
     if "model_capacity" not in player_columns:
         c.execute("ALTER TABLE moonclub_players ADD COLUMN model_capacity INTEGER NOT NULL DEFAULT 2")
+
+    # 🏆 成就系統事件紀錄：不改動原有 Moon Club 事件表。
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS moonclub_achievement_event_log (
+            user_id TEXT NOT NULL,
+            model_id INTEGER,
+            event_id TEXT NOT NULL,
+            completed_at TEXT,
+            PRIMARY KEY (user_id, model_id, event_id)
+        )
+    """)
+
+    # 🎁 特殊盲盒獎勵紀錄：影片／照片／證書／徽章先獨立保存，
+    # 等對應的其他系統完成後再做實際物品連動，不污染既有 inventory。
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS moonclub_achievement_rewards (
+            reward_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            reward TEXT NOT NULL,
+            source_achievement_id TEXT,
+            created_at TEXT
+        )
+    """)
 
     conn.commit()
 
@@ -613,7 +655,7 @@ class MoonClubSetupModal(discord.ui.Modal, title="🌙 建立 Moon Club"):
             ),
             color=MOONCLUB_COLOR,
         )
-        await interaction.response.send_message(embed=embed, view=MoonClubHomeView(), ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=MoonClubHomeView(str(interaction.user.id)), ephemeral=True)
 
 
 class StartMoonClubView(discord.ui.View):
@@ -652,6 +694,261 @@ def affection_name(value):
     if value >= 200:
         return "😊 熟悉"
     return "🤍 認識中"
+
+
+# ==========================================================
+# 🏆 成就系統｜Moon Club 正式接線
+# ==========================================================
+
+_achievement_store = None
+_achievement_engine = None
+
+
+def _achievement_objects():
+    global _achievement_store, _achievement_engine
+    if _achievement_store is None:
+        _achievement_store = AchievementStore(conn)
+        _achievement_engine = AchievementEngine(_achievement_store)
+        _register_moonclub_achievement_checkers(_achievement_engine)
+    return _achievement_store, _achievement_engine
+
+
+def mark_moonclub_achievement_event(user_id, event_id, model_id=None):
+    """讓 Moon Club 未來的特殊事件完成處理器記錄事件，供成就系統判定。"""
+    c.execute(
+        """INSERT OR IGNORE INTO moonclub_achievement_event_log
+           (user_id, model_id, event_id, completed_at)
+           VALUES (?,?,?,?)""",
+        (str(user_id), int(model_id) if model_id is not None else None, event_id, now_iso()),
+    )
+    conn.commit()
+
+
+def _event_done(user_id, event_id):
+    row = c.execute(
+        """SELECT 1 FROM moonclub_achievement_event_log
+           WHERE user_id=? AND event_id=? LIMIT 1""",
+        (str(user_id), event_id),
+    ).fetchone()
+    if row:
+        return True
+    # 已存在的知名度事件直接視為完成，不需要玩家重新觸發。
+    if event_id.startswith("FAME_"):
+        row = c.execute(
+            "SELECT 1 FROM moonclub_fame_events WHERE user_id=? AND event_id=? LIMIT 1",
+            (str(user_id), event_id),
+        ).fetchone()
+        return row is not None
+    return False
+
+
+def _all_models(user_id):
+    return [model_dict(row) for row in get_models(user_id)]
+
+
+def _event_checker(event_id):
+    return lambda user_id: _event_done(user_id, event_id)
+
+
+def _metric_checker(fn):
+    return lambda user_id: bool(fn(int(user_id)))
+
+
+def _register_moonclub_achievement_checkers(engine):
+    """依目前 Moon Club 真實資料欄位建立可自動判定的成就。"""
+    # 先註冊所有「直接事件完成」成就；其他條件型成就以下方 checker 補上。
+    event_map = {
+        "ACH_001": "FAME_03", "ACH_002": "FAME_05", "ACH_003": "FAME_06",
+        "ACH_005": "FAME_07", "ACH_007": "FAME_09", "ACH_008": "FAME_08",
+        "ACH_026": "FAME_10", "ACH_027": "FAME_11", "ACH_028": "FAME_12",
+        "ACH_029": "FAME_13", "ACH_030": "FAME_14",
+        "ACH_004": "specialty_27", "ACH_009": "specialty_26",
+        "ACH_010": "specialty_28", "ACH_011": "specialty_29", "ACH_037": "specialty_30",
+        "ACH_016": "training_15", "ACH_017": "training_16", "ACH_018": "training_18",
+        "ACH_019": "training_19", "ACH_038": "training_20", "ACH_021": "personality_38",
+        "ACH_039": "personality_40", "ACH_022": "career_42", "ACH_023": "career_44",
+        "ACH_040": "career_46", "ACH_041": "career_47", "ACH_042": "career_48",
+        "ACH_043": "career_50", "ACH_024": "club_71", "ACH_025": "club_72",
+        "ACH_044": "club_73", "ACH_045": "club_75", "ACH_046": "club_77",
+        "ACH_047": "club_78", "ACH_066": "legend_84", "ACH_067": "legend_85",
+        "ACH_068": "legend_86", "ACH_069": "legend_88", "ACH_070": "legend_89",
+        "ACH_071": "legend_90", "ACH_072": "legend_91", "ACH_073": "legend_92",
+        "ACH_074": "legend_93", "ACH_075": "legend_94", "ACH_076": "legend_95",
+        "ACH_077": "legend_96", "ACH_078": "legend_98", "ACH_079": "legend_99",
+        "ACH_080": "legend_100",
+    }
+    for achievement_id, event_id in event_map.items():
+        engine.register_checker(achievement_id, _event_checker(event_id))
+
+    def models(uid):
+        return _all_models(uid)
+
+    def max_fame(uid):
+        ms = models(uid)
+        return max((int(m.get("fame", 0)) for m in ms), default=0)
+
+    def avg_stats(m):
+        keys = ("intelligence", "emotion", "fitness", "creativity", "social")
+        return sum(int(m.get(k, 0)) for k in keys) / 5
+
+    def completed_memories(uid):
+        row = c.execute(
+            "SELECT COUNT(*) FROM moonclub_memories WHERE user_id=?",
+            (str(uid),),
+        ).fetchone()
+        return int(row[0] or 0)
+
+    # 直接依真實資料欄位判定的成就。
+    metric_map = {
+        "ACH_006": lambda uid: max_fame(uid) >= 500,
+        "ACH_012": lambda uid: any(len(parse_json(m.get("interests"), [])) >= 2 for m in models(uid)),
+        "ACH_013": lambda uid: any(sum(int(m.get(k, 0)) >= 70 for k in STAT_EMOJIS) >= 2 for m in models(uid)),
+        "ACH_014": lambda uid: any(avg_stats(m) >= 50 for m in models(uid)),
+        "ACH_015": lambda uid: completed_memories(uid) >= 15,
+        "ACH_031": lambda uid: max_fame(uid) >= 800,
+        "ACH_032": lambda uid: max_fame(uid) >= 1000,
+        "ACH_033": lambda uid: any(avg_stats(m) >= 70 for m in models(uid)),
+        "ACH_034": lambda uid: any(sum(int(m.get(k, 0)) >= 80 for k in STAT_EMOJIS) >= 3 for m in models(uid)),
+        "ACH_035": lambda uid: any(sum(int(m.get(k, 0)) >= 90 for k in STAT_EMOJIS) >= 2 for m in models(uid)),
+        "ACH_036": lambda uid: any(len(parse_json(m.get("interests"), [])) >= 3 for m in models(uid)),
+        "ACH_048": lambda uid: club_reputation(uid) >= 500 and _event_done(uid, "club_73"),
+        "ACH_049": lambda uid: completed_memories(uid) >= 30,
+        "ACH_050": lambda uid: any(completed_memories_for_model(uid, m["model_id"]) >= 3 for m in models(uid)),
+        "ACH_051": lambda uid: club_reputation(uid) >= 750,
+        "ACH_052": lambda uid: club_reputation(uid) >= 1000,
+        "ACH_053": lambda uid: model_count(uid) >= 4,
+        "ACH_054": lambda uid: model_count(uid) >= 6 and sum(int(m.get("fame", 0)) >= 600 for m in models(uid)) >= 3,
+        "ACH_055": lambda uid: model_count(uid) >= 8,
+        "ACH_056": lambda uid: any(all(int(m.get(k, 0)) >= 80 for k in STAT_EMOJIS) for m in models(uid)),
+        "ACH_057": lambda uid: any(all(int(m.get(k, 0)) >= 95 for k in STAT_EMOJIS) for m in models(uid)),
+        "ACH_058": lambda uid: any(sum(int(m.get(k, 0)) >= 90 for k in STAT_EMOJIS) >= 3 for m in models(uid)),
+        "ACH_059": lambda uid: len([m for m in models(uid) if avg_stats(m) >= 85]) >= 2,
+        "ACH_060": lambda uid: any(avg_stats(m) >= 90 and int(m.get("fame", 0)) >= 800 and len(parse_json(m.get("interests"), [])) >= 4 for m in models(uid)),
+        "ACH_061": lambda uid: sum(int(m.get("fame", 0)) >= 800 for m in models(uid)) >= 4,
+        "ACH_062": lambda uid: sum(int(m.get("fame", 0)) >= 1000 for m in models(uid)) >= 3,
+        "ACH_064": lambda uid: completed_memories(uid) >= 50,
+        "ACH_065": lambda uid: any(_event_done(uid, "career_50") and int(m.get("fame", 0)) >= 800 for m in models(uid)),
+        "ACH_072": lambda uid: club_reputation(uid) >= 750,
+    }
+    for achievement_id, fn in metric_map.items():
+        engine.register_checker(achievement_id, _metric_checker(fn))
+
+    # 沒有可靠現有資料欄位可自動還原的事件，必須由該事件真正完成時呼叫
+    # mark_moonclub_achievement_event()，避免憑空判定。
+
+
+def completed_memories_for_model(user_id, model_id):
+    row = c.execute(
+        "SELECT COUNT(*) FROM moonclub_memories WHERE user_id=? AND model_id=?",
+        (str(user_id), int(model_id)),
+    ).fetchone()
+    return int(row[0] or 0)
+
+
+def check_moonclub_achievements(user_id):
+    """檢查一次玩家所有成就；回傳本次新完成的成就。"""
+    store, engine = _achievement_objects()
+    return engine.check_all(int(user_id))
+
+
+def complete_moonclub_achievement_event(user_id, event_id, model_id=None):
+    """
+    MC → MA 正式聯動入口。
+    記錄實際完成事件後，立即檢查所有成就。
+    回傳本次新完成的 achievement_id 清單。
+    """
+    mark_moonclub_achievement_event(user_id, event_id, model_id)
+    return check_moonclub_achievements(user_id)
+
+
+def achievement_draw_count(user_id):
+    store, _ = _achievement_objects()
+    return store.get_draw_count(int(user_id))
+
+
+def achievement_reward_to_player(user_id, reward, source_achievement_id=None):
+    """把盲盒結果落地；特殊獎勵先記錄，努努幣直接進 users.money。"""
+    uid = str(user_id)
+    if reward == REWARD_NUNU_30000:
+        amount = 30000
+    elif reward == REWARD_NUNU_40000:
+        amount = 40000
+    elif reward == REWARD_NUNU_50000:
+        amount = 50000
+    else:
+        c.execute(
+            "INSERT INTO moonclub_achievement_rewards (user_id,reward,source_achievement_id,created_at) VALUES (?,?,?,?)",
+            (uid, reward, source_achievement_id, now_iso()),
+        )
+        conn.commit()
+        return reward
+
+    # 測試帳號也會顯示「實際獲得」，正式帳號才寫入 users.money。
+    if not is_moonclub_tester(uid):
+        c.execute("UPDATE users SET money=money+? WHERE user_id=?", (amount, uid))
+    c.execute(
+        "INSERT INTO moonclub_achievement_rewards (user_id,reward,source_achievement_id,created_at) VALUES (?,?,?,?)",
+        (uid, reward, source_achievement_id, now_iso()),
+    )
+    conn.commit()
+    return reward
+
+
+class AchievementBoxView(discord.ui.View):
+    def __init__(self, owner_user_id):
+        super().__init__(timeout=180)
+        self.owner_user_id = int(owner_user_id)
+
+    @discord.ui.button(label="🎁 開啟成就盲盒", style=discord.ButtonStyle.success)
+    async def draw(self, interaction, button):
+        if interaction.user.id != self.owner_user_id:
+            await interaction.response.send_message("❌ 這不是你的成就盲盒。", ephemeral=True)
+            return
+        store, _ = _achievement_objects()
+        pending = store.get_pending_difficulties(self.owner_user_id)
+        if not pending:
+            await interaction.response.edit_message(
+                embed=discord.Embed(title="🎁 成就盲盒", description="目前沒有可用的成就盲盒資格。", color=MOONCLUB_COLOR),
+                view=BackHomeView(),
+            )
+            return
+        # 難度由 MA 保存的這一張資格決定，玩家不能選擇。
+        reward = store.draw_box(self.owner_user_id)
+        if reward is None:
+            await interaction.response.send_message("❌ 盲盒開啟失敗，請再試一次。", ephemeral=True)
+            return
+        achievement_reward_to_player(self.owner_user_id, reward)
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🎁 成就盲盒｜開啟成功！",
+                description=(f"🎟️ 使用：**{difficulty}** 成就資格\n\n"
+                             f"✨ 獲得：**{reward}**\n\n"
+                             f"🎟️ 剩餘資格：**{achievement_draw_count(self.owner_user_id)}**"),
+                color=MOONCLUB_COLOR,
+            ),
+            view=BackHomeView(),
+        )
+
+
+async def open_achievement_box(interaction):
+    user_id = str(interaction.user.id)
+    if not achievement_draw_count(user_id):
+        await interaction.response.send_message("🔒 目前還沒有成就盲盒資格。完成成就後才能開啟。", ephemeral=True)
+        return
+    store, _ = _achievement_objects()
+    pending = store.get_pending_difficulties(user_id)
+    await interaction.response.edit_message(
+        embed=discord.Embed(
+            title="🎁 成就盲盒",
+            description=(
+                f"你目前有 **{len(pending)}** 次免費抽獎資格。\n\n"
+                "完成成就即可取得抽獎資格。\n"
+                "每次開啟都會從固定獎池隨機獲得一項獎勵。"
+            ),
+            color=MOONCLUB_COLOR,
+        ),
+        view=AchievementBoxView(interaction.user.id),
+    )
 
 
 async def build_home_embed(user_id):
@@ -769,6 +1066,8 @@ class FameChoiceView(discord.ui.View):
             after = clamp(before + gain, 0, 1000)
         change_model(model["model_id"], fame=after)
         fame_mark_completed(user_id, model["model_id"], event_id)
+        mark_moonclub_achievement_event(user_id, event_id, model["model_id"])
+        check_moonclub_achievements(user_id)
         add_memory(user_id, model["model_id"], title,
                    f"{story}\n選擇：{label}。🌟 知名度 {before} → {after}。")
         await interaction.response.edit_message(
@@ -799,9 +1098,19 @@ class FameView(discord.ui.View):
     async def back(self, interaction, button):
         await refresh_home(interaction)
 
-class MoonClubHomeView(discord.ui.View):
+class AchievementBoxHomeButton(discord.ui.Button):
     def __init__(self):
+        super().__init__(label="🎁 成就盲盒", style=discord.ButtonStyle.success, row=3)
+
+    async def callback(self, interaction):
+        await open_achievement_box(interaction)
+
+
+class MoonClubHomeView(discord.ui.View):
+    def __init__(self, user_id=None):
         super().__init__(timeout=300)
+        if user_id is not None and achievement_draw_count(str(user_id)) > 0:
+            self.add_item(AchievementBoxHomeButton())
 
     @discord.ui.button(label="🛒 商店", style=discord.ButtonStyle.primary, row=0)
     async def shop(self, interaction, button):
@@ -927,7 +1236,7 @@ class BackHomeView(discord.ui.View):
 
 async def refresh_home(interaction):
     embed = await build_home_embed(str(interaction.user.id))
-    await interaction.response.edit_message(embed=embed, view=MoonClubHomeView())
+    await interaction.response.edit_message(embed=embed, view=MoonClubHomeView(str(interaction.user.id)))
 
 
 class ModelSelectView(discord.ui.View):
@@ -1469,6 +1778,13 @@ def clear_moonclub_data(user_id):
     c.execute("DELETE FROM moonclub_model_daily WHERE user_id=?", (user_id,))
     c.execute("DELETE FROM moonclub_modelren WHERE user_id=?", (user_id,))
     c.execute("DELETE FROM moonclub_players WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM moonclub_achievement_event_log WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM moonclub_achievement_rewards WHERE user_id=?", (user_id,))
+    try:
+        store, _ = _achievement_objects()
+        store.clear_test_user(user_id)
+    except Exception:
+        pass
     conn.commit()
 
 
@@ -1555,7 +1871,7 @@ async def open_moonclub_game(interaction: discord.Interaction):
     embed = await build_home_embed(user_id)
     await interaction.response.send_message(
         embed=embed,
-        view=MoonClubHomeView(),
+        view=MoonClubHomeView(str(interaction.user.id)),
         ephemeral=True,
     )
 
@@ -1581,6 +1897,7 @@ class MoonClubEntranceView(discord.ui.View):
 
 def setup_moon_club(bot):
     init_moonclub_tables()
+    _achievement_objects()
 
     if getattr(bot, "_moon_club_loaded", False):
         return
