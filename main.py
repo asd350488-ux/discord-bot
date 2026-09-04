@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import discord
+from systems.test_achievement_box_discord_ready import setup as setup_achievement_box_test
 from systems.moon_life import setup_moon_life
 from systems.streak_lottery import setup_streak_lottery
 from character_birthday import setup_character_birthday
@@ -1745,7 +1746,11 @@ async def on_ready():
     # 📝 角色考試系統
     setup_character_exam(bot)
     
+    # 🌙 Moon Life
     setup_moon_life(bot, add_money=add_money)
+
+    # 🧪 成就盲盒 Discord 測試系統
+    await setup_achievement_box_test(bot)
     
     # 🎓 角色考試系統
     setup_character_test(bot)
