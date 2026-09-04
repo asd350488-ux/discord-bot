@@ -16,7 +16,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from moon_achievements import (
+from .moon_achievements import (
     AchievementStore,
     AchievementEngine,
     ACHIEVEMENTS,
