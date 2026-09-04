@@ -47,11 +47,11 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ð¾ DB
+# 💾 DB
 from database import conn, c
 
 # ==========================
-# ð° ç¶æ¿ç³»çµ±
+# 💰 經濟系統
 # ==========================
 
 
@@ -121,7 +121,7 @@ def remove_money(user_id, amount):
     conn.commit()
 
 
-# ð èå¬è³æè¡¨
+# 💜 老公資料表
 c.execute("""
 CREATE TABLE IF NOT EXISTS husbands (
     husband_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS husbands (
 )
 """)
 
-# ð ç©å®¶æ¶èèå¬
+# 💜 玩家收藏老公
 c.execute("""
 CREATE TABLE IF NOT EXISTS user_husbands (
     user_id TEXT,
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS user_husbands (
 
 
 # ==========================
-# ð æ½çç³»çµ±
+# 🌙 抽獎系統
 # ==========================
 
 c.execute("""
@@ -157,8 +157,6 @@ CREATE TABLE IF NOT EXISTS lotteries (
     note TEXT,
 
     message TEXT,
-
-    winner_count INTEGER NOT NULL,
 
     winner_count INTEGER NOT NULL,
 
@@ -214,7 +212,7 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 
 # ==========================
-# ð è¨ç®æ½ççµææé
+# 🌙 計算抽獎結束時間
 # ==========================
 
 
@@ -241,38 +239,38 @@ def get_lottery_end_time(amount: int, unit: str):
 
 
 # ==========================
-# ð åªåªå¹£æ½ç Modal
+# 🌙 努努幣抽獎 Modal
 # ==========================
 
 
-class MoneyLotteryModal(discord.ui.Modal, title="ð° åªåªå¹£æ½ç"):
+class MoneyLotteryModal(discord.ui.Modal, title="💰 努努幣抽獎"):
 
     money = discord.ui.TextInput(
-        label="ð° åªåªå¹£æ¸é", placeholder="ä¾å¦ï¼5000", required=True, max_length=10
+        label="💰 努努幣數量", placeholder="例如：5000", required=True, max_length=10
     )
 
     winners = discord.ui.TextInput(
-        label="ð¥ ä¸­çäººæ¸", placeholder="ä¾å¦ï¼3", required=True, max_length=3
+        label="👥 中獎人數", placeholder="例如：3", required=True, max_length=3
     )
 
     time = discord.ui.TextInput(
-        label="â° æ½çæé", placeholder="ä¾å¦ï¼10", required=True, max_length=5
+        label="⏰ 抽獎時間", placeholder="例如：10", required=True, max_length=5
     )
 
     unit = discord.ui.TextInput(
-        label="ð æéå®ä½",
-        placeholder="è«è¼¸å¥ SãMãHãD",
+        label="🕒 時間單位",
+        placeholder="請輸入 S、M、H、D",
         required=True,
         max_length=1,
     )
 
     # ==========================
-    # ð æ½çç¢ºèª
+    # 🌙 抽獎確認
     # ==========================
     async def on_submit(self, interaction: discord.Interaction):
 
         # -------------------------
-        # é©è­è³æ
+        # 驗證資料
         # -------------------------
 
         try:
@@ -283,7 +281,7 @@ class MoneyLotteryModal(discord.ui.Modal, title="ð° åªåªå¹£æ
         except ValueError:
 
             await interaction.response.send_message(
-                "â è«è¼¸å¥æ­£ç¢ºçæ¸å­ã", ephemeral=True
+                "❌ 請輸入正確的數字。", ephemeral=True
             )
             return
 
@@ -294,36 +292,36 @@ class MoneyLotteryModal(discord.ui.Modal, title="ð° åªåªå¹£æ
         if end_time is None:
 
             await interaction.response.send_message(
-                "â æéå®ä½åªè½è¼¸å¥ SãMãHãDã", ephemeral=True
+                "❌ 時間單位只能輸入 S、M、H、D。", ephemeral=True
             )
             return
 
         timestamp = int(end_time.timestamp())
 
         # -------------------------
-        # å»ºç« Embed
+        # 建立 Embed
         # -------------------------
 
-        embed = discord.Embed(title="ð Moon Bot æ½ç", color=0xF1C40F)
+        embed = discord.Embed(title="🎉 Moon Bot 抽獎", color=0xF1C40F)
 
-        embed.add_field(name="ð çå", value=f"ð° åªåªå¹£ {money:,}", inline=False)
+        embed.add_field(name="🎁 獎品", value=f"💰 努努幣 {money:,}", inline=False)
 
-        embed.add_field(name="ð¥ ä¸­çäººæ¸", value=f"{winners} äºº", inline=True)
+        embed.add_field(name="👥 中獎人數", value=f"{winners} 人", inline=True)
 
-        embed.add_field(name="ð¤ ä¸»è¾¦äºº", value=interaction.user.mention, inline=True)
+        embed.add_field(name="👤 主辦人", value=interaction.user.mention, inline=True)
 
         embed.add_field(
-            name="â° æ½çæªæ­¢",
+            name="⏰ 抽獎截止",
             value=f"<t:{timestamp}:F>",
             inline=False,
         )
 
-        embed.add_field(name="ð çæ", value="ð¢ é²è¡ä¸­", inline=False)
+        embed.add_field(name="📌 狀態", value="🟢 進行中", inline=False)
 
-        embed.set_footer(text="é»æä¸æ¹æéå³å¯åå æ½ç")
+        embed.set_footer(text="點擊下方按鈕即可參加抽獎")
 
         # -------------------------
-        # ç¼éæ½ç
+        # 發送抽獎
         # -------------------------
 
         message = await interaction.channel.send(
@@ -331,7 +329,7 @@ class MoneyLotteryModal(discord.ui.Modal, title="ð° åªåªå¹£æ
         )
 
         # -------------------------
-        # å¯«å¥è³æåº«
+        # 寫入資料庫
         # -------------------------
 
         c.execute(
@@ -365,14 +363,14 @@ class MoneyLotteryModal(discord.ui.Modal, title="ð° åªåªå¹£æ
         conn.commit()
 
         # -------------------------
-        # å®æ
+        # 完成
         # -------------------------
 
-        await interaction.response.send_message("â æ½çå»ºç«æåï¼", ephemeral=True)
+        await interaction.response.send_message("✅ 抽獎建立成功！", ephemeral=True)
 
 
 # ==========================
-# ð æ½çæé
+# 🌙 抽獎按鈕
 # ==========================
 
 
@@ -382,11 +380,11 @@ class LotteryView(discord.ui.View):
         super().__init__(timeout=None)
 
     # ==========================
-    # ð åå æ½ç
+    # 🎉 參加抽獎
     # ==========================
 
     @discord.ui.button(
-        label="ð åå æ½çï¼0ï¼",
+        label="🎉 參加抽獎（0）",
         style=discord.ButtonStyle.success,
         custom_id="lottery_join",
     )
@@ -395,14 +393,14 @@ class LotteryView(discord.ui.View):
     ):
 
         # -------------------------
-        # åå¾æ½ç ID
+        # 取得抽獎 ID
         # -------------------------
 
         message_id = str(interaction.message.id)
         user_id = str(interaction.user.id)
 
         # -------------------------
-        # æ¯å¦å·²åå 
+        # 是否已參加
         # -------------------------
 
         c.execute(
@@ -418,12 +416,12 @@ class LotteryView(discord.ui.View):
         if c.fetchone():
 
             await interaction.response.send_message(
-                "â ï¸ ä½ å·²ç¶åå éæ¬æ¬¡æ½çã", ephemeral=True
+                "⚠️ 你已經參加過本次抽獎。", ephemeral=True
             )
             return
 
         # -------------------------
-        # å å¥æ½ç
+        # 加入抽獎
         # -------------------------
 
         c.execute(
@@ -440,7 +438,7 @@ class LotteryView(discord.ui.View):
         conn.commit()
 
         # -------------------------
-        # æ´æ°åå äººæ¸
+        # 更新參加人數
         # -------------------------
 
         c.execute(
@@ -454,24 +452,24 @@ class LotteryView(discord.ui.View):
 
         total = c.fetchone()[0]
 
-        self.children[0].label = f"ð åå æ½çï¼{total}ï¼"
+        self.children[0].label = f"🎉 參加抽獎（{total}）"
 
         await interaction.message.edit(view=self)
 
         # -------------------------
-        # å®æ
+        # 完成
         # -------------------------
 
         await interaction.response.send_message(
-            "â å·²æååå æ½çï¼\n\nç¥ä½ å¥½é ð", ephemeral=True
+            "✅ 已成功參加抽獎！\n\n祝你好運 🍀", ephemeral=True
         )
 
     # ==========================
-    # ð¥ æ¥çåå®
+    # 👥 查看名單
     # ==========================
 
     @discord.ui.button(
-        label="ð¥ æ¥çåå®",
+        label="👥 查看名單",
         style=discord.ButtonStyle.secondary,
         custom_id="lottery_list",
     )
@@ -480,13 +478,13 @@ class LotteryView(discord.ui.View):
     ):
 
         # -------------------------
-        # åå¾æ½ç ID
+        # 取得抽獎 ID
         # -------------------------
 
         message_id = str(interaction.message.id)
 
         # -------------------------
-        # æ¥è©¢åå è
+        # 查詢參加者
         # -------------------------
 
         c.execute(
@@ -504,7 +502,7 @@ class LotteryView(discord.ui.View):
         if not rows:
 
             await interaction.response.send_message(
-                "ð ç®åéæ²æäººåå æ¬æ¬¡æ½çã", ephemeral=True
+                "📋 目前還沒有人參加本次抽獎。", ephemeral=True
             )
             return
 
@@ -516,14 +514,14 @@ class LotteryView(discord.ui.View):
 
             if member:
 
-                member_list.append(f"`{index:02}`ï½{member.mention}")
+                member_list.append(f"`{index:02}`｜{member.mention}")
 
         text = "\n".join(member_list)
 
-        embed = discord.Embed(title="ð¥ æ½çåå åå®", description=text, color=0x5865F2)
+        embed = discord.Embed(title="👥 抽獎參加名單", description=text, color=0x5865F2)
 
         embed.add_field(
-            name="ð åå äººæ¸", value=f"**{len(member_list)} äºº**", inline=False
+            name="📊 參加人數", value=f"**{len(member_list)} 人**", inline=False
         )
 
         embed.set_footer(text="Moon Bot Lottery")
@@ -532,11 +530,11 @@ class LotteryView(discord.ui.View):
 
 
     # ==========================
-    # ð çµææ½çï¼åç®¡çå¡ï¼
+    # 🛑 結束抽獎（僅管理員）
     # ==========================
 
     @discord.ui.button(
-        label="ð çµææ½ç",
+        label="🛑 結束抽獎",
         style=discord.ButtonStyle.danger,
         custom_id="lottery_manual_end",
     )
@@ -546,7 +544,7 @@ class LotteryView(discord.ui.View):
 
         if interaction.user.id not in LOTTERY_MANAGERS:
             await interaction.response.send_message(
-                "â åªææ½çç®¡çå¡å¯ä»¥çµææ½çã", ephemeral=True
+                "❌ 只有抽獎管理員可以結束抽獎。", ephemeral=True
             )
             return
 
@@ -560,26 +558,26 @@ class LotteryView(discord.ui.View):
 
         if not lottery:
             await interaction.response.send_message(
-                "â æ¾ä¸å°æ¬æ¬¡æ½çè³æã", ephemeral=True
+                "❌ 找不到本次抽獎資料。", ephemeral=True
             )
             return
 
         if lottery[0] != "running":
             await interaction.response.send_message(
-                "ð æ¬æ¬¡æ½çå·²ç¶çµæã", ephemeral=True
+                "🔒 本次抽獎已經結束。", ephemeral=True
             )
             return
 
         await interaction.response.send_message(
-            "â ï¸ ç¢ºå®è¦æåçµææ¬æ¬¡æ½çåï¼\n"
-            "ç¢ºèªå¾æç«å³æ½åºä¸­çèï¼ä¸ç¡æ³æ¢å¾©ã",
+            "⚠️ 確定要提前結束本次抽獎嗎？\n"
+            "確認後會立即抽出中獎者，且無法恢復。",
             view=ConfirmManualLotteryEndView(message_id),
             ephemeral=True,
         )
 
 
 # ==========================
-# â ï¸ ç¢ºèªæåçµææ½ç
+# ⚠️ 確認提前結束抽獎
 # ==========================
 
 class ConfirmManualLotteryEndView(discord.ui.View):
@@ -588,12 +586,12 @@ class ConfirmManualLotteryEndView(discord.ui.View):
         super().__init__(timeout=60)
         self.message_id = str(message_id)
 
-    @discord.ui.button(label="â ç¢ºèªçµæä¸¦éç", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="✅ 確認結束並開獎", style=discord.ButtonStyle.danger)
     async def confirm_end(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         if interaction.user.id not in LOTTERY_MANAGERS:
             await interaction.response.send_message(
-                "â åªææ½çç®¡çå¡å¯ä»¥çµææ½çã", ephemeral=True
+                "❌ 只有抽獎管理員可以結束抽獎。", ephemeral=True
             )
             return
 
@@ -605,25 +603,25 @@ class ConfirmManualLotteryEndView(discord.ui.View):
 
         if not lottery or lottery[0] != "running":
             await interaction.response.edit_message(
-                content="ð æ¬æ¬¡æ½çå·²ç¶çµææä¸å­å¨ã", view=None
+                content="🔒 本次抽獎已經結束或不存在。", view=None
             )
             return
 
         await interaction.response.edit_message(
-            content="â³ æ­£å¨æåçµææ½çä¸¦éçâ¦â¦", view=None
+            content="⏳ 正在提前結束抽獎並開獎……", view=None
         )
 
         await finish_lottery(self.message_id)
 
-    @discord.ui.button(label="â åæ¶", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="❌ 取消", style=discord.ButtonStyle.secondary)
     async def cancel_end(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(
-            content="â å·²åæ¶çµææ½çã", view=None
+            content="✅ 已取消結束抽獎。", view=None
         )
 
 
 # ==========================
-# ð æ½ççåé¸æ
+# 🌙 抽獎獎品選擇
 # ==========================
 
 
@@ -633,11 +631,11 @@ class PrizeSelectView(discord.ui.View):
         super().__init__(timeout=180)
 
     # -------------------------
-    # ð° åªåªå¹£
+    # 💰 努努幣
     # -------------------------
 
     @discord.ui.button(
-        label="ð° åªåªå¹£",
+        label="💰 努努幣",
         style=discord.ButtonStyle.success,
         row=0,
     )
@@ -650,11 +648,11 @@ class PrizeSelectView(discord.ui.View):
         await interaction.response.send_modal(MoneyLotteryModal())
 
     # -------------------------
-    # ð¨ äººè¨­å
+    # 🎨 人設圖
     # -------------------------
 
     @discord.ui.button(
-        label="ð¨ äººè¨­å",
+        label="🎨 人設圖",
         style=discord.ButtonStyle.primary,
         row=0,
     )
@@ -667,11 +665,11 @@ class PrizeSelectView(discord.ui.View):
         await interaction.response.send_modal(ImageLotteryModal())
 
     # -------------------------
-    # ð åç§
+    # 💕 合照
     # -------------------------
 
     @discord.ui.button(
-        label="ð åç§",
+        label="💕 合照",
         style=discord.ButtonStyle.primary,
         row=0,
     )
@@ -684,11 +682,11 @@ class PrizeSelectView(discord.ui.View):
         await interaction.response.send_modal(CoupleLotteryModal())
 
     # -------------------------
-    # ð èªè¨
+    # 📝 自訂
     # -------------------------
 
     @discord.ui.button(
-        label="ð èªè¨",
+        label="📝 自訂",
         style=discord.ButtonStyle.secondary,
         row=0,
     )
@@ -702,41 +700,41 @@ class PrizeSelectView(discord.ui.View):
 
 
 # ==========================
-# ð äººè¨­åæ½ç Modal
+# 🌙 人設圖抽獎 Modal
 # ==========================
 
 
-class ImageLotteryModal(discord.ui.Modal, title="ð¨ äººè¨­åæ½ç"):
+class ImageLotteryModal(discord.ui.Modal, title="🎨 人設圖抽獎"):
 
     winners = discord.ui.TextInput(
-        label="ð¥ ä¸­çäººæ¸",
-        placeholder="ä¾å¦ï¼1",
+        label="👥 中獎人數",
+        placeholder="例如：1",
         required=True,
         max_length=3,
     )
 
     time = discord.ui.TextInput(
-        label="â° æ½çæé",
-        placeholder="ä¾å¦ï¼10",
+        label="⏰ 抽獎時間",
+        placeholder="例如：10",
         required=True,
         max_length=5,
     )
 
     unit = discord.ui.TextInput(
-        label="ð æéå®ä½",
-        placeholder="è«è¼¸å¥ SãMãHãD",
+        label="🕒 時間單位",
+        placeholder="請輸入 S、M、H、D",
         required=True,
         max_length=1,
     )
 
     # ==========================
-    # ð å»ºç«æ½ç
+    # 🌙 建立抽獎
     # ==========================
 
     async def on_submit(self, interaction: discord.Interaction):
 
         # -------------------------
-        # é©è­è³æ
+        # 驗證資料
         # -------------------------
 
         try:
@@ -747,7 +745,7 @@ class ImageLotteryModal(discord.ui.Modal, title="ð¨ äººè¨­åæ
         except ValueError:
 
             await interaction.response.send_message(
-                "â è«è¼¸å¥æ­£ç¢ºçæ¸å­ã",
+                "❌ 請輸入正確的數字。",
                 ephemeral=True,
             )
             return
@@ -759,7 +757,7 @@ class ImageLotteryModal(discord.ui.Modal, title="ð¨ äººè¨­åæ
         if end_time is None:
 
             await interaction.response.send_message(
-                "â æéå®ä½åªè½è¼¸å¥ SãMãHãDã",
+                "❌ 時間單位只能輸入 S、M、H、D。",
                 ephemeral=True,
             )
             return
@@ -767,48 +765,48 @@ class ImageLotteryModal(discord.ui.Modal, title="ð¨ äººè¨­åæ
         timestamp = int(end_time.timestamp())
 
         # -------------------------
-        # å»ºç« Embed
+        # 建立 Embed
         # -------------------------
 
         embed = discord.Embed(
-            title="ð Moon Bot æ½ç",
+            title="🎉 Moon Bot 抽獎",
             color=0xF1C40F,
         )
 
         embed.add_field(
-            name="ð çå",
-            value="ð¨ é¨æ©é¢¨æ ¼äººè¨­å",
+            name="🎁 獎品",
+            value="🎨 隨機風格人設圖",
             inline=False,
         )
 
         embed.add_field(
-            name="ð¥ ä¸­çäººæ¸",
-            value=f"{winners} äºº",
+            name="👥 中獎人數",
+            value=f"{winners} 人",
             inline=True,
         )
 
         embed.add_field(
-            name="ð¤ ä¸»è¾¦äºº",
+            name="👤 主辦人",
             value=interaction.user.mention,
             inline=True,
         )
 
         embed.add_field(
-            name="â° æ½çæªæ­¢",
+            name="⏰ 抽獎截止",
             value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
             inline=False,
         )
 
         embed.add_field(
-            name="ð çæ",
-            value="ð¢ é²è¡ä¸­",
+            name="📌 狀態",
+            value="🟢 進行中",
             inline=False,
         )
 
-        embed.set_footer(text="é»æä¸æ¹æéå³å¯åå æ½ç")
+        embed.set_footer(text="點擊下方按鈕即可參加抽獎")
 
         # -------------------------
-        # ç¼éæ½ç
+        # 發送抽獎
         # -------------------------
 
         message = await interaction.channel.send(
@@ -818,7 +816,7 @@ class ImageLotteryModal(discord.ui.Modal, title="ð¨ äººè¨­åæ
         )
 
         # -------------------------
-        # å¯«å¥è³æåº«
+        # 寫入資料庫
         # -------------------------
 
         c.execute(
@@ -841,7 +839,7 @@ class ImageLotteryModal(discord.ui.Modal, title="ð¨ äººè¨­åæ
                 str(interaction.channel.id),
                 str(interaction.user.id),
                 "image",
-                "é¨æ©é¢¨æ ¼äººè¨­å",
+                "隨機風格人設圖",
                 winners,
                 end_time.isoformat(),
                 "running",
@@ -852,59 +850,59 @@ class ImageLotteryModal(discord.ui.Modal, title="ð¨ äººè¨­åæ
         conn.commit()
 
         # -------------------------
-        # å®æ
+        # 完成
         # -------------------------
 
         await interaction.response.send_message(
-            "â äººè¨­åæ½çå»ºç«æåï¼",
+            "✅ 人設圖抽獎建立成功！",
             ephemeral=True,
         )
 
 
 # ==========================
-# ð åç§æ½ç Modal
+# 🌙 合照抽獎 Modal
 # ==========================
 
 
-class CoupleLotteryModal(discord.ui.Modal, title="ð åç§æ½ç"):
+class CoupleLotteryModal(discord.ui.Modal, title="💕 合照抽獎"):
 
     winners = discord.ui.TextInput(
-        label="ð¥ ä¸­çäººæ¸",
-        placeholder="ä¾å¦ï¼1",
+        label="👥 中獎人數",
+        placeholder="例如：1",
         required=True,
         max_length=3,
     )
 
     time = discord.ui.TextInput(
-        label="â° æ½çæé",
-        placeholder="ä¾å¦ï¼10",
+        label="⏰ 抽獎時間",
+        placeholder="例如：10",
         required=True,
         max_length=5,
     )
 
     unit = discord.ui.TextInput(
-        label="ð æéå®ä½",
-        placeholder="è«è¼¸å¥ SãMãHãD",
+        label="🕒 時間單位",
+        placeholder="請輸入 S、M、H、D",
         required=True,
         max_length=1,
     )
 
     note = discord.ui.TextInput(
-        label="ð åè¨»ï¼é¸å¡«ï¼",
-        placeholder="ä¾å¦ï¼å¿«éæ½çãéå®åªä½åª½åªè§è²ç­...",
+        label="📝 備註（選填）",
+        placeholder="例如：快閃抽獎、限定哪位媽咪角色等...",
         required=False,
         style=discord.TextStyle.paragraph,
         max_length=500,
     )
 
     # ==========================
-    # ð å»ºç«æ½ç
+    # 🌙 建立抽獎
     # ==========================
 
     async def on_submit(self, interaction: discord.Interaction):
 
         # -------------------------
-        # é©è­è³æ
+        # 驗證資料
         # -------------------------
 
         try:
@@ -915,7 +913,7 @@ class CoupleLotteryModal(discord.ui.Modal, title="ð åç§æ½ç�
         except ValueError:
 
             await interaction.response.send_message(
-                "â è«è¼¸å¥æ­£ç¢ºçæ¸å­ã",
+                "❌ 請輸入正確的數字。",
                 ephemeral=True,
             )
             return
@@ -928,7 +926,7 @@ class CoupleLotteryModal(discord.ui.Modal, title="ð åç§æ½ç�
         if end_time is None:
 
             await interaction.response.send_message(
-                "â æéå®ä½åªè½è¼¸å¥ SãMãHãDã",
+                "❌ 時間單位只能輸入 S、M、H、D。",
                 ephemeral=True,
             )
             return
@@ -936,55 +934,55 @@ class CoupleLotteryModal(discord.ui.Modal, title="ð åç§æ½ç�
         timestamp = int(end_time.timestamp())
 
         # -------------------------
-        # å»ºç« Embed
+        # 建立 Embed
         # -------------------------
 
         embed = discord.Embed(
-            title="ð Moon Bot æ½ç",
+            title="🎉 Moon Bot 抽獎",
             color=0xF1C40F,
         )
 
         embed.add_field(
-            name="ð çå",
-            value="ð èåæè§è²åç§",
+            name="🎁 獎品",
+            value="💕 與喜愛角色合照",
             inline=False,
         )
 
         if note:
             embed.add_field(
-                name="ð åè¨»",
+                name="📝 備註",
                 value=note,
                 inline=False,
             )
 
         embed.add_field(
-            name="ð¥ ä¸­çäººæ¸",
-            value=f"{winners} äºº",
+            name="👥 中獎人數",
+            value=f"{winners} 人",
             inline=True,
         )
 
         embed.add_field(
-            name="ð¤ ä¸»è¾¦äºº",
+            name="👤 主辦人",
             value=interaction.user.mention,
             inline=True,
         )
 
         embed.add_field(
-            name="â° æ½çæªæ­¢",
+            name="⏰ 抽獎截止",
             value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
             inline=False,
         )
 
         embed.add_field(
-            name="ð çæ",
-            value="ð¢ é²è¡ä¸­",
+            name="📌 狀態",
+            value="🟢 進行中",
             inline=False,
         )
 
-        embed.set_footer(text="é»æä¸æ¹æéå³å¯åå æ½ç")
+        embed.set_footer(text="點擊下方按鈕即可參加抽獎")
 
         # -------------------------
-        # ç¼éæ½ç
+        # 發送抽獎
         # -------------------------
 
         message = await interaction.channel.send(
@@ -994,7 +992,7 @@ class CoupleLotteryModal(discord.ui.Modal, title="ð åç§æ½ç�
         )
 
         # -------------------------
-        # å¯«å¥è³æåº«
+        # 寫入資料庫
         # -------------------------
 
         c.execute(
@@ -1017,7 +1015,7 @@ class CoupleLotteryModal(discord.ui.Modal, title="ð åç§æ½ç�
                 str(interaction.channel.id),
                 str(interaction.user.id),
                 "couple",
-                "èåæè§è²åç§",
+                "與喜愛角色合照",
                 winners,
                 end_time.isoformat(),
                 "running",
@@ -1028,53 +1026,53 @@ class CoupleLotteryModal(discord.ui.Modal, title="ð åç§æ½ç�
         conn.commit()
 
         # -------------------------
-        # å®æ
+        # 完成
         # -------------------------
 
         await interaction.response.send_message(
-            "â åç§æ½çå»ºç«æåï¼",
+            "✅ 合照抽獎建立成功！",
             ephemeral=True,
         )
 
 
 # ==========================
-# ð èªè¨æ½ç Modal
+# 🌙 自訂抽獎 Modal
 # ==========================
 
 
-class CustomLotteryModal(discord.ui.Modal, title="ð èªè¨æ½ç"):
+class CustomLotteryModal(discord.ui.Modal, title="📝 自訂抽獎"):
 
     prize = discord.ui.TextInput(
-        label="ð çåå§å®¹",
-        placeholder="ä¾å¦ï¼Discord Nitro ä¸åæ",
+        label="🎁 獎品內容",
+        placeholder="例如：Discord Nitro 一個月",
         required=True,
         max_length=100,
     )
 
     winners = discord.ui.TextInput(
-        label="ð¥ ä¸­çäººæ¸",
-        placeholder="ä¾å¦ï¼1",
+        label="👥 中獎人數",
+        placeholder="例如：1",
         required=True,
         max_length=3,
     )
 
     time = discord.ui.TextInput(
-        label="â° æ½çæé",
-        placeholder="ä¾å¦ï¼10",
+        label="⏰ 抽獎時間",
+        placeholder="例如：10",
         required=True,
         max_length=5,
     )
 
     unit = discord.ui.TextInput(
-        label="ð æéå®ä½",
-        placeholder="è«è¼¸å¥ SãMãHãD",
+        label="🕒 時間單位",
+        placeholder="請輸入 S、M、H、D",
         required=True,
         max_length=1,
     )
 
     message = discord.ui.TextInput(
-        label="ð© ä¸­çéç¥ï¼é¸å¡«ï¼",
-        placeholder="éæ®µæå­å°ç§è¨çµ¦ä¸­çè...",
+        label="📩 中獎通知（選填）",
+        placeholder="這段文字將私訊給中獎者...",
         required=False,
         style=discord.TextStyle.paragraph,
         max_length=1000,
@@ -1083,7 +1081,7 @@ class CustomLotteryModal(discord.ui.Modal, title="ð èªè¨æ½ç�
     async def on_submit(self, interaction: discord.Interaction):
 
         # -------------------------
-        # åå¾è¼¸å¥è³æ
+        # 取得輸入資料
         # -------------------------
 
         try:
@@ -1091,7 +1089,7 @@ class CustomLotteryModal(discord.ui.Modal, title="ð èªè¨æ½ç�
             duration = int(self.time.value)
         except ValueError:
             await interaction.response.send_message(
-                "â ä¸­çäººæ¸èæéå¿é æ¯æ¸å­ï¼",
+                "❌ 中獎人數與時間必須是數字！",
                 ephemeral=True,
             )
             return
@@ -1100,7 +1098,7 @@ class CustomLotteryModal(discord.ui.Modal, title="ð èªè¨æ½ç�
         custom_message = self.message.value.strip()
 
         # -------------------------
-        # è¨ç®çµææé
+        # 計算結束時間
         # -------------------------
 
         if unit == "S":
@@ -1113,7 +1111,7 @@ class CustomLotteryModal(discord.ui.Modal, title="ð èªè¨æ½ç�
             end_time = datetime.utcnow() + timedelta(days=duration)
         else:
             await interaction.response.send_message(
-                "â æéå®ä½åªè½è¼¸å¥ SãMãHãDï¼",
+                "❌ 時間單位只能輸入 S、M、H、D！",
                 ephemeral=True,
             )
             return
@@ -1121,48 +1119,48 @@ class CustomLotteryModal(discord.ui.Modal, title="ð èªè¨æ½ç�
         timestamp = int(end_time.timestamp())
 
         # -------------------------
-        # å»ºç« Embed
+        # 建立 Embed
         # -------------------------
 
         embed = discord.Embed(
-            title="ð Moon Bot æ½ç",
+            title="🎉 Moon Bot 抽獎",
             color=0xF1C40F,
         )
 
         embed.add_field(
-            name="ð çå",
+            name="🎁 獎品",
             value=self.prize.value,
             inline=False,
         )
 
         embed.add_field(
-            name="ð¥ ä¸­çäººæ¸",
-            value=f"{winners} äºº",
+            name="👥 中獎人數",
+            value=f"{winners} 人",
             inline=True,
         )
 
         embed.add_field(
-            name="ð¤ ä¸»è¾¦äºº",
+            name="👤 主辦人",
             value=interaction.user.mention,
             inline=True,
         )
 
         embed.add_field(
-            name="â° æ½çæªæ­¢",
+            name="⏰ 抽獎截止",
             value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
             inline=False,
         )
 
         embed.add_field(
-            name="ð çæ",
-            value="ð¢ é²è¡ä¸­",
+            name="📌 狀態",
+            value="🟢 進行中",
             inline=False,
         )
 
-        embed.set_footer(text="é»æä¸æ¹æéå³å¯åå æ½ç")
+        embed.set_footer(text="點擊下方按鈕即可參加抽獎")
 
         # -------------------------
-        # ç¼éæ½ç
+        # 發送抽獎
         # -------------------------
 
         lottery_message = await interaction.channel.send(
@@ -1172,7 +1170,7 @@ class CustomLotteryModal(discord.ui.Modal, title="ð èªè¨æ½ç�
         )
 
         # -------------------------
-        # å¯«å¥è³æåº«
+        # 寫入資料庫
         # -------------------------
 
         c.execute(
@@ -1208,11 +1206,11 @@ class CustomLotteryModal(discord.ui.Modal, title="ð èªè¨æ½ç�
         conn.commit()
 
         # -------------------------
-        # å®æ
+        # 完成
         # -------------------------
 
         await interaction.response.send_message(
-            "â èªè¨æ½çå»ºç«æåï¼",
+            "✅ 自訂抽獎建立成功！",
             ephemeral=True,
         )
 
@@ -1252,46 +1250,46 @@ CREATE TABLE IF NOT EXISTS settings (
 """)
 
 husband_list = [
-    "é»æ",
-    "æº«å·ç´",
-    "è«¾è¶Â·å¡ç±³ç¾",
-    "çå®",
-    "ç©æ¢èµ«",
-    "ç©ç¦¹æ",
-    "éæ²",
-    "è·¯è¥¿æ©",
-    "è³½ææ¯",
-    "ç¶­åæ",
-    "å¥§ç¾ç»",
-    "ä¼èäºæ¯",
-    "ç©å®æ",
-    "ç©å®è¾°",
-    "å¸å¾¡è®",
-    "æçé",
-    "å¤é·¹ç¨",
-    "æåéç",
-    "é»ç¨é·¹å¤",
-    "å¾¡å½±è®å¸",
-    "è¥ç¡",
-    "é»æ²æ",
-    "ææ´",
-    "ææ¥",
-    "é¾ç·¹æ­",
-    "ä½ç¡¯å¸",
-    "ç©å½¥ç©",
-    "ç©è©ç¾",
-    "æ¢å±",
-    "æå­æ´",
-    "é¢å­è¨",
-    "å½æ·æ",
-    "ç¥å®",
-    "ç¥ç¾¯",
-    "æ¨å¤®",
-    "èæ¸ç¦¾",
-    "å¸­éå®¥",
-    "éå­æ°",
-    "èµ«é",
-    "çé¸",
+    "黎晝",
+    "溫執紃",
+    "諾耶·卡米爾",
+    "瑟安",
+    "穆梓赫",
+    "穆禹昂",
+    "韓沉",
+    "路西恩",
+    "賽拉斯",
+    "維克托",
+    "奧爾登",
+    "伊萊亞斯",
+    "穆宇曄",
+    "穆宇辰",
+    "司御蓮",
+    "月真靜",
+    "夜鷹瀨",
+    "月城靜真",
+    "黑瀨鷹夜",
+    "御影蓮司",
+    "若無",
+    "黎沐昊",
+    "杜洛",
+    "杜楓",
+    "鍾緹歐",
+    "何硯希",
+    "穆彥珩",
+    "穆薩爾",
+    "梁凱",
+    "戚孟洋",
+    "邢子言",
+    "彌愷揚",
+    "祁安",
+    "祁羯",
+    "樂央",
+    "藍書禾",
+    "席靖宥",
+    "閔孝杰",
+    "赫野",
+    "玄隸",
 ]
 
 for husband in husband_list:
@@ -1307,7 +1305,7 @@ for husband in husband_list:
 conn.commit()
 
 # ===============================
-# ð Moon å¥ç¾¤å¯©æ ¸ç³»çµ±
+# 🌙 Moon 入群審核系統
 # ===============================
 
 
@@ -1316,7 +1314,7 @@ class ReviewPanelView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="ð éå§ç³è«", style=discord.ButtonStyle.green, custom_id="review_start"
+        label="📝 開始申請", style=discord.ButtonStyle.green, custom_id="review_start"
     )
     async def review_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -1326,7 +1324,7 @@ class ReviewPanelView(discord.ui.View):
 
 
 # ==========================
-# ð å»ºç«å¥ç¾¤å¯©æ ¸ Ticket
+# 🌙 建立入群審核 Ticket
 # ==========================
 
 
@@ -1335,15 +1333,15 @@ async def create_review_ticket(interaction: discord.Interaction):
     guild = interaction.guild
     member = interaction.user
 
-    # åå¾åé¡
+    # 取得分類
     category = guild.get_channel(REVIEW_CATEGORY)
 
     if category is None:
-        await interaction.response.send_message("â æ¾ä¸å°å¯©æ ¸åé¡ã", ephemeral=True)
+        await interaction.response.send_message("❌ 找不到審核分類。", ephemeral=True)
         return
 
     # ==========================
-    # é²æ­¢éè¤å»ºç« Ticket
+    # 防止重複建立 Ticket
     # ==========================
 
     for channel in category.text_channels:
@@ -1354,12 +1352,12 @@ async def create_review_ticket(interaction: discord.Interaction):
         if f"Applicant={member.id}" in channel.topic:
 
             await interaction.response.send_message(
-                "â ä½ ç®åå·²æä¸å¼µå¯©æ ¸ Ticketï¼è«ç­å¾ç®¡çå¡èçã", ephemeral=True
+                "❌ 你目前已有一張審核 Ticket，請等待管理員處理。", ephemeral=True
             )
             return
 
     # ==========================
-    # å»ºç«æ¬é
+    # 建立權限
     # ==========================
 
     overwrites = {
@@ -1381,7 +1379,7 @@ async def create_review_ticket(interaction: discord.Interaction):
     }
 
     # ==========================
-    # å¯©æ ¸çµ
+    # 審核組
     # ==========================
 
     review_role = guild.get_role(REVIEW_ROLE)
@@ -1396,24 +1394,24 @@ async def create_review_ticket(interaction: discord.Interaction):
         )
 
     # ==========================
-    # å»ºç« Ticket
+    # 建立 Ticket
     # ==========================
 
     ticket = await guild.create_text_channel(
-        name=f"ðï½å¯©æ ¸-{member.display_name}",
+        name=f"📋｜審核-{member.display_name}",
         category=category,
         overwrites=overwrites,
         topic=(f"Applicant={member.id}\n" f"Status=Pending"),
     )
 
     # -------------------------
-    # ç¼éå¯©æ ¸è¨æ¯
+    # 發送審核訊息
     # -------------------------
 
     message = await send_review_message(ticket, member)
 
     # -------------------------
-    # æ´æ° Ticket Topic
+    # 更新 Ticket Topic
     # -------------------------
 
     await ticket.edit(
@@ -1421,16 +1419,16 @@ async def create_review_ticket(interaction: discord.Interaction):
     )
 
     # -------------------------
-    # åè¦ä½¿ç¨è
+    # 回覆使用者
     # -------------------------
 
     await interaction.response.send_message(
-        f"â å·²æåå»ºç«å¯©æ ¸ Ticketï¼{ticket.mention}", ephemeral=True
+        f"✅ 已成功建立審核 Ticket：{ticket.mention}", ephemeral=True
     )
 
 
 # ==========================
-# ð åå¾ Ticket ç³è«äºº
+# 🌙 取得 Ticket 申請人
 # ==========================
 
 
@@ -1453,7 +1451,7 @@ async def get_ticket_member(channel: discord.TextChannel):
 
 
 # ==========================
-# ð åå¾å¯©æ ¸ Embed è¨æ¯
+# 🌙 取得審核 Embed 訊息
 # ==========================
 
 
@@ -1482,7 +1480,7 @@ async def get_review_message(channel: discord.TextChannel):
 
 
 # ==========================
-# ð æ´æ°å¯©æ ¸ Embed
+# 🌙 更新審核 Embed
 # ==========================
 
 
@@ -1499,36 +1497,36 @@ async def update_review_embed(
 
     timestamp = int(datetime.now().timestamp())
 
-    # ð¤ ç³è«äººï¼ä¿æä¸è®ï¼
+    # 👤 申請人（保持不變）
     applicant = embed.fields[0].value
 
-    # ð å¯©æ ¸çæ
-    embed.set_field_at(1, name="ð å¯©æ ¸çæ", value=status, inline=True)
+    # 📌 審核狀態
+    embed.set_field_at(1, name="📌 審核狀態", value=status, inline=True)
 
-    # ð® å¯©æ ¸äºº
-    embed.set_field_at(2, name="ð® å¯©æ ¸äºº", value=reviewer.mention, inline=True)
+    # 👮 審核人
+    embed.set_field_at(2, name="👮 審核人", value=reviewer.mention, inline=True)
 
-    # ð å»ºç«æéï¼ä¿æåæ¬ï¼
+    # 🕒 建立時間（保持原本）
     created_time = embed.fields[3].value
 
-    embed.set_field_at(3, name="ð å»ºç«æé", value=created_time, inline=False)
+    embed.set_field_at(3, name="🕒 建立時間", value=created_time, inline=False)
 
-    # â ééæé
+    # ✅ 通過時間
     if len(embed.fields) == 4:
 
-        embed.add_field(name="â ééæé", value=f"<t:{timestamp}:F>", inline=False)
+        embed.add_field(name="✅ 通過時間", value=f"<t:{timestamp}:F>", inline=False)
 
     else:
 
         embed.set_field_at(
-            4, name="â ééæé", value=f"<t:{timestamp}:F>", inline=False
+            4, name="✅ 通過時間", value=f"<t:{timestamp}:F>", inline=False
         )
 
     await message.edit(embed=embed, view=ReviewManageView(disabled=True))
 
 
 # ==========================
-# ð ç¼éå¯©æ ¸è¨æ¯
+# 🌙 發送審核訊息
 # ==========================
 
 
@@ -1537,7 +1535,7 @@ async def send_review_message(channel: discord.TextChannel, member: discord.Memb
     review_role = channel.guild.get_role(REVIEW_ROLE)
 
     # --------------------------
-    # éç¥ç³è«èèå¯©æ ¸çµ
+    # 通知申請者與審核組
     # --------------------------
 
     if review_role:
@@ -1548,30 +1546,30 @@ async def send_review_message(channel: discord.TextChannel, member: discord.Memb
     await mention_message.delete(delay=3)
 
     # --------------------------
-    # å¥ç¾¤å¯©æ ¸ Embed
+    # 入群審核 Embed
     # --------------------------
 
     timestamp = int(datetime.now().timestamp())
 
-    review_embed = discord.Embed(title="ð æ¥µææèµï½è³ææäº¤", color=0xC77DFF)
+    review_embed = discord.Embed(title="📂 極曜月葵｜資料提交", color=0xC77DFF)
 
-    review_embed.add_field(name="ð¤ ç³è«äºº", value=member.mention, inline=False)
+    review_embed.add_field(name="👤 申請人", value=member.mention, inline=False)
 
-    review_embed.add_field(name="ð å¯©æ ¸çæ", value="ð¡ ç­å¾å¯©æ ¸", inline=True)
+    review_embed.add_field(name="📌 審核狀態", value="🟡 等待審核", inline=True)
 
-    review_embed.add_field(name="ð® å¯©æ ¸äºº", value="ç­å¾å¯©æ ¸", inline=True)
+    review_embed.add_field(name="👮 審核人", value="等待審核", inline=True)
 
-    review_embed.add_field(name="ð å»ºç«æé", value=f"<t:{timestamp}:F>", inline=False)
+    review_embed.add_field(name="🕒 建立時間", value=f"<t:{timestamp}:F>", inline=False)
 
     review_embed.description = (
-        "ââââââââââââââââââââ\n\n"
-        "ð¤ **è«å°ä»¥ä¸è³æä¸å³è³æ­¤é »é**\n\n"
-        "ð¸ åä½åª½åªå¶ä¸­ä¸ä½è§è²èå¤©æªå\n\n"
-        "ð¸ C å° **15 ç­** æ T å° **2 ç­** è§è²èå¤©æªå\n\n"
-        "ð¸ åä½åª½åªIGçãå·²è¿½è¹¤æªåãï¼è«æ³¨æåä½é½è¦è¿½è¹¤å¦ï¼\n\n"
-        "ââââââââââââââââââââ\n\n"
-        "ð ä¸å³å®æå¾ï¼\n"
-        "è«èå¿ç­å¾ç®¡çå¡å¯©æ ¸å³å¯ã"
+        "════════════════════\n\n"
+        "📤 **請將以下資料上傳至此頻道**\n\n"
+        "📸 四位媽咪其中一位角色聊天截圖\n\n"
+        "📸 C 台 **15 等** 或 T 台 **2 等** 角色聊天截圖\n\n"
+        "📸 四位媽咪IG的「已追蹤截圖」，請注意四位都要追蹤哦！\n\n"
+        "════════════════════\n\n"
+        "📌 上傳完成後，\n"
+        "請耐心等待管理員審核即可。"
     )
     message = await channel.send(embed=review_embed, view=ReviewManageView())
 
@@ -1579,7 +1577,7 @@ async def send_review_message(channel: discord.TextChannel, member: discord.Memb
 
 
 # ==========================
-# ð å¯©æ ¸ç®¡çæé
+# 🌙 審核管理按鈕
 # ==========================
 
 
@@ -1597,30 +1595,30 @@ class ReviewManageView(discord.ui.View):
                     item.disabled = True
 
     @discord.ui.button(
-        label="ð¢ éé", style=discord.ButtonStyle.success, custom_id="review_approve"
+        label="🟢 通過", style=discord.ButtonStyle.success, custom_id="review_approve"
     )
     async def approve(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
 
         # -------------------------
-        # æ¬éæª¢æ¥
+        # 權限檢查
         # -------------------------
 
         if interaction.user.id not in BOT_ADMINS:
             await interaction.response.send_message(
-                "â åªæç®¡çå¡å¯ä»¥ä½¿ç¨æ­¤æéã", ephemeral=True
+                "❌ 只有管理員可以使用此按鈕。", ephemeral=True
             )
             return
 
         member = await get_ticket_member(interaction.channel)
 
         if member is None:
-            await interaction.response.send_message("â æ¾ä¸å°ç³è«èã", ephemeral=True)
+            await interaction.response.send_message("❌ 找不到申請者。", ephemeral=True)
             return
 
         # -------------------------
-        # èº«åçµ
+        # 身分組
         # -------------------------
 
         pending_role = interaction.guild.get_role(PENDING_ROLE)
@@ -1630,23 +1628,23 @@ class ReviewManageView(discord.ui.View):
         try:
 
             if pending_role:
-                await member.remove_roles(pending_role, reason="å¥ç¾¤å¯©æ ¸éé")
+                await member.remove_roles(pending_role, reason="入群審核通過")
 
             roles_to_add = [role for role in member_roles if role is not None]
 
             if roles_to_add:
-                await member.add_roles(*roles_to_add, reason="å¥ç¾¤å¯©æ ¸éé")
+                await member.add_roles(*roles_to_add, reason="入群審核通過")
 
         except discord.Forbidden:
 
             await interaction.response.send_message(
-                "â Bot æ²ææ¬éä¿®æ¹èº«åçµã",
+                "❌ Bot 沒有權限修改身分組。",
                 ephemeral=True,
             )
             return
 
         # -------------------------
-        # æ´æ° Topic
+        # 更新 Topic
         # -------------------------
 
         if interaction.channel.topic:
@@ -1657,19 +1655,19 @@ class ReviewManageView(discord.ui.View):
             )
 
         # -------------------------
-        # æ´æ°å¯©æ ¸ Embed
+        # 更新審核 Embed
         # -------------------------
 
-        await update_review_embed(interaction.channel, interaction.user, "ð¢ å·²éé")
+        await update_review_embed(interaction.channel, interaction.user, "🟢 已通過")
 
         # -------------------------
-        # å®æ
+        # 完成
         # -------------------------
 
         await interaction.response.defer()
 
     @discord.ui.button(
-        label="â« éé", style=discord.ButtonStyle.danger, custom_id="review_close"
+        label="⚫ 關閉", style=discord.ButtonStyle.danger, custom_id="review_close"
     )
     async def close_ticket(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -1678,17 +1676,17 @@ class ReviewManageView(discord.ui.View):
         if interaction.user.id not in BOT_ADMINS:
 
             await interaction.response.send_message(
-                "â åªæç®¡çå¡å¯ä»¥ä½¿ç¨æ­¤æéã", ephemeral=True
+                "❌ 只有管理員可以使用此按鈕。", ephemeral=True
             )
             return
 
         await interaction.response.send_message(
-            "â ï¸ ç¢ºå®è¦éééå¼µ Ticket åï¼", view=CloseTicketView(), ephemeral=True
+            "⚠️ 確定要關閉這張 Ticket 嗎？", view=CloseTicketView(), ephemeral=True
         )
 
 
 # ==========================
-# ð éé Ticket ç¢ºèª
+# 🌙 關閉 Ticket 確認
 # ==========================
 
 
@@ -1696,7 +1694,7 @@ class CloseTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=60)
 
-    @discord.ui.button(label="â ç¢ºèªéé", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="✅ 確認關閉", style=discord.ButtonStyle.danger)
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -1704,134 +1702,134 @@ class CloseTicketView(discord.ui.View):
         if interaction.user.id not in BOT_ADMINS:
 
             await interaction.response.send_message(
-                "â åªæç®¡çå¡å¯ä»¥éé Ticketã", ephemeral=True
+                "❌ 只有管理員可以關閉 Ticket。", ephemeral=True
             )
             return
 
         await interaction.response.send_message(
-            "â« Ticket å°æ¼ **5 ç§å¾** ééã", ephemeral=True
+            "⚫ Ticket 將於 **5 秒後** 關閉。", ephemeral=True
         )
 
         await asyncio.sleep(5)
 
-        await interaction.channel.delete(reason=f"{interaction.user} ééå¥ç¾¤å¯©æ ¸")
+        await interaction.channel.delete(reason=f"{interaction.user} 關閉入群審核")
 
-    @discord.ui.button(label="åæ¶", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="取消", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-        await interaction.response.edit_message(content="â å·²åæ¶ééã", view=None)
+        await interaction.response.edit_message(content="✅ 已取消關閉。", view=None)
 
 
-# ð åå
+# 🚀 啟動
 
 @bot.event
 async def on_ready():
 
-    print(f"å·²ç»å¥ï¼{bot.user}")
+    print(f"已登入：{bot.user}")
 
     # -------------------------
-    # æ°¸ä¹ Viewï¼Persistent Viewï¼
+    # 永久 View（Persistent View）
     # -------------------------
 
     bot.add_view(ReviewPanelView())
     bot.add_view(ReviewManageView())
     bot.add_view(LotteryView())
 
-    # ð ä¸å¤éå®ç²ç
+    # 🌙 七夕限定盲盒
     setup_limited_lottery(bot)
 
-    # ð åª½åªå°å±¬èº«åçµ
+    # 💌 媽咪專屬身分組
     setup_mommy_roles(bot)
 
-    # ð è§è²èè©¦ç³»çµ±
+    # 📝 角色考試系統
     setup_character_exam(bot)
     
-    # ð Moon Life
+    # 🌙 Moon Life
     setup_moon_life(bot, add_money=add_money)
 
-    # ð§ª æå°±ç²ç Discord æ¸¬è©¦ç³»çµ±
+    # 🧪 成就盲盒 Discord 測試系統
     await setup_achievement_box_test(bot)
     
-    # ð è§è²èè©¦ç³»çµ±
+    # 🎓 角色考試系統
     setup_character_test(bot)
 
     try:
         synced = await bot.tree.sync()
-        print(f"â å·²åæ­¥ {len(synced)} å Slash Commands")
+        print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
     except Exception as e:
-        print(f"â æä»¤åæ­¥å¤±æï¼{e}")
+        print(f"❌ 指令同步失敗：{e}")
 
-    # ð è§è²çæ¥ç³»çµ±
+    # 🎂 角色生日系統
     await setup_character_birthday(bot)
 
     try:
         synced = await bot.tree.sync()
-        print(f"â å·²åæ­¥ {len(synced)} å Slash Commands")
+        print(f"✅ 已同步 {len(synced)} 個 Slash Commands")
     except Exception as e:
-        print(f"â æä»¤åæ­¥å¤±æï¼{e}")
+        print(f"❌ 指令同步失敗：{e}")
 
-    # ð çæ¥ç³»çµ±
+    # 🎂 生日系統
     if not birthday_check.is_running():
         birthday_check.start()
 
-    # ð æ¯æ¥ç°½å°æé
+    # 🌙 每日簽到提醒
     if not checkin_reminder.is_running():
         checkin_reminder.start()
 
-    # ð æ½çç³»çµ±
+    # 🎁 抽獎系統
     if not lottery_checker.is_running():
         lottery_checker.start()
 
-    # ðï¸ äººè¨­åå¬åç³»çµ±
+    # 🎞️ 人設圖公告系統
     if not photo_event_check.is_running():
         photo_event_check.start()
-        print("â photo_event_check å·²åå")
+        print("✅ photo_event_check 已啟動")
         
-@bot.tree.command(name="å¯©æ ¸é¢æ¿", description="ç¼éå¥ç¾¤å¯©æ ¸é¢æ¿")
+@bot.tree.command(name="審核面板", description="發送入群審核面板")
 async def review_panel(interaction: discord.Interaction):
 
-    # ç®¡çå¡éå¶
+    # 管理員限制
     if interaction.user.id not in BOT_ADMINS:
 
         await interaction.response.send_message(
-            "â åªæç®¡çå¡å¯ä»¥ä½¿ç¨æ­¤æä»¤ã",
+            "❌ 只有管理員可以使用此指令。",
             ephemeral=True,
         )
         return
     embed = discord.Embed(
-        title="ð æ¥µææèµï½æ°æå¡å¯©æ ¸",
+        title="🌙 極曜月葵｜新成員審核",
         description=(
-            "æ­¡è¿å å¥ **æ¥µææèµ Discord**ï¼\n\n"
-            "çºäºç¶­è­·ç¤¾ç¾¤åè³ªï¼è«åç¢ºèªç¬¦åä»¥ä¸æ¢ä»¶å¾ï¼"
-            "åé»æä¸æ¹æééå§ç³è«ã\n\n"
-            "ââââââââââââââââââââ\n\n"
-            "ð¸ **è«æä¾ä»¥ä¸åä½åª½åªå¶ä¸­ä¸ä½è§è²çèå¤©æªåï¼**\n\n"
-            "ð¸ æå¼¦åª½åª\n"
-            "ð¸ éé¦¨åª½åª\n"
-            "ð¸ å°è²åª½åª\n"
-            "ð¸ è¥æ¦çåª½åª\n\n"
-            "ââââââââââââââââââââ\n\n"
-            "ð® **è§è²ç­ç´éæ±**\n\n"
-            "â C å°è§è²éé **15 ç­**\n"
-            "â T å°è§è²éé **2 ç­**\n\n"
-            "ð **ç¬¦åå¶ä¸­ä¸é å³å¯ï¼**\n"
-            "è«æä¾ç¬¦åæ¢ä»¶è§è²çèå¤©æªåã\n\n"
-            "ââââââââââââââââââââ\n\n"
-            "ð± **è¿½è¹¤åª½åªåç Instagramï¼åä½é½è¦è¿½è¹¤å¦ï¼è«æä¾å·²è¿½è¹¤çæªå**\n\n"
+            "歡迎加入 **極曜月葵 Discord**！\n\n"
+            "為了維護社群品質，請先確認符合以下條件後，"
+            "再點擊下方按鈕開始申請。\n\n"
+            "════════════════════\n\n"
+            "📸 **請提供以下四位媽咪其中一位角色的聊天截圖：**\n\n"
+            "🌸 星弦媽咪\n"
+            "🌸 韓馨媽咪\n"
+            "🌸 小貓媽咪\n"
+            "🌸 若曦璃媽咪\n\n"
+            "════════════════════\n\n"
+            "🎮 **角色等級需求**\n\n"
+            "✅ C 台角色需達 **15 等**\n"
+            "✅ T 台角色需達 **2 等**\n\n"
+            "📌 **符合其中一項即可，**\n"
+            "請提供符合條件角色的聊天截圖。\n\n"
+            "════════════════════\n\n"
+            "📱 **追蹤媽咪們的 Instagram（四位都要追蹤哦）請提供已追蹤的截圖**\n\n"
             "<a:emoji_16:1506410360335372299> "
-            "[éé¦¨åª½åªç ðð¾](https://www.instagram.com/hanxin_0410_?igsh=czBnczRwbXdnNmht&utm_source=qr)\n\n"
+            "[韓馨媽咪的 𝕀𝔾](https://www.instagram.com/hanxin_0410_?igsh=czBnczRwbXdnNmht&utm_source=qr)\n\n"
             "<a:emoji_16:1506410360335372299> "
-            "[æå¼¦åª½åªç ðð¾](https://www.instagram.com/xingxian1226?igsh=bTV5NTUzZ3Q0bHFr&utm_source=qr)\n\n"
+            "[星弦媽咪的 𝕀𝔾](https://www.instagram.com/xingxian1226?igsh=bTV5NTUzZ3Q0bHFr&utm_source=qr)\n\n"
             "<a:emoji_16:1506410360335372299> "
-            "[å°å°è²åª½åªç ðð¾](https://www.instagram.com/ha.na_999?igsh=bDBvc24zbW82dWF1&utm_source=qr)\n\n"
+            "[小小貓媽咪的 𝕀𝔾](https://www.instagram.com/ha.na_999?igsh=bDBvc24zbW82dWF1&utm_source=qr)\n\n"
             "<a:emoji_16:1506410360335372299> "
-            "[è¥æ¦çåª½åªç ðð¾](https://www.instagram.com/cixli042?igsh=MTkweDQ5cTgxMWg2MQ%3D%3D&utm_source=qr)\n\n"
-            "ââââââââââââââââââââ\n\n"
-            "â ï¸ **çºç¶­è­·å¯©æ ¸å¬å¹³æ§**\n\n"
-            "è«å¿æä¾ä¸å¯¦è³è¨æä½¿ç¨ä»äººæªåï¼\n"
-            "ç¶æ¥è­å±¬å¯¦å°åæ¶å¯©æ ¸è³æ ¼ã\n\n"
-            "å¯©æ ¸ééå¾ï¼\n"
-            "å°ç±ç®¡çå¡åå©ä¿®æ¹æ­£å¼èº«åçµã"
+            "[若曦璃媽咪的 𝕀𝔾](https://www.instagram.com/cixli042?igsh=MTkweDQ5cTgxMWg2MQ%3D%3D&utm_source=qr)\n\n"
+            "════════════════════\n\n"
+            "⚠️ **為維護審核公平性**\n\n"
+            "請勿提供不實資訊或使用他人截圖，\n"
+            "經查證屬實將取消審核資格。\n\n"
+            "審核通過後，\n"
+            "將由管理員協助修改正式身分組。"
         ),
         color=0xC77DFF,
     )
@@ -1844,23 +1842,23 @@ async def review_panel(interaction: discord.Interaction):
         )
     )
 
-    embed.set_footer(text="Moon Bot v2ï½å¥ç¾¤å¯©æ ¸ç³»çµ±")
+    embed.set_footer(text="Moon Bot v2｜入群審核系統")
 
     await interaction.channel.send(embed=embed, view=ReviewPanelView())
 
     await interaction.response.send_message(
-        "â å·²æåç¼éå¥ç¾¤å¯©æ ¸é¢æ¿ï¼", ephemeral=True
+        "✅ 已成功發送入群審核面板！", ephemeral=True
     )
 
 
-# ð° ç°½å°
-@bot.tree.command(name="ç°½å°")
+# 🐰 簽到
+@bot.tree.command(name="簽到")
 async def checkin(interaction: discord.Interaction):
 
-    # ð éå¶é »é
+    # 🔒 限制頻道
     if interaction.channel.id != 1516120502127694027:
         await interaction.response.send_message(
-            "â è«å°æå®ç°½å°é »éä½¿ç¨æ­¤æä»¤", ephemeral=True
+            "❌ 請到指定簽到頻道使用此指令", ephemeral=True
         )
         return
 
@@ -1876,7 +1874,7 @@ async def checkin(interaction: discord.Interaction):
     )
     data = c.fetchone()
 
-    # â ä»æ¥å·²ç°½å°
+    # ❗ 今日已簽到
     if data and data[0] == str(today):
 
         tomorrow = datetime.combine(today + timedelta(days=1), datetime.min.time())
@@ -1889,24 +1887,24 @@ async def checkin(interaction: discord.Interaction):
         minutes = (total_seconds % 3600) // 60
 
         embed = discord.Embed(
-            title="ð ð´ððð ðªðððððð", color=discord.Color.from_rgb(186, 85, 211)
+            title="🌙 𝑴𝒐𝒐𝒏 𝑪𝒉𝒆𝒄𝒌𝒊𝒏", color=discord.Color.from_rgb(186, 85, 211)
         )
 
         embed.description = (
-            "â³ **ä»æ¥å·²å®æç°½å°**\n\n"
-            "ââââââââââââââââââââââ\n\n"
-            "ð æç¥æ­£å¨ç­å¾ä¸ä¸æ¬¡ç¸é\n\n"
-            f"â° **è·é¢ä¸æ¬¡ç°½å°**\n"
-            f"```{hours} å°æ {minutes} åé```\n"
-            "ââââââââââââââââââââââ"
+            "⏳ **今日已完成簽到**\n\n"
+            "══════════════════════\n\n"
+            "🌙 月神正在等待下一次相遇\n\n"
+            f"⏰ **距離下次簽到**\n"
+            f"```{hours} 小時 {minutes} 分鐘```\n"
+            "══════════════════════"
         )
 
-        embed.set_footer(text="â¦ æå¤©åä¾æ¥åæç¥çç¥ç¦å§ â¦")
+        embed.set_footer(text="✦ 明天再來接受月神的祝福吧 ✦")
 
         await interaction.followup.send(embed=embed)
         return
 
-    # ð¸ ç¯æ¥æ´»å
+    # 🌸 節日活動
     today_str = str(today)
     event = CHECKIN_EVENTS.get(today_str)
 
@@ -1980,24 +1978,24 @@ async def checkin(interaction: discord.Interaction):
 
     conn.commit()
 
-    # ð Moon Checkin UI
+    # 🌙 Moon Checkin UI
     embed = discord.Embed(
-        title="ð ð´ððð ðªðððððð",
-        description=("â¨ **ææçç¥ç¦åæ¬¡éè¨**\n" "æ­¡è¿åæ¬¡è¸å¥ **ææä¹å¢**ã"),
+        title="🌙 𝑴𝒐𝒐𝒏 𝑪𝒉𝒆𝒄𝒌𝒊𝒏",
+        description=("✨ **星月的祝福再次降臨**\n" "歡迎再次踏入 **星月之境**。"),
         color=discord.Color.from_rgb(186, 85, 211),
     )
 
-    # ð ä»æ¥çåµ
+    # 🎁 今日獎勵
     if rarity == "event":
 
         theme = EVENT_THEMES[event["event"]]
 
         reward_box = (
-            f"{theme['emoji']}ââââââââââââââ{theme['emoji']}\n\n"
+            f"{theme['emoji']}══════════════{theme['emoji']}\n\n"
             f"## {theme['name']}\n\n"
             f"{blessing}\n\n"
             f" {NUNU_EMOJI} +{reward:,}\n\n"
-            f"{theme['emoji']}ââââââââââââââ{theme['emoji']}"
+            f"{theme['emoji']}══════════════{theme['emoji']}"
         )
 
         footer_text = theme["footer"]
@@ -2007,81 +2005,81 @@ async def checkin(interaction: discord.Interaction):
     elif rarity == "myth":
 
         reward_box = (
-            "ððââââââââââââââðð\n\n"
+            "👑🌙══════════════🌙👑\n\n"
             f"{blessing}\n\n"
-            "ð **æç¥éè¨ï¼**\n\n"
+            "🌙 **月神降臨！**\n\n"
             f"{NUNU_EMOJI} +{reward:,}\n\n"
-            "ððââââââââââââââðð"
+            "👑🌙══════════════🌙👑"
         )
 
-        footer_text = "â¦ æç¥è¦ªèªè³äºäºä½ ç¥ç¦ â¦"
+        footer_text = "✦ 月神親自賜予了你祝福 ✦"
 
     elif rarity == "epic":
 
         reward_box = (
-            "â¨ðââââââââââââââðâ¨\n\n"
+            "✨🌙══════════════🌙✨\n\n"
             f"{blessing}\n\n"
-            "â¨ **ç¨æçåµï¼**\n\n"
+            "✨ **稀有獎勵！**\n\n"
             f"{NUNU_EMOJI} +{reward:,}\n\n"
-            "â¨ðââââââââââââââðâ¨"
+            "✨🌙══════════════🌙✨"
         )
 
-        footer_text = "â¦ æèæå±åçºä½ éä¸ç¥ç¦ â¦"
+        footer_text = "✦ 星與月共同為你送上祝福 ✦"
 
     elif rarity == "rare":
 
         reward_box = (
-            "ðâ¨âââââââââââââââ¨ð\n\n"
+            "🌟✨══════════════✨🌟\n\n"
             f"{blessing}\n\n"
-            "ð **å¹¸ééè¨ï¼**\n\n"
+            "🍀 **幸運降臨！**\n\n"
             f"{NUNU_EMOJI} +{reward:,}\n\n"
-            "ðâ¨âââââââââââââââ¨ð"
+            "🌟✨══════════════✨🌟"
         )
 
-        footer_text = "â¦ ä»æçæç©ºæ ¼å¤éè â¦"
+        footer_text = "✦ 今晚的星空格外閃耀 ✦"
 
     else:
 
         reward_box = (
-            "â¨âââââââââââââââ¨\n\n"
+            "✨══════════════✨\n\n"
             f"{blessing}\n\n"
             f"{NUNU_EMOJI} +{reward:,}\n\n"
-            "â¨âââââââââââââââ¨"
+            "✨══════════════✨"
         )
 
-        footer_text = "â¦ é¡æææ°¸é ç§èèä½  â¦"
+        footer_text = "✦ 願星月永遠照耀著你 ✦"
 
-    embed.add_field(name="ð ä»æ¥çåµ", value=reward_box, inline=False)
+    embed.add_field(name="🎁 今日獎勵", value=reward_box, inline=False)
 
-    embed.add_field(name="ð¥ é£çºç°½å°", value=f"```{streak} å¤©```", inline=True)
+    embed.add_field(name="🔥 連續簽到", value=f"```{streak} 天```", inline=True)
 
-    embed.add_field(name="ð ç´¯ç©ç°½å°", value=f"```{total} å¤©```", inline=True)
+    embed.add_field(name="📅 累積簽到", value=f"```{total} 天```", inline=True)
 
     embed.set_footer(text=footer_text)
 
     await interaction.followup.send(embed=embed)
 
 
-# ð° é¢å
-@bot.tree.command(name="é¢å")
+# 💰 錢包
+@bot.tree.command(name="錢包")
 async def wallet(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != SHOP_CHANNEL:
 
         embed = discord.Embed(
-            title="ð ææåæ",
-            description=("â¨ åæååéå®\n\n" f"è«åå¾ <#{SHOP_CHANNEL}> ä½¿ç¨æ­¤æä»¤"),
+            title="🛒 星月商會",
+            description=("✨ 商會區域限定\n\n" f"請前往 <#{SHOP_CHANNEL}> 使用此指令"),
             color=discord.Color.gold(),
         )
 
         embed.add_field(
-            name="ð¦ åæåè½", value="ååºï½è³¼è²·ï½èåï½é¢å", inline=False
+            name="📦 商會功能", value="商店｜購買｜背包｜錢包", inline=False
         )
 
-        embed.set_footer(text="æ¥µææèµ â¦ ææåæ")
+        embed.set_footer(text="極曜月葵 ✦ 星月商會")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
@@ -2098,45 +2096,45 @@ async def wallet(interaction: discord.Interaction):
         money, total, streak = 0, 0, 0
 
     embed = discord.Embed(
-        title="ð ð³ððð ð¾ððððð",
-        description="â¨ ææéè¡å¸³æ¶è³è¨",
+        title="🌙 𝑳𝒖𝒏𝒂 𝑾𝒂𝒍𝒍𝒆𝒕",
+        description="✨ 星月銀行帳戶資訊",
         color=discord.Color.from_rgb(186, 85, 211),
     )
 
-    embed.add_field(name=f"{NUNU_EMOJI} åªåªå¹£", value=f"```{money:,}```", inline=False)
+    embed.add_field(name=f"{NUNU_EMOJI} 努努幣", value=f"```{money:,}```", inline=False)
 
-    embed.add_field(name="ð ç´¯ç©ç°½å°", value=f"```{total:,} å¤©```", inline=True)
+    embed.add_field(name="📅 累積簽到", value=f"```{total:,} 天```", inline=True)
 
-    embed.add_field(name="ð¥ é£çºç°½å°", value=f"```{streak:,} å¤©```", inline=True)
+    embed.add_field(name="🔥 連續簽到", value=f"```{streak:,} 天```", inline=True)
 
-    embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+    embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
     await interaction.response.send_message(embed=embed)
     return
 
 
-# ð å¯è±ªæè¡æ¦
-@bot.tree.command(name="å¯è±ªæè¡æ¦")
+# 🏆 富豪排行榜
+@bot.tree.command(name="富豪排行榜")
 async def leaderboard(interaction: discord.Interaction):
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != INFO_CHANNEL:
 
         embed = discord.Embed(
-            title="ð æææä»¤éå¶",
+            title="🌙 星月指令限制",
             description=(
-                "ð æè¡æ¥è©¢åè½æ¼æå®ååä½¿ç¨\n\n" f"è«åå¾ <#{INFO_CHANNEL}>"
+                "📊 排行查詢僅能於指定區域使用\n\n" f"請前往 <#{INFO_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(186, 85, 211),
         )
 
         embed.add_field(
-            name="â¨ å¯ä½¿ç¨åè½",
-            value="ç­ç´ï½æè¡æ¦ï½æ¥è©¢",
+            name="✨ 可使用功能",
+            value="等級｜排行榜｜查詢",
             inline=False,
         )
 
-        embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+        embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
         await interaction.response.send_message(
             embed=embed,
@@ -2153,22 +2151,22 @@ async def leaderboard(interaction: discord.Interaction):
     ranking = c.fetchall()
 
     embed = discord.Embed(
-        title="ð ð³ððð ð»ððððð",
-        description="â¨ åªåªå¹£å¯è±ªæè¡æ¦ â¨",
+        title="🏆 𝑳𝒖𝒏𝒂 𝑻𝒉𝒓𝒐𝒏𝒆",
+        description="✨ 努努幣富豪排行榜 ✨",
         color=discord.Color.gold(),
     )
 
     medals = {
-        1: "ð",
-        2: "ð¥",
-        3: "ð¥",
+        1: "👑",
+        2: "🥈",
+        3: "🥉",
     }
 
     rank = 1
 
     for user_id, money in ranking:
 
-        # ð« æé¤æå®ç©å®¶
+        # 🚫 排除指定玩家
         if int(user_id) in EXCLUDED_USERS:
             continue
 
@@ -2190,33 +2188,33 @@ async def leaderboard(interaction: discord.Interaction):
         if rank > 10:
             break
 
-    embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+    embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
     await interaction.response.send_message(embed=embed)
 
 
-# ð èå¤©ç­ç´æè¡æ¦
-@bot.tree.command(name="èå¤©ç­ç´æè¡æ¦")
+# 🌟 聊天等級排行榜
+@bot.tree.command(name="聊天等級排行榜")
 async def level_leaderboard(interaction: discord.Interaction):
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != INFO_CHANNEL:
 
         embed = discord.Embed(
-            title="ð æææä»¤éå¶",
+            title="🌙 星月指令限制",
             description=(
-                "ð æè¡æ¥è©¢åè½æ¼æå®ååä½¿ç¨\n\n" f"è«åå¾ <#{INFO_CHANNEL}>"
+                "📊 排行查詢僅能於指定區域使用\n\n" f"請前往 <#{INFO_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(186, 85, 211),
         )
 
         embed.add_field(
-            name="â¨ å¯ä½¿ç¨åè½",
-            value="ç­ç´ï½æè¡æ¦ï½æ¥è©¢",
+            name="✨ 可使用功能",
+            value="等級｜排行榜｜查詢",
             inline=False,
         )
 
-        embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+        embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
         await interaction.response.send_message(
             embed=embed,
@@ -2233,22 +2231,22 @@ async def level_leaderboard(interaction: discord.Interaction):
     ranking = c.fetchall()
 
     embed = discord.Embed(
-        title="ð ð³ððð ð¹ðððððð",
-        description="â¨ ææèå¤©ç­ç´æè¡æ¦ â¨",
+        title="🏆 𝑳𝒖𝒏𝒂 𝑹𝒂𝒏𝒌𝒊𝒏𝒈",
+        description="✨ 星月聊天等級排行榜 ✨",
         color=discord.Color.from_rgb(186, 85, 211),
     )
 
     medals = {
-        1: "ð",
-        2: "ð¥",
-        3: "ð¥",
+        1: "👑",
+        2: "🥈",
+        3: "🥉",
     }
 
     rank = 1
 
     for uid, level, exp in ranking:
 
-        # ð« æé¤æå®ç©å®¶
+        # 🚫 排除指定玩家
         if int(uid) in EXCLUDED_USERS:
             continue
 
@@ -2261,7 +2259,7 @@ async def level_leaderboard(interaction: discord.Interaction):
 
         embed.add_field(
             name=f"{icon} {member.display_name}",
-            value=(f"ð **Lv.{level}**\n" f"â¨ XPï¼`{exp:,}`"),
+            value=(f"🌟 **Lv.{level}**\n" f"✨ XP：`{exp:,}`"),
             inline=False,
         )
 
@@ -2270,29 +2268,29 @@ async def level_leaderboard(interaction: discord.Interaction):
         if rank > 10:
             break
 
-    embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+    embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
     await interaction.response.send_message(embed=embed)
 
 
-# ð ç­ç´
-@bot.tree.command(name="ç­ç´")
+# 📈 等級
+@bot.tree.command(name="等級")
 async def level(interaction: discord.Interaction):
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != INFO_CHANNEL:
 
         embed = discord.Embed(
-            title="ð æææä»¤éå¶",
+            title="🌙 星月指令限制",
             description=(
-                "ð ç­ç´æ¥è©¢åè½æ¼æå®ååä½¿ç¨\n\n" f"è«åå¾ <#{INFO_CHANNEL}>"
+                "📊 等級查詢僅能於指定區域使用\n\n" f"請前往 <#{INFO_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(186, 85, 211),
         )
 
-        embed.add_field(name="â¨ å¯ä½¿ç¨åè½", value="ç­ç´ï½æè¡æ¦ï½æ¥è©¢", inline=False)
+        embed.add_field(name="✨ 可使用功能", value="等級｜排行榜｜查詢", inline=False)
 
-        embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+        embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
@@ -2335,45 +2333,45 @@ async def level(interaction: discord.Interaction):
     bar_length = 10
     filled = int(percent / 10)
 
-    progress_bar = "ðª" * filled + "â¬" * (bar_length - filled)
+    progress_bar = "🟪" * filled + "⬜" * (bar_length - filled)
 
     embed = discord.Embed(
-        title="ð ð³ððð ð·ðððððð",
-        description="â¨ æææäººçæé·ç´é",
+        title="🌙 𝑳𝒖𝒏𝒂 𝑷𝒓𝒐𝒇𝒊𝒍𝒆",
+        description="✨ 星月旅人的成長紀錄",
         color=discord.Color.from_rgb(138, 43, 226),
     )
 
-    embed.add_field(name="ð ç­ç´", value=f"```Lv.{level}```", inline=True)
+    embed.add_field(name="📈 等級", value=f"```Lv.{level}```", inline=True)
 
-    embed.add_field(name="ð æå", value=f"```#{rank}```", inline=True)
+    embed.add_field(name="🏆 排名", value=f"```#{rank}```", inline=True)
 
     embed.add_field(
-        name="â¨ ç¶é©å¼",
-        value=(f"{progress_bar}\n" f"`{exp:,} / {next_exp:,}`\n" f"å®æåº¦ï¼{percent}%"),
+        name="✨ 經驗值",
+        value=(f"{progress_bar}\n" f"`{exp:,} / {next_exp:,}`\n" f"完成度：{percent}%"),
         inline=False,
     )
 
-    embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+    embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
     await interaction.response.send_message(embed=embed)
     return
 
 
-# ð åäººè³æ
+# 📈 個人資料
 
 
-@bot.tree.command(name="åäººè³æ")
+@bot.tree.command(name="個人資料")
 async def profile(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != INFO_CHANNEL:
 
         embed = discord.Embed(
-            title="ð æææä»¤éå¶",
+            title="🌙 星月指令限制",
             description=(
-                "ð åäººè³æåè½æ¼æå®ååä½¿ç¨\n\n" f"è«åå¾ <#{INFO_CHANNEL}>"
+                "📊 個人資料僅能於指定區域使用\n\n" f"請前往 <#{INFO_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(186, 85, 211),
         )
@@ -2418,7 +2416,7 @@ async def profile(interaction: discord.Interaction):
 
     bg = bg.resize((800, 450))
 
-    # ä¸è¼é ­å
+    # 下載頭像
     async with aiohttp.ClientSession() as session:
 
         async with session.get(interaction.user.display_avatar.url) as resp:
@@ -2429,7 +2427,7 @@ async def profile(interaction: discord.Interaction):
 
     avatar = avatar.resize((150, 150))
 
-    # åå½¢é ­å
+    # 圓形頭像
     mask = Image.new("L", (150, 150), 0)
 
     draw_mask = ImageDraw.Draw(mask)
@@ -2440,12 +2438,12 @@ async def profile(interaction: discord.Interaction):
 
     bg.paste(avatar, (30, 110), avatar)
 
-    # éè²é ­åæ¡
+    # 金色頭像框
     draw_avatar = ImageDraw.Draw(bg)
 
     draw_avatar.ellipse((25, 105, 185, 265), outline="#FFD700", width=5)
 
-    # åéæè³è¨åºæ¿
+    # 半透明資訊底板
     glass = Image.new("RGBA", bg.size, (0, 0, 0, 0))
 
     glass_draw = ImageDraw.Draw(glass)
@@ -2456,42 +2454,42 @@ async def profile(interaction: discord.Interaction):
 
     draw = ImageDraw.Draw(bg)
 
-    # å­å
+    # 字型
     font_name = ImageFont.truetype("fonts/NotoSansTC-Regular.ttf", 28)
 
     font_level = ImageFont.truetype("fonts/NotoSansTC-Regular.ttf", 42)
 
     font_small = ImageFont.truetype("fonts/NotoSansTC-Regular.ttf", 22)
 
-    # åç¨±
+    # 名稱
     draw.text((210, 90), interaction.user.display_name, fill="white", font=font_name)
 
-    # ç­ç´
+    # 等級
     draw.text((210, 145), f"Lv.{level}", fill="#FFD700", font=font_level)
 
-    # æåå¾½ç« åºæ¿
+    # 排名徽章底板
     draw.rounded_rectangle((600, 80, 760, 170), radius=20, fill=(40, 40, 40, 180))
 
-    # æåæ¨é¡
-    draw.text((625, 90), "æå", fill="#FFD700", font=font_small)
+    # 排名標題
+    draw.text((625, 90), "排名", fill="#FFD700", font=font_small)
 
-    # æåæ¸å­
+    # 排名數字
     draw.text((625, 115), f"#{rank}", fill="white", font=font_level)
 
-    # ç¶é©å¼æ¯ä¾
+    # 經驗值比例
     percent = exp / max(next_exp, 1)
 
     percent_text = int(percent * 100)
 
-    # èæ¯æ¢
+    # 背景條
     draw.rounded_rectangle((210, 250, 720, 285), radius=15, fill=(60, 60, 60))
 
-    # ç¶é©æ¢
+    # 經驗條
     draw.rounded_rectangle(
         (210, 250, 210 + int(510 * percent), 285), radius=15, fill=(180, 100, 255)
     )
 
-    # XPæå­
+    # XP文字
     draw.text(
         (210, 305),
         f"{exp:,} / {next_exp:,} XP ({percent_text}%)",
@@ -2507,7 +2505,7 @@ async def profile(interaction: discord.Interaction):
     await interaction.followup.send(file=discord.File(output, filename="profile.png"))
 
 
-# ð® èå¤©ç¶é©ç³»çµ±
+# 🎮 聊天經驗系統
 @bot.event
 async def on_message(message):
 
@@ -2515,7 +2513,7 @@ async def on_message(message):
         return
 
     # ==========================
-    # ðº éå®èå¤©é »éåç­
+    # 📺 限定聊天頻道升等
     # ==========================
 
     if message.channel.id != EVENT_CHANNEL:
@@ -2573,12 +2571,12 @@ async def on_message(message):
         channel = bot.get_channel(LEVEL_UP_CHANNEL)
 
         embed = discord.Embed(
-            title="ð ç­ç´æå",
-            description=(f"{message.author.mention}\n\n" f"â¨ å·²æåè³ Lv.{level}"),
+            title="🌙 等級提升",
+            description=(f"{message.author.mention}\n\n" f"✨ 已提升至 Lv.{level}"),
             color=discord.Color.from_rgb(186, 85, 211),
         )
 
-        embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+        embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
         if channel:
             await channel.send(embed=embed)
@@ -2586,10 +2584,10 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-# âï¸ ç®¡çå¡è¨­å®ç­ç´
-@bot.tree.command(name="è¨­å®ç­ç´")
+# ⚙️ 管理員設定等級
+@bot.tree.command(name="設定等級")
 @app_commands.default_permissions(administrator=True)
-@app_commands.rename(member="æå¡", level="ç­ç´")
+@app_commands.rename(member="成員", level="等級")
 async def set_level(
     interaction: discord.Interaction, member: discord.Member, level: int
 ):
@@ -2599,33 +2597,33 @@ async def set_level(
     )
     conn.commit()
 
-    await interaction.response.send_message(f"â å·²å° {member.mention} è¨­çº Lv.{level}")
+    await interaction.response.send_message(f"✅ 已將 {member.mention} 設為 Lv.{level}")
 
 
-@bot.tree.command(name="è¨­å®æ­¡è¿é »é")
+@bot.tree.command(name="設定歡迎頻道")
 @app_commands.default_permissions(administrator=True)
-@app_commands.rename(channel="é »é")
+@app_commands.rename(channel="頻道")
 async def set_welcome_channel(
     interaction: discord.Interaction, channel: discord.TextChannel
 ):
     c.execute("REPLACE INTO settings VALUES ('welcome_channel', ?)", (str(channel.id),))
     conn.commit()
-    await interaction.response.send_message(f"â å·²è¨­å®ï¼{channel.mention}")
+    await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
 
 
-@bot.tree.command(name="è¨­å®ç®¡çå¡é »é")
+@bot.tree.command(name="設定管理員頻道")
 @app_commands.default_permissions(administrator=True)
-@app_commands.rename(channel="é »é")
+@app_commands.rename(channel="頻道")
 async def set_admin_channel(
     interaction: discord.Interaction, channel: discord.TextChannel
 ):
     c.execute("REPLACE INTO settings VALUES ('admin_channel', ?)", (str(channel.id),))
     conn.commit()
-    await interaction.response.send_message(f"â å·²è¨­å®ï¼{channel.mention}")
+    await interaction.response.send_message(f"✅ 已設定：{channel.mention}")
 
 
 # ==========================
-# ð æ¯æ¥ç°½å°æé
+# 🌙 每日簽到提醒
 # ==========================
 
 
@@ -2641,24 +2639,24 @@ async def checkin_reminder():
     role = f"<@&{LOTTERY_PING_ROLE}>"
 
     embed = discord.Embed(
-        title="ð æ¯æ¥ç°½å°æé",
+        title="🌙 每日簽到提醒",
         description=(
             f"{reminder}\n\n"
-            "ââââââââââââââââââ\n\n"
-            "â° æ¯æ¥ **00:00** éç½®\n"
-            "ð è¨å¾åå¾æ¯æ¥ç°½å°é ååªåªå¹£èç¥ç¦ï¼\n\n"
-            f"ð ç°½å°é »éï¼<#{CHECKIN_CHANNEL}>"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "⏰ 每日 **00:00** 重置\n"
+            "🎁 記得前往每日簽到領取努努幣與祝福！\n\n"
+            f"📍 簽到頻道：<#{CHECKIN_CHANNEL}>"
         ),
         color=discord.Color.purple(),
     )
 
     embed.add_field(
-        name="ð æ¯æ¥çåµ",
-        value=("â¢ æ¯æ¥åªåªå¹£\n" "â¢ é£çºç°½å°çåµ\n" "â¢ ç¯æ¥éå®ç¥ç¦"),
+        name="🎁 每日獎勵",
+        value=("• 每日努努幣\n" "• 連續簽到獎勵\n" "• 節日限定祝福"),
         inline=False,
     )
 
-    embed.set_footer(text="Moon Bot v2ï½æ¯æ¥æé")
+    embed.set_footer(text="Moon Bot v2｜每日提醒")
 
     await channel.send(
         content=role,
@@ -2666,7 +2664,7 @@ async def checkin_reminder():
     )
 
 # ==========================
-# ð¸ è§è²åç§æ´»åç³»çµ±
+# 🌸 角色合照活動系統
 # ==========================
 
 @tasks.loop(minutes=1)
@@ -2680,7 +2678,7 @@ async def photo_event_check():
     minute = now.minute
 
     # ==========================
-    # ð¸ éæ¾æ´»å
+    # 🌸 開放活動
     # ==========================
     
     if (
@@ -2706,16 +2704,16 @@ async def photo_event_check():
 
         await channel.send(
             "<@&1504854895826698392>\n\n"
-            "ð¸ **è§è²åç§è¨±é¡æ´»åéå§ï¼**\n\n"
-            "â¨ **æ´»åè¦å**\n\n"
-            "ã»æ¯æå **2 æ¥ã16 æ¥** éæ¾è¨±é¡ã\n"
-            "ã»æ¯äººæ¯æ¬¡åè½è¨±é¡ **1 é»è§è²** çåç§ã\n"
-            "ã»æ¯ä½è§è²çææä¾ **2 å¼µåç§**ã\n"
-            "ã»è«èå¿ç­å¾è£½ä½å®æã\n"
-            "ã»å¶é¤è¨±é¡è¦åè«è³æ´»åç½®é æç« è§çã\n\n"
-            "â° **æ¬æ¬¡æ´»åå°æ¼éæ¥ 00:00 ééè¨±é¡åã**"
+            "🌸 **角色合照許願活動開始！**\n\n"
+            "✨ **活動規則**\n\n"
+            "・每月僅 **2 日、16 日** 開放許願。\n"
+            "・每人每次僅能許願 **1 隻角色** 的合照。\n"
+            "・每位角色皆會提供 **2 張合照**。\n"
+            "・請耐心等待製作完成。\n"
+            "・其餘許願規則請至活動置頂文章觀看。\n\n"
+            "⏰ **本次活動將於隔日 00:00 關閉許願區。**"
         )
-        # éæ¾è§è²åç§è¨±é¡å
+        # 開放角色合照許願區
         photo_channel = bot.get_channel(1504820063344267305)
         photo_role = photo_channel.guild.get_role(1504854895826698392)
 
@@ -2736,7 +2734,7 @@ async def photo_event_check():
         conn.commit()
         
     # ==========================
-    # ð æ´»åå³å°çµæ
+    # 🔒 活動即將結束
     # ==========================
 
     if (
@@ -2762,11 +2760,11 @@ async def photo_event_check():
             return
 
         await channel.send(
-            "â° **è§è²åç§è¨±é¡æ´»åå³å°çµæï¼**\n\n"
+            "⏰ **角色合照許願活動即將結束！**\n\n"
             "<@&1504854895826698392>\n\n"
-            "è·é¢æ¬æ¬¡è§è²åç§è¨±é¡æ´»åçµæéæ **30 åé**ã\n\n"
-            "â¨ **å°æªè¨±é¡çæå¡è«ææ¡æå¾æ©æï¼**\n\n"
-            "ð è§è²åç§è¨±é¡åå°æ¼ä»æ¥ **00:00** æºæééã"
+            "距離本次角色合照許願活動結束還有 **30 分鐘**。\n\n"
+            "✨ **尚未許願的成員請把握最後機會！**\n\n"
+            "🔒 角色合照許願區將於今日 **00:00** 準時關閉。"
         )
         
         c.execute(
@@ -2776,7 +2774,7 @@ async def photo_event_check():
         conn.commit()
         
     # ==========================
-    # ð« ééè§è²åç§è¨±é¡å
+    # 🚫 關閉角色合照許願區
     # ==========================
 
     if (
@@ -2820,7 +2818,7 @@ async def photo_event_check():
         conn.commit()
 
 # ==========================
-# ð çæ¥ç³»çµ±ï¼Birthday v2ï¼
+# 🎂 生日系統（Birthday v2）
 # ==========================
 
 
@@ -2832,7 +2830,7 @@ async def birthday_check():
     today_str = now.strftime("%Y-%m-%d")
 
     # ==========================
-    # ð é²æ­¢éè¤å·è¡
+    # 🔒 防止重複執行
     # ==========================
 
     c.execute("""
@@ -2857,7 +2855,7 @@ async def birthday_check():
     conn.commit()
 
     # ==========================
-    # ð ä»æ¥å£½æ
+    # 🎂 今日壽星
     # ==========================
 
     c.execute(
@@ -2875,13 +2873,13 @@ async def birthday_check():
     birthday_users = c.fetchall()
 
     # ==========================
-    # ð¢ å¬åé »é
+    # 📢 公告頻道
     # ==========================
 
     birthday_channel = bot.get_channel(BIRTHDAY_CHANNEL)
 
     # ==========================
-    # ð ç®¡çå¡é »é
+    # 👑 管理員頻道
     # ==========================
 
     admin_channel = bot.get_channel(BIRTHDAY_ADMIN_CHANNEL)
@@ -2889,7 +2887,7 @@ async def birthday_check():
     if birthday_users:
 
         # ==========================
-        # ð æºåå¬åè³æ
+        # 📋 準備公告資料
         # ==========================
 
         birthday_members = []
@@ -2900,7 +2898,7 @@ async def birthday_check():
         myth_count = 0
 
         # ==========================
-        # ð ç¼éçæ¥çåµ
+        # 🎁 發送生日獎勵
         # ==========================
 
         for row in birthday_users:
@@ -2917,7 +2915,7 @@ async def birthday_check():
                     continue
 
             # ==========================
-            # ð² æ½åçæ¥çåµ
+            # 🎲 抽取生日獎勵
             # ==========================
 
             roll = random.random()
@@ -2925,23 +2923,23 @@ async def birthday_check():
             if roll < 0.70:
 
                 reward = 1000
-                reward_text = "â¨ ææç¥ç¦"
+                reward_text = "✨ 星月祝福"
                 normal_count += 1
 
             elif roll < 0.95:
 
                 reward = 2000
-                reward_text = "ð éèç¥ç¦"
+                reward_text = "🌟 閃耀祝福"
                 rare_count += 1
 
             else:
 
                 reward = 5000
-                reward_text = "ð æ¥µåéè¨"
+                reward_text = "💎 極光降臨"
                 myth_count += 1
 
             # ==========================
-            # ð° ç¼æ¾çåµ
+            # 💰 發放獎勵
             # ==========================
 
             c.execute(
@@ -2959,7 +2957,7 @@ async def birthday_check():
             total_reward += reward
 
             # ==========================
-            # ð å¹´é½¡
+            # 🎂 年齡
             # ==========================
 
             age_text = ""
@@ -2967,10 +2965,10 @@ async def birthday_check():
             if birth_year:
 
                 age = now.year - birth_year
-                age_text = f"ï¼{age}æ­²ï¼"
+                age_text = f"（{age}歲）"
 
             # ==========================
-            # ð å¬åè³æ
+            # 📋 公告資料
             # ==========================
 
             birthday_members.append(
@@ -2985,7 +2983,7 @@ async def birthday_check():
 
         conn.commit()
         # ==========================
-        # ð ä»æ¥å£½æå¬å
+        # 🎂 今日壽星公告
         # ==========================
 
         if birthday_channel:
@@ -2994,14 +2992,14 @@ async def birthday_check():
 
             for member in birthday_members:
 
-                description += f"ð {member['mention']} {member['age']}\n"
+                description += f"🎉 {member['mention']} {member['age']}\n"
 
             birthday_blessing = random.choice(BIRTHDAY_BLESSINGS)
 
             embed = discord.Embed(
-                title="ð ä»æ¥å£½æ",
+                title="🎂 今日壽星",
                 description=(
-                    f"{description}" "\nââââââââââââââââââ\n\n" f"{birthday_blessing}"
+                    f"{description}" "\n━━━━━━━━━━━━━━━━━━\n\n" f"{birthday_blessing}"
                 ),
                 color=discord.Color.from_rgb(255, 105, 180),
             )
@@ -3009,27 +3007,27 @@ async def birthday_check():
             gift_text = ""
 
             if normal_count:
-                gift_text += f"â¨ ææç¥ç¦ Ã {normal_count}\n"
+                gift_text += f"✨ 星月祝福 × {normal_count}\n"
 
             if rare_count:
-                gift_text += f"ð éèç¥ç¦ Ã {rare_count}\n"
+                gift_text += f"🌟 閃耀祝福 × {rare_count}\n"
 
             if myth_count:
-                gift_text += f"ð æ¥µåéè¨ Ã {myth_count}\n"
+                gift_text += f"💎 極光降臨 × {myth_count}\n"
 
-            gift_text += f"\nð° ä»æ¥å±ç¼æ¾ **{total_reward:,} åªåªå¹£**"
+            gift_text += f"\n💰 今日共發放 **{total_reward:,} 努努幣**"
 
             embed.add_field(
-                name="ð å·²ç¼éçæ¥ç¦®ç©",
+                name="🎁 已發送生日禮物",
                 value=gift_text,
                 inline=False,
             )
 
-            embed.set_footer(text="Moon Bot v2ï½Birthday System")
+            embed.set_footer(text="Moon Bot v2｜Birthday System")
 
             await birthday_channel.send(embed=embed)
     # ==========================
-    # â° ææ¥å£½ææé
+    # ⏰ 明日壽星提醒
     # ==========================
 
     tomorrow = (now + timedelta(days=1)).strftime("%m-%d")
@@ -3067,28 +3065,28 @@ async def birthday_check():
                     except Exception:
                         continue
 
-                reminder_text += f"ð {member.mention}\n"
+                reminder_text += f"🎂 {member.mention}\n"
                 count += 1
 
             if count:
 
                 reminder = discord.Embed(
-                    title="ð ææ¥å£½ææé",
+                    title="📅 明日壽星提醒",
                     description=(
                         f"{reminder_text}"
-                        "\nââââââââââââââââââ\n\n"
-                        "â¨ è«è¨å¾æåéä¸çæ¥ç¥ç¦ï¼"
+                        "\n━━━━━━━━━━━━━━━━━━\n\n"
+                        "✨ 請記得提前送上生日祝福！"
                     ),
                     color=discord.Color.gold(),
                 )
 
-                reminder.set_footer(text=f"Moon Bot v2ï½å± {count} ä½å£½æ")
+                reminder.set_footer(text=f"Moon Bot v2｜共 {count} 位壽星")
 
                 await admin_channel.send(embed=reminder)
 
 
 # ==========================
-# ð æ½çèæ¯æª¢æ¥
+# 🌙 抽獎背景檢查
 # ==========================
 
 
@@ -3137,7 +3135,7 @@ async def finish_lottery(message_id):
             winner_id, host_id, prize_type, prize_value, custom_message
         )
 
-    # åæ¨è¨çµæï¼é¿åèæ¯æª¢æ¥èæåçµæéè¤éç
+    # 先標記結束，避免背景檢查與手動結束重複開獎
     c.execute(
         "UPDATE lotteries SET status='ended' WHERE message_id=? AND status='running'",
         (str(message_id),),
@@ -3154,35 +3152,35 @@ async def finish_lottery(message_id):
         return True
 
     if prize_type == "money":
-        prize_text = f"ð° åªåªå¹£ {int(prize_value):,}"
+        prize_text = f"💰 努努幣 {int(prize_value):,}"
     elif prize_type == "image":
-        prize_text = "ð¨ é¨æ©é¢¨æ ¼äººè¨­å"
+        prize_text = "🎨 隨機風格人設圖"
     elif prize_type == "couple":
-        prize_text = "ð èåæè§è²åç§"
+        prize_text = "💕 與喜愛角色合照"
     else:
-        prize_text = f"ð {prize_value}"
+        prize_text = f"📝 {prize_value}"
 
     timestamp = int(end_time.timestamp())
 
-    embed = discord.Embed(title="ð Moon Bot æ½ç", color=0xF1C40F)
-    embed.add_field(name="ð çå", value=prize_text, inline=False)
-    embed.add_field(name="ð¥ ä¸­çäººæ¸", value=f"{winner_count} äºº", inline=True)
-    embed.add_field(name="ð¤ ä¸»è¾¦äºº", value=f"<@{host_id}>", inline=True)
-    embed.add_field(name="â° æ½çæªæ­¢", value=f"<t:{timestamp}:F>", inline=False)
+    embed = discord.Embed(title="🎉 Moon Bot 抽獎", color=0xF1C40F)
+    embed.add_field(name="🎁 獎品", value=prize_text, inline=False)
+    embed.add_field(name="👥 中獎人數", value=f"{winner_count} 人", inline=True)
+    embed.add_field(name="👤 主辦人", value=f"<@{host_id}>", inline=True)
+    embed.add_field(name="⏰ 抽獎截止", value=f"<t:{timestamp}:F>", inline=False)
     embed.add_field(
-        name="ð ä¸­çè",
-        value="\n".join(winner_mentions) if winner_mentions else "ð­ æ¬æ¬¡æ½çç¡äººåå ",
+        name="🏆 中獎者",
+        value="\n".join(winner_mentions) if winner_mentions else "📭 本次抽獎無人參加",
         inline=False,
     )
-    embed.add_field(name="ð çæ", value="ð´ å·²çµæ", inline=False)
-    embed.set_footer(text="ð æ¬æ¬¡æ½çå·²çµæï¼æè¬å¤§å®¶åèï¼")
+    embed.add_field(name="📌 狀態", value="🔴 已結束", inline=False)
+    embed.set_footer(text="🎉 本次抽獎已結束，感謝大家參與！")
 
     ended_view = LotteryView()
     c.execute("SELECT COUNT(*) FROM lottery_entries WHERE message_id=?", (str(message_id),))
     total = c.fetchone()[0]
-    ended_view.children[0].label = f"ð åå æ½çï¼{total}ï¼"
+    ended_view.children[0].label = f"🎉 參加抽獎（{total}）"
     ended_view.children[0].disabled = True
-    # æ¥çåå®ä¿çå¯ä½¿ç¨ï¼çµææ½çæééå®
+    # 查看名單保留可使用；結束抽獎按鈕鎖定
     for child in ended_view.children:
         if getattr(child, "custom_id", None) == "lottery_manual_end":
             child.disabled = True
@@ -3192,7 +3190,7 @@ async def finish_lottery(message_id):
 
 
 # ==========================
-# ð æ½çèæ¯æª¢æ¥
+# 🌙 抽獎背景檢查
 # ==========================
 
 @tasks.loop(seconds=10)
@@ -3212,7 +3210,7 @@ async def lottery_checker():
 
 
 # ==========================
-# ð æ½çä¸­çéç¥
+# 🌙 抽獎中獎通知
 # ==========================
 
 
@@ -3229,96 +3227,96 @@ async def send_lottery_dm(
         user = await bot.fetch_user(int(user_id))
 
         embed = discord.Embed(
-            title="ð Moon Botï½æ½çéç¥",
-            description="ð æ­åä½ å¨æ¬æ¬¡æ½çä¸­å¹¸éä¸­çï¼",
+            title="🌙 Moon Bot｜抽獎通知",
+            description="🎉 恭喜你在本次抽獎中幸運中獎！",
             color=0xF1C40F,
         )
 
         # -------------------------
-        # ð° åªåªå¹£
+        # 💰 努努幣
         # -------------------------
 
         if prize_type == "money":
 
             embed.add_field(
-                name="ð çå",
-                value=f"ð° åªåªå¹£ {int(prize_value):,}",
+                name="🎁 獎品",
+                value=f"💰 努努幣 {int(prize_value):,}",
                 inline=False,
             )
 
             embed.description += (
-                "\n\nââââââââââââââââââ\n\n"
-                "Moon Bot å·²èªåå°çåµç¼æ¾è³ä½ çå¸³æ¶ã\n\n"
-                "å¯ä½¿ç¨ `/é¢å` æ¥çç®åé¤é¡ã"
+                "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                "Moon Bot 已自動將獎勵發放至你的帳戶。\n\n"
+                "可使用 `/錢包` 查看目前餘額。"
             )
 
         # -------------------------
-        # ð¨ äººè¨­å
+        # 🎨 人設圖
         # -------------------------
 
         elif prize_type == "image":
 
             embed.add_field(
-                name="ð çå",
-                value="ð¨ é¨æ©é¢¨æ ¼äººè¨­å",
+                name="🎁 獎品",
+                value="🎨 隨機風格人設圖",
                 inline=False,
             )
 
             embed.add_field(
-                name="ð¤ ä¸»è¾¦äºº",
+                name="👤 主辦人",
                 value=f"<@{host_id}>",
                 inline=False,
             )
 
             embed.description += (
-                "\n\nââââââââââââââââââ\n\n"
-                "è«ç§è¨ä¸»è¾¦äººï¼ä¸¦æä¾ä½ çäººè¨­åç§çã\n\n"
-                "ä¸»è¾¦äººå°åå©è£½ä½æ¬æ¬¡æ½ççåã"
+                "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                "請私訊主辦人，並提供你的人設圖照片。\n\n"
+                "主辦人將協助製作本次抽獎獎品。"
             )
 
         # -------------------------
-        # ð åç§
+        # 💕 合照
         # -------------------------
 
         elif prize_type == "couple":
 
             embed.add_field(
-                name="ð çå",
-                value="ð èåæè§è²åç§",
+                name="🎁 獎品",
+                value="💕 與喜愛角色合照",
                 inline=False,
             )
 
             embed.add_field(
-                name="ð¤ ä¸»è¾¦äºº",
+                name="👤 主辦人",
                 value=f"<@{host_id}>",
                 inline=False,
             )
 
             embed.description += (
-                "\n\nââââââââââââââââââ\n\n"
-                "è«ç§è¨ä¸»è¾¦äººï¼ä¸¦æä¾ï¼\n\n"
-                "ð¸ ä½ çäººè¨­åç§ç\n"
-                "ð æ³è¦åç§çè§è²åç¨±\n\n"
-                "ð æº«é¦¨æé ð\n"
-                "ð å¨ä»»ä½å¬éå¹³å°ç¼å¸èè§è²ç¸éçåçæå½±çæï¼è«å ä¸æµ®æ°´å°ã\n"
-                "ð è¥éç¼å¸å½±çï¼è«åç§è¨è§è²åµä½èç¢ºèªå§å®¹ï¼ç¶åµä½èåæå¾åå¬éç¼å¸ã\n"
-                "ð è¥ä¸ç¥éå¦ä½è£½ä½æµ®æ°´å°ï¼å¯è«ç®¡çå¡åå©èçã"
+                "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                "請私訊主辦人，並提供：\n\n"
+                "📸 你的人設圖照片\n"
+                "💖 想要合照的角色名稱\n\n"
+                "💌 溫馨提醒 💌\n"
+                "📌 在任何公開平台發布與角色相關的圖片或影片時，請加上浮水印。\n"
+                "📌 若需發布影片，請先私訊角色創作者確認內容，經創作者同意後再公開發布。\n"
+                "📌 若不知道如何製作浮水印，可請管理員協助處理。"
             )
 
         # -------------------------
-        # ð èªè¨
+        # 📝 自訂
         # -------------------------
 
         elif prize_type == "custom":
 
             embed.add_field(
-                name="ð çå",
+                name="🎁 獎品",
                 value=prize_value,
                 inline=False,
             )
 
             embed.add_field(
-                name="ð¤ ä¸»è¾¦äºº",
+                name="👤 主辦人",
                 value=f"<@{host_id}>",
                 inline=False,
             )
@@ -3326,38 +3324,38 @@ async def send_lottery_dm(
             if custom_message:
 
                 embed.description += (
-                    "\n\nââââââââââââââââââ\n\n"
+                    "\n\n━━━━━━━━━━━━━━━━━━\n\n"
                     f"{custom_message}\n\n"
-                    "ð æº«é¦¨æé ð\n"
-                    "ð å¨ä»»ä½å¬éå¹³å°ç¼å¸èè§è²ç¸éçåçæå½±çæï¼è«å ä¸æµ®æ°´å°ã\n"
-                    "ð è¥éç¼å¸å½±çï¼è«åç§è¨è§è²åµä½èç¢ºèªå§å®¹ï¼ç¶åµä½èåæå¾åå¬éç¼å¸ã\n"
-                    "ð è¥ä¸ç¥éå¦ä½è£½ä½æµ®æ°´å°ï¼å¯è«ç®¡çå¡åå©èçã"
+                    "💌 溫馨提醒 💌\n"
+                    "📌 在任何公開平台發布與角色相關的圖片或影片時，請加上浮水印。\n"
+                    "📌 若需發布影片，請先私訊角色創作者確認內容，經創作者同意後再公開發布。\n"
+                    "📌 若不知道如何製作浮水印，可請管理員協助處理。"
                 )
 
             else:
 
                 embed.description += (
-                    "\n\nââââââââââââââââââ\n\n"
-                    "è«ç§è¨ä¸»è¾¦äººé åæ¬æ¬¡æ½ççåã\n\n"
-                    "ð æº«é¦¨æé ð\n"
-                    "ð å¨ä»»ä½å¬éå¹³å°ç¼å¸èè§è²ç¸éçåçæå½±çæï¼è«å ä¸æµ®æ°´å°ã\n"
-                    "ð è¥éç¼å¸å½±çï¼è«åç§è¨è§è²åµä½èç¢ºèªå§å®¹ï¼ç¶åµä½èåæå¾åå¬éç¼å¸ã\n"
-                    "ð è¥ä¸ç¥éå¦ä½è£½ä½æµ®æ°´å°ï¼å¯è«ç®¡çå¡åå©èçã"
+                    "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+                    "請私訊主辦人領取本次抽獎獎品。\n\n"
+                    "💌 溫馨提醒 💌\n"
+                    "📌 在任何公開平台發布與角色相關的圖片或影片時，請加上浮水印。\n"
+                    "📌 若需發布影片，請先私訊角色創作者確認內容，經創作者同意後再公開發布。\n"
+                    "📌 若不知道如何製作浮水印，可請管理員協助處理。"
                 )
 
-        embed.set_footer(text="ð æ¬è¨æ¯ç± Moon Bot èªåç¼é")
+        embed.set_footer(text="🌙 本訊息由 Moon Bot 自動發送")
 
         await user.send(embed=embed)
 
     except discord.Forbidden:
-        print(f"â ï¸ ç¡æ³ç§è¨ {user_id}ï¼å°æ¹å·²ééç§è¨ã")
+        print(f"⚠️ 無法私訊 {user_id}，對方已關閉私訊。")
 
     except Exception as e:
-        print(f"â ï¸ ç¼éæ½çç§è¨å¤±æï¼{e}")
+        print(f"⚠️ 發送抽獎私訊失敗：{e}")
 
 
 # ==========================================
-# # ð¸ æ­¡è¿ç³»çµ± #
+# # 🌸 歡迎系統 #
 # ==========================================
 
 
@@ -3365,15 +3363,15 @@ async def send_lottery_dm(
 async def on_member_join(member):
 
     # ==========================
-    # èªåçµ¦äºæ°äººæå¡èº«åçµ
+    # 自動給予新人成員身分組
     # ==========================
 
     role = member.guild.get_role(1505110931300941844)
 
     if role is not None:
-        await member.add_roles(role, reason="æ°æå¡èªåå å¥")
+        await member.add_roles(role, reason="新成員自動加入")
 
-    # åå¾æ­¡è¿é »é
+    # 取得歡迎頻道
     c.execute("""
         SELECT value
         FROM settings
@@ -3397,44 +3395,44 @@ async def on_member_join(member):
     card = await create_welcome_card(member)
 
     # ==========================
-    # æ­¡è¿ Embed
+    # 歡迎 Embed
     # ==========================
 
-    embed = discord.Embed(title="ð æ­¡è¿å å¥æ¥µææèµ", color=discord.Color.dark_grey())
+    embed = discord.Embed(title="🌙 歡迎加入極曜月葵", color=discord.Color.dark_grey())
 
     embed.description = f"""
-æ­¡è¿ {member.mention} å¯¶å¯¶å å¥æåð¤ââË ð³ â ð³ â ð³ â ð³ æ¥µ æ æ èµ Ëââð¤
+歡迎 {member.mention} 寶寶加入我們𖤐⋆₊˚ 𝒳 ⋆ 𝒳 ⋆ 𝒳 ⋆ 𝒳 極 曜 月 葵 ˚₊⋆𖤐
 
-å¾éå¿ä½ ä¾å°éåå°å°çç²çµ²äº¤æµç©ºéï¼<a:emoji_32:1508529055832739911>
+很開心你來到這個小小的粉絲交流空間！<a:emoji_32:1508529055832739911>
 
-<a:emoji_1:1506013957905846372> è« {member.mention} å¯¶å¯¶è³ <#1506198162724094074>
+<a:emoji_1:1506013957905846372> 請 {member.mention} 寶寶至 <#1506198162724094074>
 
-æä¾æåéè¦çæªåã
+提供我們需要的截圖。
 
-æåé²è¡å¯©æ ¸ééå¾ï¼
-æåä¿®æ¹èº«åçµå·<a:emoji_2:1506043914115879014>
+我們進行審核通過後，
+會再修改身分組唷<a:emoji_2:1506043914115879014>
 """
 
-    embed.set_footer(text="æ¥µææèµ â¦ Welcome")
+    embed.set_footer(text="極曜月葵 ✦ Welcome")
 
-    # åéæå­ï¼ç°åºï¼
+    # 先送文字（灰底）
     await channel.send(embed=embed)
 
-    # åé Welcome Card
+    # 再送 Welcome Card
     await channel.send(file=card)
 
 
 # ==========================
-# ð çæ¥ç»è¨
+# 📅 生日登記
 # ==========================
 
 
-@bot.tree.command(name="çæ¥ç»è¨", description="ç»è¨ä½ ççæ¥")
-@app_commands.rename(month="æä»½", day="æ¥æ", year="åºçå¹´")
+@bot.tree.command(name="生日登記", description="登記你的生日")
+@app_commands.rename(month="月份", day="日期", year="出生年")
 @app_commands.describe(
-    month="çæ¥æä»½",
-    day="çæ¥æ¥æ",
-    year="åºçå¹´ï¼é¸å¡«ï¼",
+    month="生日月份",
+    day="生日日期",
+    year="出生年（選填）",
 )
 async def set_birthday(
     interaction: discord.Interaction,
@@ -3446,20 +3444,20 @@ async def set_birthday(
     user_id = str(interaction.user.id)
 
     # ==========================
-    # ð æ¥æé©è­
+    # 📅 日期驗證
     # ==========================
 
     try:
         datetime(2000, month, day)
     except ValueError:
         await interaction.response.send_message(
-            "â çæ¥æ¥æé¯èª¤ï¼è«éæ°ç¢ºèªã",
+            "❌ 生日日期錯誤，請重新確認。",
             ephemeral=True,
         )
         return
 
     # ==========================
-    # ð æ¯å¦å·²ç»è¨
+    # 🔒 是否已登記
     # ==========================
 
     c.execute(
@@ -3476,13 +3474,13 @@ async def set_birthday(
     if data and data["birthday"]:
 
         await interaction.response.send_message(
-            "â ä½ å·²ç¶å®æçæ¥ç»è¨ã\n\n" "å¦éä¿®æ¹çæ¥è³æï¼è«è¯çµ¡ç®¡çå¡åå©èçã",
+            "❌ 你已經完成生日登記。\n\n" "如需修改生日資料，請聯絡管理員協助處理。",
             ephemeral=True,
         )
         return
 
     # ==========================
-    # ð æ´æ°çæ¥è³æ
+    # 🎂 更新生日資料
     # ==========================
 
     birthday = f"{month:02d}-{day:02d}"
@@ -3503,7 +3501,7 @@ async def set_birthday(
     conn.commit()
 
     # ==========================
-    # ð ç»è¨ç´é
+    # 📝 登記紀錄
     # ==========================
 
     log_channel = bot.get_channel(BIRTHDAY_LOG_CHANNEL)
@@ -3511,60 +3509,60 @@ async def set_birthday(
     if log_channel:
 
         embed = discord.Embed(
-            title="ð çæ¥ç»è¨",
+            title="🎂 生日登記",
             color=discord.Color.pink(),
             timestamp=datetime.now(tz),
         )
 
         embed.add_field(
-            name="ð¤ ä½¿ç¨è",
+            name="👤 使用者",
             value=interaction.user.mention,
             inline=False,
         )
 
         embed.add_field(
-            name="ð çæ¥",
+            name="📅 生日",
             value=f"{month:02d} / {day:02d}",
             inline=True,
         )
 
         embed.add_field(
-            name="ð åºçå¹´",
-            value=str(year) if year else "æªå¡«å¯«",
+            name="🎈 出生年",
+            value=str(year) if year else "未填寫",
             inline=True,
         )
 
-        embed.set_footer(text="Moon Bot v2ï½çæ¥ç³»çµ±")
+        embed.set_footer(text="Moon Bot v2｜生日系統")
 
         await log_channel.send(embed=embed)
 
     # ==========================
-    # â å®æ
+    # ✅ 完成
     # ==========================
 
     await interaction.response.send_message(
-        "â çæ¥ç»è¨æåï¼",
+        "✅ 生日登記成功！",
         ephemeral=True,
     )
 
 
 # ==========================
-# ð çæ¥ä¿®æ¹
+# 📅 生日修改
 # ==========================
 
 
-@bot.tree.command(name="çæ¥ä¿®æ¹", description="ä¿®æ¹ç©å®¶çæ¥")
+@bot.tree.command(name="生日修改", description="修改玩家生日")
 @app_commands.rename(
-    member="ç©å®¶",
-    month="æä»½",
-    day="æ¥æ",
-    year="åºçå¹´",
+    member="玩家",
+    month="月份",
+    day="日期",
+    year="出生年",
 )
 @app_commands.describe(
-    member="è¦ä¿®æ¹çæ¥çç©å®¶",
-    month="çæ¥æä»½",
-    day="çæ¥æ¥æ",
-    year="åºçå¹´ï¼é¸å¡«ï¼",
+    member="要修改生日的玩家",
+    month="生日月份",
+    day="生日日期",
+    year="出生年（選填）",
 )
 async def edit_birthday(
     interaction: discord.Interaction,
@@ -3575,31 +3573,31 @@ async def edit_birthday(
 ):
 
     # ==========================
-    # ð ç®¡çå¡éå¶
+    # 👑 管理員限制
     # ==========================
 
     if interaction.user.id not in BOT_ADMINS:
 
         await interaction.response.send_message(
-            "â åªæç®¡çå¡å¯ä»¥ä½¿ç¨æ­¤æä»¤ã",
+            "❌ 只有管理員可以使用此指令。",
             ephemeral=True,
         )
         return
 
     # ==========================
-    # ð é »ééå¶
+    # 📍 頻道限制
     # ==========================
 
     if interaction.channel.id != BIRTHDAY_ADMIN_CHANNEL:
 
         await interaction.response.send_message(
-            f"â è«åå¾ <#{BIRTHDAY_ADMIN_CHANNEL}> ä½¿ç¨æ­¤æä»¤ã",
+            f"❌ 請前往 <#{BIRTHDAY_ADMIN_CHANNEL}> 使用此指令。",
             ephemeral=True,
         )
         return
 
     # ==========================
-    # ð æ¥æé©è­
+    # 📅 日期驗證
     # ==========================
 
     try:
@@ -3607,7 +3605,7 @@ async def edit_birthday(
     except ValueError:
 
         await interaction.response.send_message(
-            "â æ¥ææ ¼å¼é¯èª¤ã",
+            "❌ 日期格式錯誤。",
             ephemeral=True,
         )
         return
@@ -3616,7 +3614,7 @@ async def edit_birthday(
     ensure_user(user_id)
 
     # ==========================
-    # ð åå¾èè³æ
+    # 🔍 取得舊資料
     # ==========================
 
     c.execute(
@@ -3633,7 +3631,7 @@ async def edit_birthday(
     if not data or not data["birthday"]:
 
         await interaction.response.send_message(
-            "â è©²ç©å®¶å°æªç»è¨çæ¥ã",
+            "❌ 該玩家尚未登記生日。",
             ephemeral=True,
         )
         return
@@ -3644,19 +3642,19 @@ async def edit_birthday(
     new_birthday = f"{month:02d}-{day:02d}"
 
     # ==========================
-    # ð è³æç¸å
+    # 📋 資料相同
     # ==========================
 
     if old_birthday == new_birthday and old_year == year:
 
         await interaction.response.send_message(
-            "â ï¸ æ°è³æèç®åçæ¥è³æç¸åï¼æªé²è¡ä¿®æ¹ã",
+            "⚠️ 新資料與目前生日資料相同，未進行修改。",
             ephemeral=True,
         )
         return
 
     # ==========================
-    # ð¾ æ´æ°è³æ
+    # 💾 更新資料
     # ==========================
 
     c.execute(
@@ -3675,7 +3673,7 @@ async def edit_birthday(
     conn.commit()
 
     # ==========================
-    # ð ä¿®æ¹ç´é
+    # 📝 修改紀錄
     # ==========================
 
     log_channel = bot.get_channel(BIRTHDAY_LOG_CHANNEL)
@@ -3683,92 +3681,92 @@ async def edit_birthday(
     if log_channel:
 
         embed = discord.Embed(
-            title="âï¸ çæ¥è³æä¿®æ¹",
+            title="✏️ 生日資料修改",
             color=discord.Color.orange(),
             timestamp=datetime.now(tz),
         )
 
         embed.add_field(
-            name="ð¤ ç©å®¶",
+            name="👤 玩家",
             value=member.mention,
             inline=False,
         )
 
         embed.add_field(
-            name="ð ç®¡çå¡",
+            name="👑 管理員",
             value=interaction.user.mention,
             inline=False,
         )
 
         old_text = old_birthday.replace("-", " / ")
         if old_year:
-            old_text += f"\nð {old_year}"
+            old_text += f"\n🎈 {old_year}"
 
         new_text = new_birthday.replace("-", " / ")
         if year:
-            new_text += f"\nð {year}"
+            new_text += f"\n🎈 {year}"
         else:
-            new_text += "\nð æªå¡«å¯«"
+            new_text += "\n🎈 未填寫"
         embed.add_field(
-            name="ð èè³æ",
+            name="📅 舊資料",
             value=old_text,
             inline=True,
         )
 
         embed.add_field(
-            name="ð æ°è³æ",
+            name="📅 新資料",
             value=new_text,
             inline=True,
         )
 
-        embed.set_footer(text="Moon Bot v2ï½çæ¥ç³»çµ±")
+        embed.set_footer(text="Moon Bot v2｜生日系統")
 
         await log_channel.send(embed=embed)
 
     # ==========================
-    # â å®æ
+    # ✅ 完成
     # ==========================
 
     await interaction.response.send_message(
-        f"â å·²æåä¿®æ¹ **{member.display_name}** ççæ¥è³æã",
+        f"✅ 已成功修改 **{member.display_name}** 的生日資料。",
         ephemeral=True,
     )
 
 
 # ==========================
-# ð çæ¥æ¥è©¢
+# 📅 生日查詢
 # ==========================
 
 
-@bot.tree.command(name="çæ¥æ¥è©¢", description="æ¥çææå·²ç»è¨çæ¥")
+@bot.tree.command(name="生日查詢", description="查看所有已登記生日")
 async def check_birthday(interaction: discord.Interaction):
 
     # ==========================
-    # ð ç®¡çå¡éå¶
+    # 👑 管理員限制
     # ==========================
 
     if interaction.user.id not in BOT_ADMINS:
 
         await interaction.response.send_message(
-            "â åªæç®¡çå¡å¯ä»¥ä½¿ç¨æ­¤æä»¤ã",
+            "❌ 只有管理員可以使用此指令。",
             ephemeral=True,
         )
         return
 
     # ==========================
-    # ð é »ééå¶
+    # 📍 頻道限制
     # ==========================
 
     if interaction.channel.id != BIRTHDAY_ADMIN_CHANNEL:
 
         await interaction.response.send_message(
-            f"â è«åå¾ <#{BIRTHDAY_ADMIN_CHANNEL}> ä½¿ç¨æ­¤æä»¤ã",
+            f"❌ 請前往 <#{BIRTHDAY_ADMIN_CHANNEL}> 使用此指令。",
             ephemeral=True,
         )
         return
 
     # ==========================
-    # ð æ¥è©¢çæ¥
+    # 📋 查詢生日
     # ==========================
 
     c.execute("""
@@ -3783,13 +3781,13 @@ async def check_birthday(interaction: discord.Interaction):
     if not users:
 
         await interaction.response.send_message(
-            "ð­ ç®åæ²æä»»ä½çæ¥è³æã",
+            "📭 目前沒有任何生日資料。",
             ephemeral=True,
         )
         return
 
     embed = discord.Embed(
-        title="ð å·²ç»è¨çæ¥",
+        title="🎂 已登記生日",
         color=discord.Color.pink(),
     )
 
@@ -3806,45 +3804,45 @@ async def check_birthday(interaction: discord.Interaction):
 
         if row["birth_year"]:
 
-            birthday += f"ï¼{row['birth_year']}ï¼"
+            birthday += f"（{row['birth_year']}）"
 
-        text += f"ð¸ {user.display_name}\nð {birthday}\n\n"
+        text += f"🌸 {user.display_name}\n📅 {birthday}\n\n"
 
     embed.description = text
 
-    embed.set_footer(text=f"å± {len(users)} ä½ç©å®¶")
+    embed.set_footer(text=f"共 {len(users)} 位玩家")
 
     await interaction.response.send_message(embed=embed)
 
 
 # ==========================
-# ð æ¬æå£½æ
+# 📅 本月壽星
 # ==========================
 
 
-@bot.tree.command(name="æ¬æå£½æ", description="æ¥çæ¬æå£½æ")
+@bot.tree.command(name="本月壽星", description="查看本月壽星")
 async def birthday_list(interaction: discord.Interaction):
 
     # ==========================
-    # ð ç®¡çå¡éå¶
+    # 👑 管理員限制
     # ==========================
 
     if interaction.user.id not in BOT_ADMINS:
 
         await interaction.response.send_message(
-            "â åªæç®¡çå¡å¯ä»¥ä½¿ç¨æ­¤æä»¤ã",
+            "❌ 只有管理員可以使用此指令。",
             ephemeral=True,
         )
         return
 
     # ==========================
-    # ð é »ééå¶
+    # 📍 頻道限制
     # ==========================
 
     if interaction.channel.id != BIRTHDAY_ADMIN_CHANNEL:
 
         await interaction.response.send_message(
-            f"â è«åå¾ <#{BIRTHDAY_ADMIN_CHANNEL}> ä½¿ç¨æ­¤æä»¤ã",
+            f"❌ 請前往 <#{BIRTHDAY_ADMIN_CHANNEL}> 使用此指令。",
             ephemeral=True,
         )
         return
@@ -3867,13 +3865,13 @@ async def birthday_list(interaction: discord.Interaction):
     if not users:
 
         await interaction.response.send_message(
-            "ð­ æ¬ææ²æå£½æã",
+            "📭 本月沒有壽星。",
             ephemeral=True,
         )
         return
 
     embed = discord.Embed(
-        title=f"ð {int(month)} æå£½æ",
+        title=f"🎂 {int(month)} 月壽星",
         color=discord.Color.pink(),
     )
 
@@ -3891,37 +3889,37 @@ async def birthday_list(interaction: discord.Interaction):
         birthday = row["birthday"].replace("-", " / ")
 
         if row["birth_year"]:
-            birthday += f"ï¼{row['birth_year']}ï¼"
+            birthday += f"（{row['birth_year']}）"
 
-        text += f"ð¸ **{member.display_name}**\n" f"ð {birthday}\n\n"
+        text += f"🌸 **{member.display_name}**\n" f"📅 {birthday}\n\n"
 
         count += 1
 
     if not text:
 
         await interaction.response.send_message(
-            "ð­ æ¬ææ²æå£½æã",
+            "📭 本月沒有壽星。",
             ephemeral=True,
         )
         return
 
     embed.description = text
 
-    embed.set_footer(text=f"æ¬æå± {count} ä½å£½æï½Moon Bot v2")
+    embed.set_footer(text=f"本月共 {count} 位壽星｜Moon Bot v2")
 
     await interaction.response.send_message(embed=embed)
 
 
-# ð¼ æå·¥
-@bot.tree.command(name="æå·¥")
+# 💼 打工
+@bot.tree.command(name="打工")
 async def work(interaction: discord.Interaction):
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != WORK_CHANNEL:
 
         embed = discord.Embed(
-            title="ð¼ ææå§è¨ä¸­å¿",
-            description=f"è«åå¾ <#{WORK_CHANNEL}> æ¥åå§è¨ä»»å",
+            title="💼 星月委託中心",
+            description=f"請前往 <#{WORK_CHANNEL}> 接取委託任務",
             color=discord.Color.green(),
         )
 
@@ -3931,7 +3929,7 @@ async def work(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     ensure_user(user_id)
 
-    # ð¤ å»ºç«è³æ
+    # 👤 建立資料
     c.execute(
         """
         INSERT OR IGNORE INTO users
@@ -3942,7 +3940,7 @@ async def work(interaction: discord.Interaction):
     )
     conn.commit()
 
-    # â³ å·å»
+    # ⏳ 冷卻
     c.execute("SELECT last_work,money FROM users WHERE user_id=?", (user_id,))
 
     data = c.fetchone()
@@ -3962,77 +3960,77 @@ async def work(interaction: discord.Interaction):
             seconds = int(remain.total_seconds() % 60)
 
             embed = discord.Embed(
-                title="â³ ææå§è¨å·å»ä¸­",
-                description=f"å©é¤æéï¼{minutes}å {seconds}ç§",
+                title="⏳ 星月委託冷卻中",
+                description=f"剩餘時間：{minutes}分 {seconds}秒",
                 color=discord.Color.orange(),
             )
 
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-    # ð å·¥ä½åè¡¨
+    # 📜 工作列表
     jobs = [
-        ("æ´çæç¥åæ¸é¤¨", 800, 1300),
-        ("è­·éææåé", 1000, 1600),
-        ("ç§é¡§æåè±å", 700, 1200),
-        ("æ¸çå¤ä»£éºè·¡", 1200, 1900),
-        ("åå©é­æ³ç ç©¶", 1300, 2200),
-        ("æ¡éæåç¤¦ç³", 900, 1500),
-        ("å·¡éæç©ºåå", 1000, 1700),
+        ("整理月神圖書館", 800, 1300),
+        ("護送星月商隊", 1000, 1600),
+        ("照顧月光花園", 700, 1200),
+        ("清理古代遺跡", 1200, 1900),
+        ("協助魔法研究", 1300, 2200),
+        ("採集月光礦石", 900, 1500),
+        ("巡邏星空城區", 1000, 1700),
     ]
 
     job_name, low, high = random.choice(jobs)
 
-    # ð² äºä»¶
+    # 🎲 事件
     roll = random.randint(1, 100)
 
     if roll <= 5:
 
         reward = random.randint(low, high) * 3
 
-        title = "ð æç¥ç·é¡§"
-        desc = "ç²å¾ä¸åå ±é¬"
+        title = "🌟 月神眷顧"
+        desc = "獲得三倍報酬"
         event_type = "success"
 
     elif roll <= 75:
 
         reward = random.randint(low, high)
 
-        title = "â¨ å§è¨æå"
-        desc = "é å©å®æä»»å"
+        title = "✨ 委託成功"
+        desc = "順利完成任務"
         event_type = "success"
 
     elif roll <= 90:
 
         reward = int(random.randint(low, high) * 0.5)
 
-        title = "â ï¸ å·¥ä½å¤±èª¤"
-        desc = "åªç²å¾é¨åå ±é¬"
+        title = "⚠️ 工作失誤"
+        desc = "只獲得部分報酬"
         event_type = "success"
 
     elif roll <= 97:
 
         reward = random.randint(100, 500)
 
-        title = "ð¸ å·¥ä½æå¤"
-        desc = "æå£è¨­åéè¦è³ å"
+        title = "💸 工作意外"
+        desc = "損壞設備需要賠償"
         event_type = "loss"
 
     else:
 
         reward = random.randint(500, 1500)
         reward = random.randint(1500, 3000)
-        title = "â ï¸ ç½é£äºä»¶"
-        desc = "ä»»åå¤±æé æéå¤§æå¤±"
+        title = "☠️ 災難事件"
+        desc = "任務失敗造成重大損失"
         event_type = "loss"
 
-    # ð° çµç®
+    # 💰 結算
     if event_type == "success":
         money += reward
     else:
         money = max(0, money - reward)
 
-    # ð¾ æ´æ°
+    # 💾 更新
     c.execute(
         """
         UPDATE users
@@ -4045,39 +4043,39 @@ async def work(interaction: discord.Interaction):
 
     conn.commit()
 
-    # ð Embed
+    # 🌙 Embed
     embed = discord.Embed(
-        title="ð ð´ððð ð¾ððð",
+        title="🌙 𝑴𝒐𝒐𝒏 𝑾𝒐𝒓𝒌",
         description=desc,
         color=discord.Color.from_rgb(186, 85, 211),
     )
 
-    embed.add_field(name="ð å§è¨å§å®¹", value=f"```{job_name}```", inline=False)
+    embed.add_field(name="📜 委託內容", value=f"```{job_name}```", inline=False)
 
-    embed.add_field(name="â¨ äºä»¶çµæ", value=f"```{title}```", inline=False)
+    embed.add_field(name="✨ 事件結果", value=f"```{title}```", inline=False)
 
     if event_type == "success":
 
         embed.add_field(
-            name="ð æ¬æ¬¡æ¶å¥", value=f"{NUNU_EMOJI} `{reward:,}`", inline=True
+            name="🎁 本次收入", value=f"{NUNU_EMOJI} `{reward:,}`", inline=True
         )
 
     else:
 
         embed.add_field(
-            name="ð¸ æ¬æ¬¡æå¤±", value=f"{NUNU_EMOJI} `{reward:,}`", inline=True
+            name="💸 本次損失", value=f"{NUNU_EMOJI} `{reward:,}`", inline=True
         )
 
-    embed.add_field(name="ð° é¢åé¤é¡", value=f"{NUNU_EMOJI} `{money:,}`", inline=True)
+    embed.add_field(name="💰 錢包餘額", value=f"{NUNU_EMOJI} `{money:,}`", inline=True)
 
-    embed.set_footer(text="æ¥µææèµ â¦ ææåè¡")
+    embed.set_footer(text="極曜月葵 ✦ 星月同行")
 
     await interaction.response.send_message(embed=embed)
 
 
 class BuyButton(discord.ui.Button):
     def __init__(self, item_id, price, name):
-        super().__init__(label=f"è³¼è²· {name}", style=discord.ButtonStyle.green)
+        super().__init__(label=f"購買 {name}", style=discord.ButtonStyle.green)
         self.item_id = item_id
         self.price = price
         self.name = name
@@ -4086,31 +4084,31 @@ class BuyButton(discord.ui.Button):
 
         user_id = str(interaction.user.id)
 
-        # ð° æ¥é¢
+        # 💰 查錢
         c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
         data = c.fetchone()
 
         if not data or data[0] < self.price:
-            await interaction.response.send_message("â åªåªå¹£ä¸è¶³", ephemeral=True)
+            await interaction.response.send_message("❌ 努努幣不足", ephemeral=True)
             return
 
-        # ð¦ æ¥åº«å­
+        # 📦 查庫存
         c.execute("SELECT stock FROM shop WHERE item_id=?", (self.item_id,))
         stock = c.fetchone()
 
         if not stock or stock[0] <= 0:
-            await interaction.response.send_message("â ååå·²å®å®", ephemeral=True)
+            await interaction.response.send_message("❌ 商品已售完", ephemeral=True)
             return
 
-        # ð° æ£é¢
+        # 💰 扣錢
         c.execute(
             "UPDATE users SET money = money - ? WHERE user_id=?", (self.price, user_id)
         )
 
-        # ð¦ æ£åº«å­
+        # 📦 扣庫存
         c.execute("UPDATE shop SET stock = stock - 1 WHERE item_id=?", (self.item_id,))
 
-        # ð å å¥èå
+        # 🎒 加入背包
         c.execute(
             "SELECT amount FROM inventory WHERE user_id=? AND item_id=?",
             (user_id, self.item_id),
@@ -4131,12 +4129,12 @@ class BuyButton(discord.ui.Button):
         conn.commit()
 
         await interaction.response.send_message(
-            f"ðï¸ è³¼è²·æåï¼**{self.name}**\n<a:emoji40:1510362334026268713> -{self.price}"
+            f"🛍️ 購買成功！**{self.name}**\n<a:emoji40:1510362334026268713> -{self.price}"
         )
 
 
 # ==========================================
-# ð ååº View
+# 🛒 商店 View
 # ==========================================
 class ShopView(discord.ui.View):
     def __init__(self, items, page=0):
@@ -4154,15 +4152,15 @@ class ShopView(discord.ui.View):
 
         self.clear_items()
 
-        embed = discord.Embed(title="ð ååº", color=discord.Color.gold())
+        embed = discord.Embed(title="🛒 商店", color=discord.Color.gold())
 
         page_items = self.get_page_items()
 
         for item_id, name, price, stock, desc, img in page_items:
 
             embed.add_field(
-                name=f"ð {item_id}ï½{name}",
-                value=f"{desc}\n<a:emoji40:1510362334026268713> {price}ï½åº«å­:{stock}",
+                name=f"🆔 {item_id}｜{name}",
+                value=f"{desc}\n<a:emoji40:1510362334026268713> {price}｜庫存:{stock}",
                 inline=False,
             )
 
@@ -4170,14 +4168,14 @@ class ShopView(discord.ui.View):
 
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="â¬ ä¸ä¸é ", style=discord.ButtonStyle.gray)
+    @discord.ui.button(label="⬅ 上一頁", style=discord.ButtonStyle.gray)
     async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.page > 0:
             self.page -= 1
 
         await self.update(interaction)
 
-    @discord.ui.button(label="â¡ ä¸ä¸é ", style=discord.ButtonStyle.gray)
+    @discord.ui.button(label="➡ 下一頁", style=discord.ButtonStyle.gray)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
         if (self.page + 1) * self.per_page < len(self.items):
             self.page += 1
@@ -4190,25 +4188,25 @@ class ShopView(discord.ui.View):
 
 
 # ==========================================
-# ð ååº
+# 🛒 商店
 # ==========================================
-@bot.tree.command(name="ååº")
+@bot.tree.command(name="商店")
 async def shop(interaction: discord.Interaction):
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != SHOP_CHANNEL:
 
         embed = discord.Embed(
-            title="ð ææåæ",
-            description=("â¨ åæååéå®\n\n" f"è«åå¾ <#{SHOP_CHANNEL}>"),
+            title="🛒 星月商會",
+            description=("✨ 商會區域限定\n\n" f"請前往 <#{SHOP_CHANNEL}>"),
             color=discord.Color.gold(),
         )
 
         embed.add_field(
-            name="ð¦ åæåè½", value="ååºï½è³¼è²·ï½èåï½é¢å", inline=False
+            name="📦 商會功能", value="商店｜購買｜背包｜錢包", inline=False
         )
 
-        embed.set_footer(text="æ¥µææèµ â¦ ææåæ")
+        embed.set_footer(text="極曜月葵 ✦ 星月商會")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
@@ -4218,38 +4216,38 @@ async def shop(interaction: discord.Interaction):
     items = c.fetchall()
 
     if not items:
-        await interaction.response.send_message("ð ååºç®åæ²æåå")
+        await interaction.response.send_message("🛒 商店目前沒有商品")
         return
 
     view = ShopView(items)
 
     embed = discord.Embed(
-        title="ð ææåæ",
-        description="â¨ é»ææéçè¦½åå",
+        title="🛒 星月商會",
+        description="✨ 點擊按鈕瀏覽商品",
         color=discord.Color.gold(),
     )
 
     await interaction.response.send_message(embed=embed, view=view)
 
 
-# ð èå¬ååº
-@bot.tree.command(name="èå¬ååº")
+# 💜 老公商店
+@bot.tree.command(name="老公商店")
 async def husband_shop(interaction: discord.Interaction):
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != SHOP_CHANNEL:
 
         embed = discord.Embed(
-            title="ð ææå©å§»ä»ç´¹æ",
+            title="💜 星月婚姻介紹所",
             description=(
-                "â¨ èå¬ååºåè½æ¼æå®ååä½¿ç¨\n\n" f"è«åå¾ <#{SHOP_CHANNEL}>"
+                "✨ 老公商店僅能於指定區域使用\n\n" f"請前往 <#{SHOP_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(255, 105, 180),
         )
 
-        embed.add_field(name="ð åè½", value="èå¬ååºï½è³¼è²·èå¬", inline=False)
+        embed.add_field(name="💍 功能", value="老公商店｜購買老公", inline=False)
 
-        embed.set_footer(text="æ¥µææèµ â¦ å½å®ä¹äºº")
+        embed.set_footer(text="極曜月葵 ✦ 命定之人")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
@@ -4264,7 +4262,7 @@ async def husband_shop(interaction: discord.Interaction):
 
     if not husbands:
 
-        await interaction.response.send_message("ð ç®åæ²æå¯è³¼è²·çèå¬")
+        await interaction.response.send_message("💔 目前沒有可購買的老公")
         return
 
     husband_text = ""
@@ -4274,62 +4272,62 @@ async def husband_shop(interaction: discord.Interaction):
         husband_text += f"{i}. {husband[0]}\n"
 
     embed = discord.Embed(
-        title="ð ææå©å§»ä»ç´¹æ",
-        description=("æ­¡è¿æé¸ä½ çå½å®èå¬ â¨\n\n" f"{husband_text}"),
+        title="💜 星月婚姻介紹所",
+        description=("歡迎挑選你的命定老公 ✨\n\n" f"{husband_text}"),
         color=discord.Color.from_rgb(255, 105, 180),
     )
 
-    embed.set_footer(text="è¼¸å¥ /è³¼è²·èå¬ åç¨±")
+    embed.set_footer(text="輸入 /購買老公 名稱")
 
     await interaction.response.send_message(embed=embed)
 
 
-# ð è³¼è²·èå¬
-@bot.tree.command(name="è³¼è²·èå¬")
-async def buy_husband(interaction: discord.Interaction, åç¨±: str):
+# 💜 購買老公
+@bot.tree.command(name="購買老公")
+async def buy_husband(interaction: discord.Interaction, 名稱: str):
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != SHOP_CHANNEL:
 
         embed = discord.Embed(
-            title="ð ææå©å§»ä»ç´¹æ",
+            title="💜 星月婚姻介紹所",
             description=(
-                "â¨ è³¼è²·èå¬åè½æ¼æå®ååä½¿ç¨\n\n" f"è«åå¾ <#{SHOP_CHANNEL}>"
+                "✨ 購買老公僅能於指定區域使用\n\n" f"請前往 <#{SHOP_CHANNEL}>"
             ),
             color=discord.Color.from_rgb(255, 105, 180),
         )
 
         embed.add_field(
-            name="ð åè½", value="èå¬ååºï½è³¼è²·èå¬ï½æçèå¬", inline=False
+            name="💍 功能", value="老公商店｜購買老公｜我的老公", inline=False
         )
 
-        embed.set_footer(text="æ¥µææèµ â¦ å½å®ä¹äºº")
+        embed.set_footer(text="極曜月葵 ✦ 命定之人")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     user_id = str(interaction.user.id)
 
-    # æ¥èå¬æ¯å¦å­å¨
+    # 查老公是否存在
     c.execute(
         """
         SELECT husband_id
         FROM husbands
         WHERE name=?
     """,
-        (åç¨±,),
+        (名稱,),
     )
 
     husband = c.fetchone()
 
     if not husband:
 
-        await interaction.response.send_message("â æ¥ç¡æ­¤èå¬", ephemeral=True)
+        await interaction.response.send_message("❌ 查無此老公", ephemeral=True)
         return
 
     husband_id = husband[0]
 
-    # æ¯å¦å·²ææ
+    # 是否已擁有
     c.execute(
         """
         SELECT *
@@ -4342,10 +4340,10 @@ async def buy_husband(interaction: discord.Interaction, åç¨±: str):
 
     if c.fetchone():
 
-        await interaction.response.send_message(f"ð ä½ å·²ç¶ææ {åç¨±}", ephemeral=True)
+        await interaction.response.send_message(f"💜 你已經擁有 {名稱}", ephemeral=True)
         return
 
-    # æ¥é¢
+    # 查錢
     c.execute(
         """
         SELECT money
@@ -4362,12 +4360,12 @@ async def buy_husband(interaction: discord.Interaction, åç¨±: str):
     if money < HUSBAND_PRICE:
 
         await interaction.response.send_message(
-            (f"â åªåªå¹£ä¸è¶³\n\n" f"éè¦ï¼{HUSBAND_PRICE:,}\n" f"ç®åï¼{money:,}"),
+            (f"❌ 努努幣不足\n\n" f"需要：{HUSBAND_PRICE:,}\n" f"目前：{money:,}"),
             ephemeral=True,
         )
         return
 
-    # æ£æ¬¾
+    # 扣款
     c.execute(
         """
         UPDATE users
@@ -4377,7 +4375,7 @@ async def buy_husband(interaction: discord.Interaction, åç¨±: str):
         (HUSBAND_PRICE, user_id),
     )
 
-    # æ¶è
+    # 收藏
     c.execute(
         """
         INSERT INTO user_husbands
@@ -4390,35 +4388,35 @@ async def buy_husband(interaction: discord.Interaction, åç¨±: str):
     conn.commit()
 
     embed = discord.Embed(
-        title="ð æ¶èæå",
-        description=(f"æ­åç²å¾\n\n" f"â¨ {åç¨±} â¨"),
+        title="💜 收藏成功",
+        description=(f"恭喜獲得\n\n" f"✨ {名稱} ✨"),
         color=discord.Color.from_rgb(255, 105, 180),
     )
 
-    embed.add_field(name="ð° æ¶è", value=f"{HUSBAND_PRICE:,} åªåªå¹£", inline=False)
+    embed.add_field(name="💰 消耗", value=f"{HUSBAND_PRICE:,} 努努幣", inline=False)
 
-    embed.set_footer(text="æ¥µææèµ â¦ å½å®ä¹äºº")
+    embed.set_footer(text="極曜月葵 ✦ 命定之人")
 
     await interaction.response.send_message(embed=embed)
 
 
-# ð æçèå¬
-@bot.tree.command(name="æçèå¬")
+# 💜 我的老公
+@bot.tree.command(name="我的老公")
 async def my_husbands(interaction: discord.Interaction):
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != SHOP_CHANNEL:
 
         embed = discord.Embed(
-            title="ð æçèå¬",
-            description=("â¨ æ­¤åè½åè½æ¼æå®ååä½¿ç¨\n\n" f"è«åå¾ <#{SHOP_CHANNEL}>"),
+            title="💜 我的老公",
+            description=("✨ 此功能僅能於指定區域使用\n\n" f"請前往 <#{SHOP_CHANNEL}>"),
             color=discord.Color.from_rgb(255, 105, 180),
         )
 
         embed.add_field(
-            name="ð åè½", value="èå¬ååºï½è³¼è²·èå¬ï½æçèå¬", inline=False
+            name="💍 功能", value="老公商店｜購買老公｜我的老公", inline=False
         )
 
-        embed.set_footer(text="æ¥µææèµ â¦ å½å®ä¹äºº")
+        embed.set_footer(text="極曜月葵 ✦ 命定之人")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
@@ -4441,34 +4439,34 @@ async def my_husbands(interaction: discord.Interaction):
 
     if not husbands:
 
-        await interaction.response.send_message("ð ä½ ç®åéæ²ææ¶èä»»ä½èå¬")
+        await interaction.response.send_message("💔 你目前還沒有收藏任何老公")
         return
 
-    husband_text = "\n".join([f"ð {h[0]}" for h in husbands])
+    husband_text = "\n".join([f"💜 {h[0]}" for h in husbands])
 
     embed = discord.Embed(
-        title="ð æçèå¬",
+        title="💜 我的老公",
         description=husband_text,
         color=discord.Color.from_rgb(255, 105, 180),
     )
 
-    embed.set_footer(text=f"å±æ¶è {len(husbands)} ä½èå¬")
+    embed.set_footer(text=f"共收藏 {len(husbands)} 位老公")
 
     await interaction.response.send_message(embed=embed)
 
 
-# ð é©åç®±
+# 🎁 驚喜箱
 
 
-# ð§­ æ¢éª
-@bot.tree.command(name="æ¢éª")
+# 🧭 探險
+@bot.tree.command(name="探險")
 async def adventure(interaction: discord.Interaction):
 
     if interaction.channel.id != ADVENTURE_CHANNEL:
 
         embed = discord.Embed(
-            title="ð§­ æææ¢éª",
-            description=f"è«åå¾ <#{ADVENTURE_CHANNEL}> ä½¿ç¨æ¢éª",
+            title="🧭 星月探險",
+            description=f"請前往 <#{ADVENTURE_CHANNEL}> 使用探險",
             color=discord.Color.blurple(),
         )
 
@@ -4490,7 +4488,7 @@ async def adventure(interaction: discord.Interaction):
 
     if not data:
 
-        await interaction.response.send_message("â æ¾ä¸å°å¸³æ¶è³æ", ephemeral=True)
+        await interaction.response.send_message("❌ 找不到帳戶資料", ephemeral=True)
         return
 
     money, last_adventure = data
@@ -4509,7 +4507,7 @@ async def adventure(interaction: discord.Interaction):
             seconds = remain % 60
 
             await interaction.response.send_message(
-                f"â³ æ¢éªå·å»ä¸­\néé {minutes}å {seconds}ç§", ephemeral=True
+                f"⏳ 探險冷卻中\n還需 {minutes}分 {seconds}秒", ephemeral=True
             )
             return
 
@@ -4518,31 +4516,31 @@ async def adventure(interaction: discord.Interaction):
     title = ""
     reward = 0
 
-    # ð ç¥ç´
+    # 🌌 神級
     if roll <= 5:
 
-        title = random.choice(["ð æç¥éè¨", "ð æç¥ç¥ç¦", "ð æç©ºè£ç¸«"])
+        title = random.choice(["🌌 星神降臨", "🌌 月神祝福", "🌌 時空裂縫"])
 
         reward = random.randint(5000, 20000)
 
-    # ð Boss
+    # 👑 Boss
     elif roll <= 15:
 
-        title = random.choice(["ð æ·±æ·µé­ç¼", "ð æè¾°å·¨é¾", "ð æå½±é¨å£«"])
+        title = random.choice(["👑 深淵魔狼", "👑 星辰巨龍", "👑 月影騎士"])
 
         reward = random.randint(1000, 8000)
 
-    # âï¸ å±éª
+    # ⚔️ 危險
     elif roll <= 35:
 
-        title = random.choice(["âï¸ æµæµªçè³", "âï¸ æ·±æé·é±", "âï¸ é­ç©è¥²æ"])
+        title = random.choice(["⚔️ 流浪盜賊", "⚔️ 深林陷阱", "⚔️ 魔物襲擊"])
 
         reward = -random.randint(100, 1000)
 
-    # ð¿ æ®é
+    # 🌿 普通
     else:
 
-        title = random.choice(["ð¿ è£çµ¦ç®±", "ð¿ æè¡åäºº", "ð¿ éºå¤±è²¡å¯¶"])
+        title = random.choice(["🌿 補給箱", "🌿 旅行商人", "🌿 遺失財寶"])
 
         reward = random.randint(100, 1000)
 
@@ -4563,72 +4561,72 @@ async def adventure(interaction: discord.Interaction):
 
     conn.commit()
 
-    embed = discord.Embed(title="ð§­ æææ¢éª", color=discord.Color.blurple())
+    embed = discord.Embed(title="🧭 星月探險", color=discord.Color.blurple())
 
-    embed.add_field(name="ð æ¢éªçµæ", value=f"```{title}```", inline=False)
+    embed.add_field(name="📖 探險結果", value=f"```{title}```", inline=False)
 
     if reward >= 0:
 
         embed.add_field(
-            name="ð ç²å¾", value=f"{NUNU_EMOJI} `{reward:,}`", inline=False
+            name="🎉 獲得", value=f"{NUNU_EMOJI} `{reward:,}`", inline=False
         )
 
     else:
 
         embed.add_field(
-            name="ð¸ æå¤±", value=f"{NUNU_EMOJI} `{abs(reward):,}`", inline=False
+            name="💸 損失", value=f"{NUNU_EMOJI} `{abs(reward):,}`", inline=False
         )
 
-    embed.add_field(name="ð° é¢åé¤é¡", value=f"{NUNU_EMOJI} `{money:,}`", inline=False)
+    embed.add_field(name="💰 錢包餘額", value=f"{NUNU_EMOJI} `{money:,}`", inline=False)
 
-    embed.set_footer(text="æ¥µææèµ â¦ æææ¢éª")
-    await interaction.response.send_message("ð§­ æ­£å¨é¢éæèµå...")
+    embed.set_footer(text="極曜月葵 ✦ 星月探險")
+    await interaction.response.send_message("🧭 正在離開月葵城...")
 
     msg = await interaction.original_response()
 
     await asyncio.sleep(1)
 
-    await msg.edit(content="ð² ç©¿è¶è¿·é§æ£®æ...")
+    await msg.edit(content="🌲 穿越迷霧森林...")
 
     await asyncio.sleep(1)
 
-    await msg.edit(content="ð æå°éºè·¡è¹¤è·¡...")
+    await msg.edit(content="👀 搜尋遺跡蹤跡...")
 
     await asyncio.sleep(1)
 
     if roll <= 5:
 
-        await msg.edit(content="ð ç¥ç´æ°£æ¯éè¨...")
+        await msg.edit(content="🌌 神級氣息降臨...")
 
     elif roll <= 15:
 
-        await msg.edit(content="ð ç¼ç¾ä¸çBoss...")
+        await msg.edit(content="👑 發現世界Boss...")
 
     elif roll <= 35:
 
-        await msg.edit(content="âï¸ é­éå±éªäºä»¶...")
+        await msg.edit(content="⚔️ 遭遇危險事件...")
 
     else:
 
-        await msg.edit(content="ð ç¼ç¾ç¥ç§å¯¶ç®±...")
+        await msg.edit(content="🎁 發現神秘寶箱...")
 
     await asyncio.sleep(1)
 
     await msg.edit(content=None, embed=embed)
 
 
-# ð³ è³¼è²·
-@bot.tree.command(name="è³¼è²·")
-@app_commands.rename(item_id="ååç·¨è")
-@app_commands.describe(item_id="ååºååç·¨è")
+# 💳 購買
+@bot.tree.command(name="購買")
+@app_commands.rename(item_id="商品編號")
+@app_commands.describe(item_id="商店商品編號")
 async def buy(interaction: discord.Interaction, item_id: int):
 
-    # ð é »ééå¶
+    # 🔒 頻道限制
     if interaction.channel.id != SHOP_CHANNEL:
 
         embed = discord.Embed(
-            title="ð ææåæ",
-            description=f"è«åå¾ <#{SHOP_CHANNEL}> ä½¿ç¨è³¼è²·åè½",
+            title="🛒 星月商會",
+            description=f"請前往 <#{SHOP_CHANNEL}> 使用購買功能",
             color=discord.Color.gold(),
         )
 
@@ -4638,33 +4636,33 @@ async def buy(interaction: discord.Interaction, item_id: int):
     name, price, stock = item
 
     if stock <= 0:
-        await interaction.response.send_message("â ååå·²å®å®", ephemeral=True)
+        await interaction.response.send_message("❌ 商品已售完", ephemeral=True)
         return
 
-    # ð° æ¥é¤é¡
+    # 💰 查餘額
     c.execute("SELECT money FROM users WHERE user_id=?", (user_id,))
 
     data = c.fetchone()
 
     if not data:
         await interaction.response.send_message(
-            "â è«åç°½å°ææå·¥å»ºç«è³æ", ephemeral=True
+            "❌ 請先簽到或打工建立資料", ephemeral=True
         )
         return
 
     money = data[0]
 
     if money < price:
-        await interaction.response.send_message("â åªåªå¹£ä¸è¶³", ephemeral=True)
+        await interaction.response.send_message("❌ 努努幣不足", ephemeral=True)
         return
 
-    # ð° æ£æ¬¾
+    # 💰 扣款
     c.execute("UPDATE users SET money = money - ? WHERE user_id=?", (price, user_id))
 
-    # ð¦ æ£åº«å­
+    # 📦 扣庫存
     c.execute("UPDATE shop SET stock = stock - 1 WHERE item_id=?", (item_id,))
 
-    # ð å å¥èå
+    # 🎒 加入背包
     c.execute(
         "SELECT amount FROM inventory WHERE user_id=? AND item_id=?", (user_id, item_id)
     )
@@ -4695,26 +4693,26 @@ async def buy(interaction: discord.Interaction, item_id: int):
 
     conn.commit()
 
-    embed = discord.Embed(title="ðï¸ è³¼è²·æå", color=discord.Color.green())
+    embed = discord.Embed(title="🛍️ 購買成功", color=discord.Color.green())
 
-    embed.add_field(name="ð¦ åå", value=f"```{name}```", inline=False)
+    embed.add_field(name="📦 商品", value=f"```{name}```", inline=False)
 
-    embed.add_field(name="ð° è±è²»", value=f"{NUNU_EMOJI} `{price:,}`", inline=False)
+    embed.add_field(name="💰 花費", value=f"{NUNU_EMOJI} `{price:,}`", inline=False)
 
-    embed.set_footer(text="æ¥µææèµ â¦ ææåæ")
+    embed.set_footer(text="極曜月葵 ✦ 星月商會")
 
     await interaction.response.send_message(embed=embed)
 
 
-# ð èå
-@bot.tree.command(name="èå")
+# 🎒 背包
+@bot.tree.command(name="背包")
 async def inventory_cmd(interaction: discord.Interaction):
 
     if interaction.channel.id != SHOP_CHANNEL:
 
         embed = discord.Embed(
-            title="ð ææåæ",
-            description=f"è«åå¾ <#{SHOP_CHANNEL}> ä½¿ç¨èååè½",
+            title="🛒 星月商會",
+            description=f"請前往 <#{SHOP_CHANNEL}> 使用背包功能",
             color=discord.Color.gold(),
         )
 
@@ -4736,28 +4734,28 @@ async def inventory_cmd(interaction: discord.Interaction):
     items = c.fetchall()
 
     if not items:
-        await interaction.response.send_message("ð ä½ çèåæ¯ç©ºç")
+        await interaction.response.send_message("🎒 你的背包是空的")
         return
 
     text = ""
 
     for name, amount in items:
-        text += f"ð {name} Ã {amount}\n"
+        text += f"🎁 {name} × {amount}\n"
 
     embed = discord.Embed(
-        title="ð ææèå", description=text, color=discord.Color.purple()
+        title="🎒 星月背包", description=text, color=discord.Color.purple()
     )
 
-    embed.set_footer(text="æ¥µææèµ â¦ ææåæ")
+    embed.set_footer(text="極曜月葵 ✦ 星月商會")
 
     await interaction.response.send_message(embed=embed)
 
 
-# ð è´ééå·
-@bot.tree.command(name="è´ééå·")
-@app_commands.rename(member="æå¡", item_name="éå·åç¨±", amount="æ¸é")
+# 🎁 贈送道具
+@bot.tree.command(name="贈送道具")
+@app_commands.rename(member="成員", item_name="道具名稱", amount="數量")
 @app_commands.describe(
-    member="æ¥æ¶éå·çç©å®¶", item_name="è¦è´éçéå·", amount="è´éæ¸é"
+    member="接收道具的玩家", item_name="要贈送的道具", amount="贈送數量"
 )
 async def give_item(
     interaction: discord.Interaction,
@@ -4769,8 +4767,8 @@ async def give_item(
     if interaction.channel.id != SHOP_CHANNEL:
 
         embed = discord.Embed(
-            title="ð ææåæ",
-            description=f"è«åå¾ <#{SHOP_CHANNEL}> ä½¿ç¨è´éåè½",
+            title="🛒 星月商會",
+            description=f"請前往 <#{SHOP_CHANNEL}> 使用贈送功能",
             color=discord.Color.gold(),
         )
 
@@ -4786,7 +4784,7 @@ async def give_item(
 
     if not item:
 
-        await interaction.response.send_message("â æ²æéååå", ephemeral=True)
+        await interaction.response.send_message("❌ 沒有這個商品", ephemeral=True)
         return
 
     item_id = item[0]
@@ -4804,10 +4802,10 @@ async def give_item(
 
     if not data or data[0] < amount:
 
-        await interaction.response.send_message("â éå·ä¸è¶³", ephemeral=True)
+        await interaction.response.send_message("❌ 道具不足", ephemeral=True)
         return
 
-    # æ£é¤èªå·±
+    # 扣除自己
     c.execute(
         """
         UPDATE inventory
@@ -4817,7 +4815,7 @@ async def give_item(
         (amount, sender_id, item_id),
     )
 
-    # å°æ¹èå
+    # 對方背包
     c.execute(
         """
         SELECT amount
@@ -4853,25 +4851,25 @@ async def give_item(
 
     conn.commit()
 
-    embed = discord.Embed(title="ð è´éæå", color=discord.Color.green())
+    embed = discord.Embed(title="🎁 贈送成功", color=discord.Color.green())
 
-    embed.add_field(name="ð¦ éå·", value=f"```{item_name}```", inline=False)
+    embed.add_field(name="📦 道具", value=f"```{item_name}```", inline=False)
 
-    embed.add_field(name="ð¤ æ¶ä»¶äºº", value=member.mention, inline=False)
+    embed.add_field(name="👤 收件人", value=member.mention, inline=False)
 
-    embed.add_field(name="ð¦ æ¸é", value=f"`{amount}`", inline=False)
+    embed.add_field(name="📦 數量", value=f"`{amount}`", inline=False)
 
-    embed.set_footer(text="æ¥µææèµ â¦ ææåæ")
+    embed.set_footer(text="極曜月葵 ✦ 星月商會")
 
     await interaction.response.send_message(embed=embed)
 
 
-# âï¸ å¢å åªåªå¹£
+# ⚙️ 增加努努幣
 
-@bot.tree.command(name="ç¼åªåªå¹£")
-@app_commands.rename(amount="éé¡", member="æå¡", role="èº«åçµ", everyone="ç¼éå¨é«")
+@bot.tree.command(name="發努努幣")
+@app_commands.rename(amount="金額", member="成員", role="身分組", everyone="發送全體")
 @app_commands.describe(
-    amount="ç¼ééé¡", member="æå®æå¡", role="æå®èº«åçµ", everyone="æ¯å¦ç¼éçµ¦å¨é«"
+    amount="發送金額", member="指定成員", role="指定身分組", everyone="是否發送給全體"
 )
 async def give_money(
     interaction: discord.Interaction,
@@ -4883,40 +4881,40 @@ async def give_money(
 
     await interaction.response.defer()
 
-    # ð éå¶é »é
+    # 🔒 限制頻道
     if interaction.channel.id != 1510930723924611163:
-        await interaction.followup.send("â è«å°ç®¡çå¡é »éä½¿ç¨", ephemeral=True)
+        await interaction.followup.send("❌ 請到管理員頻道使用", ephemeral=True)
         return
 
-    # ð æå®ç®¡çå¡ä½¿ç¨è ID
+    # 🔒 指定管理員使用者 ID
     ALLOWED_USERS = [
-    1153640526063607820,  # éé¦¨
-    1218542666879598613,  # æå¼¦
-    1301905168094335028,  # æ¦å
-    806960151578804275,  # å°è²
-    873202145367846942,  # èè
-    844778614268100638,  # å°E
+    1153640526063607820,  # 韓馨
+    1218542666879598613,  # 星弦
+    1301905168094335028,  # 曦兒
+    806960151578804275,  # 小貓
+    873202145367846942,  # 菜菜
+    844778614268100638,  # 小E
 ]
 
     if interaction.user.id not in ALLOWED_USERS:
-        await interaction.followup.send("â ä½ æ²ææ¬é", ephemeral=True)
+        await interaction.followup.send("❌ 你沒有權限", ephemeral=True)
         return
     
-    # ð è³å°é¸ä¸åå°è±¡
+    # 🔒 至少選一個對象
     if not member and not role and not everyone:
-        await interaction.followup.send("â è«é¸æç¼éå°è±¡", ephemeral=True)
+        await interaction.followup.send("❌ 請選擇發送對象", ephemeral=True)
         return
 
     count = 0
 
-    # ð¤ å®äºº
+    # 👤 單人
     if member:
 
         add_money(member.id, amount)
 
         count = 1
 
-    # ð¥ èº«åçµ
+    # 👥 身分組
     elif role:
 
         for m in role.members:
@@ -4928,7 +4926,7 @@ async def give_money(
 
             count += 1
 
-    # ð å¨é«
+    # 🌍 全體
     elif everyone:
 
         for m in interaction.guild.members:
@@ -4940,64 +4938,64 @@ async def give_money(
 
             count += 1
 
-    embed = discord.Embed(title="ð° ç¼é¢å®æ", color=discord.Color.green())
+    embed = discord.Embed(title="💰 發錢完成", color=discord.Color.green())
 
     embed.add_field(
-        name="ðµ ç¼ééé¡", value=f"{NUNU_EMOJI} `{amount:,}`", inline=False
+        name="💵 發送金額", value=f"{NUNU_EMOJI} `{amount:,}`", inline=False
     )
 
     if member:
-        embed.add_field(name="ð¤ ç¼éå°è±¡", value=member.mention, inline=False)
+        embed.add_field(name="👤 發送對象", value=member.mention, inline=False)
 
     elif role:
-        embed.add_field(name="ð­ ç¼éå°è±¡", value=role.mention, inline=False)
+        embed.add_field(name="🎭 發送對象", value=role.mention, inline=False)
 
     elif everyone:
-        embed.add_field(name="ð ç¼éå°è±¡", value="`å¨é«æå¡`", inline=False)
+        embed.add_field(name="🌍 發送對象", value="`全體成員`", inline=False)
 
-    embed.add_field(name="ð¥ ç¼éäººæ¸", value=f"`{count}` äºº", inline=False)
+    embed.add_field(name="👥 發送人數", value=f"`{count}` 人", inline=False)
 
     await interaction.followup.send(embed=embed)
 
 
 # ==========================
-# ð å»ºç«æ½ç
+# 🌙 建立抽獎
 # ==========================
 
 
-@bot.tree.command(name="æ½çå»ºç«", description="å»ºç«ä¸å ´æ°çæ½ç")
+@bot.tree.command(name="抽獎建立", description="建立一場新的抽獎")
 async def lottery_create(interaction: discord.Interaction):
 
     # -------------------------
-    # é »ééå¶
+    # 頻道限制
     # -------------------------
 
     if interaction.channel.id != LOTTERY_CHANNEL:
 
         await interaction.response.send_message(
-            "â è«è³æ½çé »éä½¿ç¨æ­¤æä»¤ã", ephemeral=True
+            "❌ 請至抽獎頻道使用此指令。", ephemeral=True
         )
         return
 
     # -------------------------
-    # æ¬ééå¶
+    # 權限限制
     # -------------------------
 
     if interaction.user.id not in LOTTERY_MANAGERS:
 
         await interaction.response.send_message(
-            "â åªææ½çç®¡çå¡å¯ä»¥å»ºç«æ½çã",
+            "❌ 只有抽獎管理員可以建立抽獎。",
             ephemeral=True,
         )
         return
 
     # -------------------------
-    # é¸æçå
+    # 選擇獎品
     # -------------------------
 
     embed = discord.Embed(
-        title="ð å»ºç«æ½ç",
-        description=("è«é¸ææ¬æ¬¡æ½çççåé¡åã\n\n" "é¸æå¾å°æéåå°æçè¨­å®è¦çªã"),
+        title="🎁 建立抽獎",
+        description=("請選擇本次抽獎的獎品類型。\n\n" "選擇後將會開啟對應的設定視窗。"),
         color=0xF1C40F,
     )
 
@@ -5007,7 +5005,7 @@ async def lottery_create(interaction: discord.Interaction):
 
 
 # ==========================
-# ð Render ä¿æ´»æå
+# 🌐 Render 保活服務
 # ==========================
 
 class ReusableTCPServer(TCPServer):
@@ -5022,7 +5020,7 @@ def run_web():
         SimpleHTTPRequestHandler
     ) as httpd:
 
-        print(f"ð Web Server å·²ååï¼Portï¼{port}")
+        print(f"🌐 Web Server 已啟動，Port：{port}")
 
         httpd.serve_forever()
 
@@ -5034,7 +5032,7 @@ threading.Thread(
 
 
 # ==========================
-# ð ç°½å°æ¢ä»¶æ½çç³»çµ±
+# 🌙 簽到條件抽獎系統
 # ==========================
 
 setup_streak_lottery(
@@ -5046,7 +5044,7 @@ setup_streak_lottery(
 
 
 # ==========================
-# ð²âï¸ ç¨ç«éæ²ç³»çµ±è¼å¥
+# 🎲⚔️ 獨立遊戲系統載入
 # ==========================
 
 setup_bigsmall(
