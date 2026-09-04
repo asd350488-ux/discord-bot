@@ -22,8 +22,6 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
 
-import discord
-
 
 # ============================================================
 # 🎁 固定盲盒獎池
@@ -46,145 +44,6 @@ LOOT_POOL: tuple[str, ...] = (
     REWARD_NUNU_40000,
     REWARD_NUNU_50000,
 )
-
-
-# ============================================================
-# 💌 媽咪獎品聯動
-# ============================================================
-# 玩家抽到以下四種非努努幣獎品後，可以選擇要通知哪位媽咪，
-# 再自行填寫角色名稱。角色不需要由後台事先建立。
-
-MOMMY_REWARDS = {
-    REWARD_VIDEO,
-    REWARD_PHOTO,
-    REWARD_CERTIFICATE,
-    REWARD_BADGE,
-}
-
-MOMMY_LIST = {
-    "🫧 韓馨媽咪": 1153640526063607820,
-    "☀️ 星弦媽咪": 1218542666879598613,
-    "🌻 曦兒媽咪": 1301905168094335028,
-    "🐈 小貓媽咪": 806960151578804275,
-}
-
-
-def is_mommy_reward(reward: str) -> bool:
-    """判斷是否需要進入媽咪選擇流程。"""
-    return reward in MOMMY_REWARDS
-
-
-class MommyRewardCharacterModal(discord.ui.Modal, title="💌 填寫角色名稱"):
-    character_name = discord.ui.TextInput(
-        label="角色名稱",
-        placeholder="請輸入你要指定的角色名稱",
-        required=True,
-        max_length=100,
-    )
-
-    def __init__(self, bot, player_id: int, reward: str, mommy_name: str, mommy_id: int):
-        super().__init__()
-        self.bot = bot
-        self.player_id = int(player_id)
-        self.reward = reward
-        self.mommy_name = mommy_name
-        self.mommy_id = int(mommy_id)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        character = self.character_name.value.strip()
-        if not character:
-            await interaction.response.send_message(
-                "❌ 請填寫角色名稱。",
-                ephemeral=True,
-            )
-            return
-
-        try:
-            mommy = self.bot.get_user(self.mommy_id)
-            if mommy is None:
-                mommy = await self.bot.fetch_user(self.mommy_id)
-
-            await mommy.send(
-                "💌 **Moon Club 成就盲盒通知**\n\n"
-                f"🎁 玩家：<@{self.player_id}>\n"
-                f"🏆 獲得獎品：**{self.reward}**\n"
-                f"👩 媽咪：**{self.mommy_name}**\n"
-                f"👤 指定角色：**{character}**\n\n"
-                "請媽咪協助後續處理。"
-            )
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "❌ 無法私訊該媽咪，請確認媽咪允許 Bot 傳送私人訊息。",
-                ephemeral=True,
-            )
-            return
-        except discord.HTTPException:
-            await interaction.response.send_message(
-                "❌ 通知媽咪時發生 Discord 通訊錯誤，請稍後再試。",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.send_message(
-            "✅ 已送出！\n"
-            f"🎁 獎品：**{self.reward}**\n"
-            f"👩 媽咪：**{self.mommy_name}**\n"
-            f"👤 角色：**{character}**\n\n"
-            "🤖 機器人已自動通知媽咪。",
-            ephemeral=True,
-        )
-
-
-class MommyRewardSelect(discord.ui.Select):
-    def __init__(self, bot, player_id: int, reward: str):
-        self.bot = bot
-        self.player_id = int(player_id)
-        self.reward = reward
-        options = [
-            discord.SelectOption(label=name, value=str(uid))
-            for name, uid in MOMMY_LIST.items()
-        ]
-        super().__init__(
-            placeholder="👩 請選擇要通知的媽咪",
-            options=options,
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.player_id:
-            await interaction.response.send_message(
-                "❌ 這不是你的獎品操作。",
-                ephemeral=True,
-            )
-            return
-
-        mommy_id = int(self.values[0])
-        mommy_name = next(
-            name for name, uid in MOMMY_LIST.items()
-            if uid == mommy_id
-        )
-
-        await interaction.response.send_modal(
-            MommyRewardCharacterModal(
-                self.bot,
-                self.player_id,
-                self.reward,
-                mommy_name,
-                mommy_id,
-            )
-        )
-
-
-class MommyRewardView(discord.ui.View):
-    def __init__(self, bot, player_id: int, reward: str):
-        super().__init__(timeout=300)
-        self.add_item(MommyRewardSelect(bot, player_id, reward))
-
-
-def build_mommy_reward_view(bot, player_id: int, reward: str) -> Optional[discord.ui.View]:
-    """建立媽咪獎品操作 UI；非媽咪獎品則回傳 None。"""
-    if not is_mommy_reward(reward):
-        return None
-    return MommyRewardView(bot, int(player_id), reward)
 
 
 # ============================================================
@@ -394,7 +253,7 @@ CREATE TABLE IF NOT EXISTS moon_achievement_loot (
 
 
 class AchievementStore:
-    """成就／盲盒資格持久化；每一張資格都保留取得時的成就等級。"""
+    """成就／盲盒資格持久化；每張資格保留來源成就等級。"""
 
     def __init__(self, db: sqlite3.Connection):
         self.db = db
@@ -411,17 +270,11 @@ class AchievementStore:
         """)
         self.db.commit()
 
-    def ensure_user(self, user_id: int) -> None:
-        return
-
     def complete_achievement(self, user_id: int, achievement_id: str) -> bool:
-        """首次完成成就時，建立一張帶有該成就難度的盲盒資格。"""
         row = self.db.execute(
-            """
-            SELECT completed FROM moon_achievements
-            WHERE user_id=? AND achievement_id=?
-            """,
-            (int(user_id), achievement_id),
+            "SELECT completed FROM moon_achievements "
+            "WHERE user_id=? AND achievement_id=?",
+            (user_id, achievement_id),
         ).fetchone()
 
         if row and row[0]:
@@ -431,108 +284,49 @@ class AchievementStore:
         if achievement is None:
             return False
 
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-        self.db.execute(
-            """
+        self.db.execute("""
             INSERT INTO moon_achievements
-                (user_id, achievement_id, completed, reward_claimed, completed_at)
+            (user_id, achievement_id, completed, reward_claimed, completed_at)
             VALUES (?, ?, 1, 0, ?)
             ON CONFLICT(user_id, achievement_id)
             DO UPDATE SET completed=1, completed_at=excluded.completed_at
-            """,
-            (int(user_id), achievement_id, now),
-        )
+        """, (user_id, achievement_id, now))
 
-        self.db.execute(
-            """
+        self.db.execute("""
             INSERT INTO moon_achievement_draws
-                (user_id, difficulty, created_at)
+            (user_id, difficulty, created_at)
             VALUES (?, ?, ?)
-            """,
-            (int(user_id), achievement.difficulty, now),
-        )
+        """, (user_id, achievement.difficulty, now))
+
         self.db.commit()
         return True
 
     def has_unclaimed_draw(self, user_id: int) -> bool:
-        return self.get_draw_count(user_id) > 0
+        return self.db.execute(
+            "SELECT 1 FROM moon_achievement_draws "
+            "WHERE user_id=? AND used=0 LIMIT 1",
+            (int(user_id),),
+        ).fetchone() is not None
 
     def get_draw_count(self, user_id: int) -> int:
         row = self.db.execute(
-            """
-            SELECT COUNT(*) FROM moon_achievement_draws
-            WHERE user_id=? AND used=0
-            """,
+            "SELECT COUNT(*) FROM moon_achievement_draws "
+            "WHERE user_id=? AND used=0",
             (int(user_id),),
         ).fetchone()
         return int(row[0]) if row else 0
 
-    def get_pending_difficulties(self, user_id: int) -> list[str]:
-        rows = self.db.execute(
-            """
-            SELECT difficulty FROM moon_achievement_draws
-            WHERE user_id=? AND used=0
-            ORDER BY draw_id ASC
-            """,
-            (int(user_id),),
-        ).fetchall()
-        return [str(row[0]) for row in rows]
-
-    def draw_box(self, user_id: int, difficulty: Optional[str] = None) -> Optional[str]:
-        """
-        消耗最早的一張未使用資格。
-        difficulty 僅保留舊版 API 相容性，實際一律以資料庫保存的等級為準。
-        玩家無法選擇難度。
-        """
-        row = self.db.execute(
-            """
-            SELECT draw_id, difficulty
-            FROM moon_achievement_draws
-            WHERE user_id=? AND used=0
-            ORDER BY draw_id ASC
-            LIMIT 1
-            """,
-            (int(user_id),),
-        ).fetchone()
-
-        if not row:
-            return None
-
-        draw_id, stored_difficulty = row
-        reward = roll_loot(stored_difficulty)
-
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
-
-        cur = self.db.execute(
-            """
-            UPDATE moon_achievement_draws
-            SET used=1, used_at=?
-            WHERE draw_id=? AND used=0
-            """,
-            (now, int(draw_id)),
-        )
-
-        if cur.rowcount != 1:
-            self.db.rollback()
-            return None
-
-        self.db.commit()
-        return reward
-
     def consume_draw_and_get_reward(self, user_id: int):
-        row = self.db.execute(
-            """
+        row = self.db.execute("""
             SELECT draw_id, difficulty
             FROM moon_achievement_draws
             WHERE user_id=? AND used=0
             ORDER BY draw_id ASC
             LIMIT 1
-            """,
-            (int(user_id),),
-        ).fetchone()
+        """, (int(user_id),)).fetchone()
 
         if not row:
             return None, None
@@ -540,16 +334,14 @@ class AchievementStore:
         draw_id, difficulty = row
         reward = roll_loot(difficulty)
 
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
-        cur = self.db.execute(
-            """
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        cur = self.db.execute("""
             UPDATE moon_achievement_draws
             SET used=1, used_at=?
             WHERE draw_id=? AND used=0
-            """,
-            (now, int(draw_id)),
-        )
+        """, (now, draw_id))
 
         if cur.rowcount != 1:
             self.db.rollback()
