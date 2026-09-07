@@ -304,6 +304,15 @@ class AchievementStore:
         self.db.commit()
         return True
 
+    def get_pending_difficulties(self, user_id: int) -> list[str]:
+        """取得玩家所有尚未使用的盲盒資格，資格與難度永久保留。"""
+        rows = self.db.execute(
+            "SELECT difficulty FROM moon_achievement_draws "
+            "WHERE user_id=? AND used=0 ORDER BY draw_id ASC",
+            (int(user_id),),
+        ).fetchall()
+        return [str(row[0]) for row in rows]
+
     def has_unclaimed_draw(self, user_id: int) -> bool:
         return self.db.execute(
             "SELECT 1 FROM moon_achievement_draws "
@@ -320,35 +329,42 @@ class AchievementStore:
         return int(row[0]) if row else 0
 
     def consume_draw_and_get_reward(self, user_id: int):
-        row = self.db.execute("""
-            SELECT draw_id, difficulty
-            FROM moon_achievement_draws
-            WHERE user_id=? AND used=0
-            ORDER BY draw_id ASC
-            LIMIT 1
-        """, (int(user_id),)).fetchone()
+        # 保留所有未使用資格；抽獎時只消耗一張，且在同一交易中完成。
+        try:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("""
+                SELECT draw_id, difficulty
+                FROM moon_achievement_draws
+                WHERE user_id=? AND used=0
+                ORDER BY draw_id ASC
+                LIMIT 1
+            """, (int(user_id),)).fetchone()
 
-        if not row:
-            return None, None
+            if not row:
+                self.db.rollback()
+                return None, None
 
-        draw_id, difficulty = row
-        reward = roll_loot(difficulty)
+            draw_id, difficulty = row
+            reward = roll_loot(difficulty)
 
-        import datetime
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            import datetime
+            now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-        cur = self.db.execute("""
-            UPDATE moon_achievement_draws
-            SET used=1, used_at=?
-            WHERE draw_id=? AND used=0
-        """, (now, draw_id))
+            cur = self.db.execute("""
+                UPDATE moon_achievement_draws
+                SET used=1, used_at=?
+                WHERE draw_id=? AND user_id=? AND used=0
+            """, (now, draw_id, int(user_id)))
 
-        if cur.rowcount != 1:
+            if cur.rowcount != 1:
+                self.db.rollback()
+                return None, None
+
+            self.db.commit()
+            return reward, difficulty
+        except Exception:
             self.db.rollback()
-            return None, None
-
-        self.db.commit()
-        return reward, difficulty
+            raise
 
 
 # ============================================================
