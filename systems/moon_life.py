@@ -977,7 +977,7 @@ class AchievementBoxView(discord.ui.View):
             return
         # 難度由 MA 保存的這一張資格決定，玩家不能選擇。
         difficulty = pending[0]
-        reward = store.draw_box(self.owner_user_id)
+        reward, _used_difficulty = store.consume_draw_and_get_reward(self.owner_user_id)
         if reward is None:
             await interaction.response.send_message("❌ 盲盒開啟失敗，請再試一次。", ephemeral=True)
             return
