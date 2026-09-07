@@ -594,12 +594,20 @@ class ShopBackButton(discord.ui.Button):
 class MoonClubSetupModal(discord.ui.Modal, title="🌙 建立 Moon Club"):
     owner_name = discord.ui.TextInput(label="會館老闆名字", max_length=30)
     model1_name = discord.ui.TextInput(label="第一位新人男模名字", max_length=30)
+    model1_age = discord.ui.TextInput(label="第一位新人男模年齡（18+）", placeholder="請輸入 18～100", max_length=3)
     model2_name = discord.ui.TextInput(label="第二位新人男模名字", max_length=30)
+    model2_age = discord.ui.TextInput(label="第二位新人男模年齡（18+）", placeholder="請輸入 18～100", max_length=3)
 
     async def on_submit(self, interaction):
         user_id = str(interaction.user.id)
         owner = self.owner_name.value.strip()
         names = [self.model1_name.value.strip(), self.model2_name.value.strip()]
+
+        try:
+            ages = [int(self.model1_age.value.strip()), int(self.model2_age.value.strip())]
+        except (TypeError, ValueError):
+            await interaction.response.send_message("❌ 年齡請輸入數字，且必須為 18 歲以上。", ephemeral=True)
+            return
 
         if not owner or not all(names):
             await interaction.response.send_message("❌ 請完整填寫所有名字。", ephemeral=True)
@@ -607,60 +615,157 @@ class MoonClubSetupModal(discord.ui.Modal, title="🌙 建立 Moon Club"):
         if names[0] == names[1]:
             await interaction.response.send_message("❌ 兩位新人男模的名字不能相同。", ephemeral=True)
             return
+        if any(age < 18 or age > 100 for age in ages):
+            await interaction.response.send_message("❌ 男模年齡必須介於 18～100 歲。", ephemeral=True)
+            return
 
-        c.execute("DELETE FROM moonclub_memories WHERE user_id=?", (user_id,))
-        c.execute("DELETE FROM moonclub_model_daily WHERE user_id=?", (user_id,))
-        c.execute("DELETE FROM moonclub_modelren WHERE user_id=?", (user_id,))
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="😈 選擇第一位男模的性格",
+                description=(
+                    f"👤 **{names[0]}**｜🎂 {ages[0]} 歲\n\n"
+                    "請從下方 8 種性格中選擇 1 種。"
+                ),
+                color=MOONCLUB_COLOR,
+            ),
+            view=InitialPersonalityView(
+                owner_name=owner,
+                model_names=names,
+                model_ages=ages,
+                current_index=0,
+            ),
+            ephemeral=True,
+        )
 
-        ids = []
-        # 初始兩位也是成人新人：從基礎開始養成，並各自保有隱藏潛力。
-        for name in names:
-            candidate = generate_candidate()
-            scores = {p: random.randint(0, 8) for p in PERSONALITY_EMOJIS}
-            scores[candidate["personality"]] += 8
-            stats = candidate["stats"]
-            c.execute("""
-                INSERT INTO moonclub_modelren
-                (user_id,owner_name,owner_identity,name,gender,age_year,
-                 intelligence,emotion,fitness,creativity,social,relationship,affection,
-                 model_stamina,personality_scores,personalities,interests,
-                 interest_progress,experiences,hidden_rarity,potential_direction,
-                 background_story,created_at)
-                VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,'[]','[]','{}','{}',?,?,?,?)
-            """, (
-                user_id, owner, "會館老闆", name, candidate["age"],
-                stats["intelligence"], stats["emotion"], stats["fitness"],
-                stats["creativity"], stats["social"], dump_json(scores),
-                candidate["rarity"], candidate["potential"], candidate["background"], now_iso(),
-            ))
-            model_id = c.lastrowid
-            ids.append(model_id)
-            add_memory(user_id, model_id, "✨ 加入 Moon Club", f"{name} 成為 Moon Club 的首批簽約男模，從新人階段開始培養。")
+
+class InitialPersonalityView(discord.ui.View):
+    """開場兩位男模的 8 選 1 性格流程；只負責新增自訂資料，不改其他養成規則。"""
+
+    def __init__(self, owner_name, model_names, model_ages, current_index=0, selected=None):
+        super().__init__(timeout=300)
+        self.owner_name = owner_name
+        self.model_names = list(model_names)
+        self.model_ages = list(model_ages)
+        self.current_index = current_index
+        self.selected = list(selected or [])
+
+        for personality, emoji in PERSONALITY_EMOJIS.items():
+            button = discord.ui.Button(
+                label=personality,
+                emoji=emoji,
+                style=discord.ButtonStyle.primary,
+                row=len(self.children) // 4,
+            )
+            button.callback = self._make_callback(personality)
+            self.add_item(button)
+
+    def _make_callback(self, personality):
+        async def callback(interaction):
+            chosen = list(self.selected)
+            if len(chosen) <= self.current_index:
+                chosen.append(personality)
+            else:
+                chosen[self.current_index] = personality
+
+            if self.current_index == 0:
+                await interaction.response.edit_message(
+                    embed=discord.Embed(
+                        title="😈 選擇第二位男模的性格",
+                        description=(
+                            f"👤 **{self.model_names[1]}**｜🎂 {self.model_ages[1]} 歲\n\n"
+                            "請從下方 8 種性格中選擇 1 種。"
+                        ),
+                        color=MOONCLUB_COLOR,
+                    ),
+                    view=InitialPersonalityView(
+                        owner_name=self.owner_name,
+                        model_names=self.model_names,
+                        model_ages=self.model_ages,
+                        current_index=1,
+                        selected=chosen,
+                    ),
+                )
+                return
+
+            await save_initial_models(
+                interaction,
+                self.owner_name,
+                self.model_names,
+                self.model_ages,
+                chosen,
+            )
+
+        return callback
+
+
+async def save_initial_models(interaction, owner, names, ages, personalities):
+    user_id = str(interaction.user.id)
+
+    c.execute("DELETE FROM moonclub_memories WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM moonclub_model_daily WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM moonclub_modelren WHERE user_id=?", (user_id,))
+
+    ids = []
+    for index, name in enumerate(names):
+        # 能力、潛力、背景、隱藏稀有度仍沿用原本的新人生成邏輯；
+        # 只有年齡與性格改為玩家自訂。
+        candidate = generate_candidate()
+        chosen_personality = personalities[index]
+        scores = {p: random.randint(0, 8) for p in PERSONALITY_EMOJIS}
+        scores[chosen_personality] += 8
+        stats = candidate["stats"]
 
         c.execute("""
-            INSERT INTO moonclub_players
-            (user_id,owner_name,owner_identity,current_model_id,reputation,model_capacity,created_at)
-            VALUES (?,?,'會館老闆',?,0,2,?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                owner_name=excluded.owner_name,
-                owner_identity='會館老闆',
-                current_model_id=excluded.current_model_id,
-                reputation=0,
-                model_capacity=2
-        """, (user_id, owner, ids[0], now_iso()))
-        conn.commit()
-
-        embed = discord.Embed(
-            title="🎉 Moon Club 正式開幕！",
-            description=(
-                f"{OWNER_ICON} 會館老闆：**{owner}**\n"
-                f"👥 初始簽約：**2 / 2**\n\n"
-                f"① {MODEL_ICON} **{names[0]}**｜🌱 新人\n"
-                f"② {MODEL_ICON} **{names[1]}**｜🌱 新人"
-            ),
-            color=MOONCLUB_COLOR,
+            INSERT INTO moonclub_modelren
+            (user_id,owner_name,owner_identity,name,gender,age_year,
+             intelligence,emotion,fitness,creativity,social,relationship,affection,
+             model_stamina,personality_scores,personalities,interests,
+             interest_progress,experiences,hidden_rarity,potential_direction,
+             background_story,created_at)
+            VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','{}','{}',?,?,?,?)
+        """, (
+            user_id, owner, "會館老闆", name, ages[index],
+            stats["intelligence"], stats["emotion"], stats["fitness"],
+            stats["creativity"], stats["social"], dump_json(scores),
+            dump_json([chosen_personality]),
+            candidate["rarity"], candidate["potential"], candidate["background"], now_iso(),
+        ))
+        model_id = c.lastrowid
+        ids.append(model_id)
+        add_memory(
+            user_id,
+            model_id,
+            "✨ 加入 Moon Club",
+            f"{name} 成為 Moon Club 的首批簽約男模，從新人階段開始培養。",
         )
-        await interaction.response.send_message(embed=embed, view=MoonClubHomeView(str(interaction.user.id)), ephemeral=True)
+
+    c.execute("""
+        INSERT INTO moonclub_players
+        (user_id,owner_name,owner_identity,current_model_id,reputation,model_capacity,created_at)
+        VALUES (?,?,'會館老闆',?,0,2,?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            owner_name=excluded.owner_name,
+            owner_identity='會館老闆',
+            current_model_id=excluded.current_model_id,
+            reputation=0,
+            model_capacity=2
+    """, (user_id, owner, ids[0], now_iso()))
+    conn.commit()
+
+    embed = discord.Embed(
+        title="🎉 Moon Club 正式開幕！",
+        description=(
+            f"{OWNER_ICON} 會館老闆：**{owner}**\n"
+            f"👥 初始簽約：**2 / 2**\n\n"
+            f"① {MODEL_ICON} **{names[0]}**｜🎂 {ages[0]} 歲｜{PERSONALITY_EMOJIS[personalities[0]]} {personalities[0]}\n"
+            f"② {MODEL_ICON} **{names[1]}**｜🎂 {ages[1]} 歲｜{PERSONALITY_EMOJIS[personalities[1]]} {personalities[1]}"
+        ),
+        color=MOONCLUB_COLOR,
+    )
+    await interaction.response.edit_message(
+        embed=embed,
+        view=MoonClubHomeView(str(interaction.user.id)),
+    )
 
 
 class StartMoonClubView(discord.ui.View):
@@ -1689,7 +1794,7 @@ async def start_recruitment(interaction):
         st = candidate["stats"]
         lines.append(
             f"**候選人 {index}**\n"
-            f"🎂 {candidate['age']} 歲｜😈 {candidate['personality']}｜🎭 {candidate['potential']}\n"
+            f"🎂 年齡：招募後自訂（18+）｜😈 性格：招募後自訂｜🎭 {candidate['potential']}\n"
             f"🧠 {st['intelligence']}｜❤️ {st['emotion']}｜💪 {st['fitness']}｜🎨 {st['creativity']}｜✨ {st['social']}\n"
             f"📖 {candidate['background']}"
         )
@@ -1729,6 +1834,7 @@ class RecruitCandidatesView(discord.ui.View):
 
 class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
     name = discord.ui.TextInput(label="新人男模名字", max_length=30)
+    age = discord.ui.TextInput(label="新人男模年齡（18+）", placeholder="請輸入 18～100", max_length=3)
 
     def __init__(self, candidate, owner_user_id=None):
         super().__init__()
@@ -1739,6 +1845,7 @@ class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
         if self.owner_user_id is not None and interaction.user.id != self.owner_user_id:
             await interaction.response.send_message("❌ 這不是你的招募流程。", ephemeral=True)
             return
+
         user_id = str(interaction.user.id)
         player = get_player(user_id)
         if not player:
@@ -1755,48 +1862,123 @@ class RecruitNameModal(discord.ui.Modal, title="✏️ 替新人取名字"):
             await interaction.response.send_message("❌ 請輸入名字。", ephemeral=True)
             return
 
+        try:
+            age = int(self.age.value.strip())
+        except (TypeError, ValueError):
+            await interaction.response.send_message("❌ 年齡請輸入數字，且必須為 18 歲以上。", ephemeral=True)
+            return
+
+        if age < 18 or age > 100:
+            await interaction.response.send_message("❌ 男模年齡必須介於 18～100 歲。", ephemeral=True)
+            return
+
         c.execute("SELECT 1 FROM moonclub_modelren WHERE user_id=? AND name=?", (user_id, name))
         if c.fetchone():
             await interaction.response.send_message("❌ 已有同名男模，請換一個名字。", ephemeral=True)
             return
 
-        scores = {p: random.randint(0, 8) for p in PERSONALITY_EMOJIS}
-        scores[self.candidate["personality"]] += 8
-        stats = self.candidate["stats"]
-
-        c.execute("""
-            INSERT INTO moonclub_modelren
-            (user_id,owner_name,owner_identity,name,gender,age_year,
-             intelligence,emotion,fitness,creativity,social,relationship,
-             model_stamina,personality_scores,personalities,interests,
-             interest_progress,experiences,hidden_rarity,potential_direction,
-             background_story,created_at)
-            VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,'[]','[]','{}','{}',?,?,?,?)
-        """, (
-            user_id, player[1], "會館老闆", name, self.candidate["age"],
-            stats["intelligence"], stats["emotion"], stats["fitness"],
-            stats["creativity"], stats["social"],
-            dump_json(scores), self.candidate["rarity"],
-            self.candidate["potential"], self.candidate["background"], now_iso(),
-        ))
-        model_id = c.lastrowid
-        add_memory(user_id, model_id, "✨ 新人加入", f"{name} 正式加入 Moon Club。")
-        conn.commit()
-
         await interaction.response.send_message(
             embed=discord.Embed(
-                title="🎉 招募成功！",
+                title="😈 選擇新人性格",
                 description=(
-                    f"{MODEL_ICON} **{name}** 正式加入 Moon Club！\n"
-                    f"🎂 {self.candidate['age']} 歲\n"
-                    f"😈 {self.candidate['personality']}\n"
-                    f"🎭 {self.candidate['potential']}\n\n"
-                    f"🌱 他將和其他人一樣，從頭開始培養。"
+                    f"👤 **{name}**｜🎂 {age} 歲\n\n"
+                    "請從下方 8 種性格中選擇 1 種。"
                 ),
                 color=MOONCLUB_COLOR,
             ),
+            view=RecruitPersonalityView(
+                candidate=self.candidate,
+                name=name,
+                age=age,
+                owner_user_id=self.owner_user_id,
+            ),
             ephemeral=True,
         )
+
+
+class RecruitPersonalityView(discord.ui.View):
+    """後續招募的 8 選 1 性格流程。"""
+
+    def __init__(self, candidate, name, age, owner_user_id=None):
+        super().__init__(timeout=300)
+        self.candidate = candidate
+        self.name = name
+        self.age = age
+        self.owner_user_id = int(owner_user_id) if owner_user_id else None
+
+        for personality, emoji in PERSONALITY_EMOJIS.items():
+            button = discord.ui.Button(
+                label=personality,
+                emoji=emoji,
+                style=discord.ButtonStyle.primary,
+                row=len(self.children) // 4,
+            )
+            button.callback = self._make_callback(personality)
+            self.add_item(button)
+
+    def _make_callback(self, personality):
+        async def callback(interaction):
+            if self.owner_user_id is not None and interaction.user.id != self.owner_user_id:
+                await interaction.response.send_message("❌ 這不是你的招募流程。", ephemeral=True)
+                return
+
+            user_id = str(interaction.user.id)
+            player = get_player(user_id)
+            if not player:
+                await interaction.response.send_message("❌ Moon Club 尚未建立。", ephemeral=True)
+                return
+
+            capacity = sync_capacity(user_id)
+            if model_count(user_id) >= capacity:
+                await interaction.response.send_message("❌ 招募名額已滿。", ephemeral=True)
+                return
+
+            c.execute("SELECT 1 FROM moonclub_modelren WHERE user_id=? AND name=?", (user_id, self.name))
+            if c.fetchone():
+                await interaction.response.send_message("❌ 已有同名男模，請換一個名字。", ephemeral=True)
+                return
+
+            scores = {p: random.randint(0, 8) for p in PERSONALITY_EMOJIS}
+            scores[personality] += 8
+            stats = self.candidate["stats"]
+
+            c.execute("""
+                INSERT INTO moonclub_modelren
+                (user_id,owner_name,owner_identity,name,gender,age_year,
+                 intelligence,emotion,fitness,creativity,social,relationship,affection,
+                 model_stamina,personality_scores,personalities,interests,
+                 interest_progress,experiences,hidden_rarity,potential_direction,
+                 background_story,created_at)
+                VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','{}','{}',?,?,?,?)
+            """, (
+                user_id, player[1], "會館老闆", self.name, self.age,
+                stats["intelligence"], stats["emotion"], stats["fitness"],
+                stats["creativity"], stats["social"],
+                dump_json(scores), dump_json([personality]),
+                self.candidate["rarity"],
+                self.candidate["potential"], self.candidate["background"], now_iso(),
+            ))
+
+            model_id = c.lastrowid
+            add_memory(user_id, model_id, "✨ 新人加入", f"{self.name} 正式加入 Moon Club。")
+            conn.commit()
+
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="🎉 招募成功！",
+                    description=(
+                        f"{MODEL_ICON} **{self.name}** 正式加入 Moon Club！\n"
+                        f"🎂 {self.age} 歲\n"
+                        f"😈 {PERSONALITY_EMOJIS[personality]} {personality}\n"
+                        f"🎭 {self.candidate['potential']}\n\n"
+                        f"🌱 他將和其他人一樣，從頭開始培養。"
+                    ),
+                    color=MOONCLUB_COLOR,
+                ),
+                view=BackHomeView(),
+            )
+
+        return callback
 
 
 # ==========================================================
