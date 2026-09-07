@@ -679,7 +679,7 @@ async def save_initial_models(interaction, owner, names, ages, personalities):
              model_stamina,personality_scores,personalities,interests,
              interest_progress,experiences,hidden_rarity,potential_direction,
              background_story,created_at)
-            VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','[]','{}','{}',?,?,?,?)
+            VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','{}','{}',?,?,?,?)
         """, (
             user_id, owner, "會館老闆", name, ages[index],
             stats["intelligence"], stats["emotion"], stats["fitness"],
@@ -1870,7 +1870,7 @@ class RecruitPersonalityView(discord.ui.View):
                      model_stamina,personality_scores,personalities,interests,
                      interest_progress,experiences,hidden_rarity,potential_direction,
                      background_story,created_at)
-                    VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','[]','{}','{}',?,?,?,?)
+                    VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','{}','{}',?,?,?,?)
                 """, (
                     user_id, player[1], "會館老闆", self.name, self.age,
                     stats["intelligence"], stats["emotion"], stats["fitness"],
