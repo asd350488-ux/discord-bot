@@ -319,51 +319,6 @@ class AchievementStore:
         ).fetchone()
         return int(row[0]) if row else 0
 
-
-    def get_pending_difficulties(self, user_id: int) -> list[str]:
-        """取得玩家尚未使用的成就盲盒資格難度。"""
-        rows = self.db.execute(
-            """
-            SELECT difficulty FROM moon_achievement_draws
-            WHERE user_id=? AND used=0
-            ORDER BY draw_id ASC
-            """,
-            (int(user_id),),
-        ).fetchall()
-        return [str(row[0]) for row in rows]
-
-
-    def consume_pending_draw(self, user_id: int, difficulty: str) -> bool:
-        """安全消耗一張指定難度的未使用盲盒資格。
-
-        只有資料庫實際找到 used=0 的資格時才標記為 used=1。
-        找不到時不會建立或扣除任何資格。
-        """
-        with self.db:
-            row = self.db.execute(
-                """
-                SELECT draw_id
-                FROM moon_achievement_draws
-                WHERE user_id=? AND difficulty=? AND used=0
-                ORDER BY draw_id ASC
-                LIMIT 1
-                """,
-                (int(user_id), str(difficulty)),
-            ).fetchone()
-
-            if row is None:
-                return False
-
-            cur = self.db.execute(
-                """
-                UPDATE moon_achievement_draws
-                SET used=1
-                WHERE draw_id=? AND user_id=? AND used=0
-                """,
-                (int(row[0]), int(user_id)),
-            )
-            return cur.rowcount == 1
-
     def consume_draw_and_get_reward(self, user_id: int):
         row = self.db.execute("""
             SELECT draw_id, difficulty
