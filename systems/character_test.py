@@ -418,6 +418,26 @@ def get_session_by_channel(channel_id):
     return session
 
 
+def get_round_sessions(round_key):
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT *
+        FROM character_test_sessions
+        WHERE round_key = ?
+        AND status IN ('active', 'submitted')
+        ORDER BY created_at ASC
+    """, (round_key,))
+
+    sessions = cursor.fetchall()
+
+    conn.close()
+
+    return sessions
+
+
 def save_assignment(
     round_key,
     user_id,
@@ -569,6 +589,33 @@ def delete_session(session_id):
 
     conn.commit()
     conn.close()
+
+
+def cleanup_missing_sessions(guild, round_key):
+
+    """
+    清理資料庫中仍存在、但 Discord 考試頻道已被手動刪除的殘留 session。
+    不會刪除仍存在的考試頻道，也不會影響正常進行中的考試。
+    """
+
+    if guild is None:
+        return 0
+
+    sessions = get_round_sessions(round_key)
+    cleaned = 0
+
+    for session in sessions:
+        channel = guild.get_channel(
+            int(session["channel_id"])
+        )
+
+        if channel is None:
+            delete_session(
+                session["session_id"]
+            )
+            cleaned += 1
+
+    return cleaned
 
 
 # ==========================
@@ -1960,20 +2007,12 @@ async def start_assigned_exam(
 
         else:
 
+            # Discord 頻道已被手動刪除，但資料庫還留著舊 session。
+            # 清除殘留資料後，直接繼續建立新的考場。
             delete_session(
                 existing["session_id"]
             )
 
-            await interaction.response.edit_message(
-                content=(
-                    "⚠️ 原本的考場已不存在，"
-                    "請重新按「開始考試」。"
-                ),
-                embed=None,
-                view=None
-            )
-
-        return
 
     if user_id in ACTIVE_EXAM_USERS:
 
@@ -3231,6 +3270,117 @@ def setup_character_test(bot):
                 interaction.user.id
             ),
 
+            ephemeral=True
+        )
+
+    # ==========================
+    # 🗑️ /清空考場
+    # ==========================
+
+    @bot.tree.command(
+        name="清空考場",
+        description="🗑️ 清空本輪考生報考設定"
+    )
+    async def clear_exam_roster(
+        interaction: discord.Interaction
+    ):
+
+        if not is_exam_manager(
+            interaction.user.id
+        ):
+
+            await interaction.response.send_message(
+                "❌ 只有六位管理層可以使用此指令。",
+                ephemeral=True
+            )
+
+            return
+
+        round_key = get_cycle_round_key()
+
+        # 先清理「Discord 頻道已被手動刪除」造成的殘留 session。
+        stale_cleaned = cleanup_missing_sessions(
+            interaction.guild,
+            round_key
+        )
+
+        assignments = get_assignments(
+            round_key
+        )
+
+        if not assignments:
+
+            await interaction.response.send_message(
+                "📭 目前沒有本輪考場設定。",
+                ephemeral=True
+            )
+
+            return
+
+        # 目前仍存在的正式考場不刪除，也不強制結束。
+        # 只清除沒有進行中考試的報考設定。
+        active_users = set()
+
+        for session in get_round_sessions(round_key):
+
+            channel = (
+                interaction.guild.get_channel(
+                    int(session["channel_id"])
+                )
+                if interaction.guild
+                else None
+            )
+
+            if channel is not None:
+                active_users.add(
+                    str(session["user_id"])
+                )
+
+        cleared = 0
+        skipped = 0
+
+        for assignment in assignments:
+
+            user_id = str(
+                assignment["user_id"]
+            )
+
+            if user_id in active_users:
+                skipped += 1
+                continue
+
+            delete_assignment(
+                round_key,
+                user_id
+            )
+
+            cleared += 1
+
+        lines = [
+            "🗑️ **本輪考場清理完成**",
+            "",
+            f"📅 考試月份：**{format_round(round_key)}**",
+            f"🧹 已清除報考設定：**{cleared}** 位"
+        ]
+
+        if stale_cleaned:
+            lines.append(
+                f"🧹 已清理不存在的舊考場資料：**{stale_cleaned}** 筆"
+            )
+
+        if skipped:
+            lines.append(
+                f"⚠️ 仍在進行中的考試：**{skipped}** 位（保留，不中斷考試）"
+            )
+
+        if cleared == 0 and stale_cleaned == 0 and skipped:
+            lines.extend([
+                "",
+                "📌 目前所有考生都有仍存在的進行中考場，因此沒有清除任何設定。"
+            ])
+
+        await interaction.response.send_message(
+            "\n".join(lines),
             ephemeral=True
         )
 
