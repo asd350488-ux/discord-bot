@@ -1,4 +1,3 @@
-```python
 # -*- coding: utf-8 -*-
 
 # ==========================
@@ -1432,4 +1431,3 @@ def setup_limited_lottery(bot):
     print(
         "✅ 中秋限定盲盒系統已載入"
     )
-```
