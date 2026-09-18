@@ -1,42 +1,29 @@
 # ==========================
-# 🌙 七夕限定盲盒抽獎系統
+# 🌕 中秋限定盲盒抽獎系統
 # ==========================
-
 import discord
 import random
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from discord import app_commands
-from discord.ext import commands
-
 from database import conn, c
 from config import BOT_ADMINS
-
-
 # ==========================
-# 🌙 七夕限定盲盒設定
+# 🌕 中秋限定盲盒設定
 # ==========================
-
-QIXI_DATE = "2026-08-19"
-
+MID_AUTUMN_DATE = "2026-09-25"
 # --------------------------
 # 🎟️ 每人最多參與次數
 # --------------------------
-
 LIMITED_LOTTERY_MAX_TIMES = 2
-
 # --------------------------
 # 💰 參與費用
 # --------------------------
-
 LIMITED_LOTTERY_FIRST_PRICE = 500
-
 LIMITED_LOTTERY_SECOND_PRICE = 5000
-
 # --------------------------
 # 🎁 獎品機率
 # --------------------------
-
 LIMITED_LOTTERY_PRIZES = [
     {
         "type": "money",
@@ -63,35 +50,46 @@ LIMITED_LOTTERY_PRIZES = [
         "weight": 10,
     },
 ]
-
 # ==========================
-# 🌙 正在開盲盒的玩家
+# 🌕 中秋合作媽咪
 # ==========================
-
+MID_AUTUMN_MOMMIES = {
+    "hanxin": {
+        "name": "🫧 韓馨媽咪",
+        "user_id": 1153640526063607820,
+    },
+    "xingxian": {
+        "name": "☀️ 星弦媽咪",
+        "user_id": 1218542666879598613,
+    },
+    "xier": {
+        "name": "🌻 曦兒媽咪",
+        "user_id": 1301905168094335028,
+    },
+    "xiaomao": {
+        "name": "🐈 小貓媽咪",
+        "user_id": 806960151578804275,
+    },
+}
+# ==========================
+# 🌕 正在開盲盒的玩家
+# ==========================
 limited_lottery_running = set()
-
 # ==========================
-# 🌙 判斷是否為七夕活動日
+# 🌕 判斷是否為中秋活動日
 # ==========================
-
-def is_qixi_day():
-
+def is_mid_autumn_day():
     # 🧪 測試期間暫時不限日期
     return True
-    
 # ==========================
-# 🌙 取得玩家正式參與次數
+# 🌕 取得玩家正式參與次數
 # ==========================
-
 def get_limited_lottery_count(user_id):
-
     # -------------------------
     # 👑 管理員測試不計入正式次數
     # -------------------------
-
     if int(user_id) in BOT_ADMINS:
         return 0
-
     c.execute(
         """
         SELECT COUNT(*)
@@ -101,51 +99,239 @@ def get_limited_lottery_count(user_id):
         """,
         (str(user_id),),
     )
-
     result = c.fetchone()
-
     return result[0] if result else 0
-    
 # ==========================
-# 🌙 執行七夕限定盲盒
+# 🌕 角色獎品｜選擇媽咪
 # ==========================
-
+class MidAutumnMommySelect(discord.ui.Select):
+    def __init__(self, prize_type, prize_name):
+        self.prize_type = prize_type
+        self.prize_name = prize_name
+        options = []
+        for key, mommy in MID_AUTUMN_MOMMIES.items():
+            options.append(
+                discord.SelectOption(
+                    label=mommy["name"],
+                    value=key,
+                    description="選擇這位媽咪作為本次獎品對象",
+                )
+            )
+        super().__init__(
+            placeholder="🌕 請選擇媽咪",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+    async def callback(self, interaction: discord.Interaction):
+        mommy_key = self.values[0]
+        mommy_data = MID_AUTUMN_MOMMIES.get(
+            mommy_key
+        )
+        if not mommy_data:
+            await interaction.response.send_message(
+                "❌ 找不到指定的媽咪資料，請重新操作。",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_modal(
+            MidAutumnCharacterModal(
+                mommy_key=mommy_key,
+                prize_type=self.prize_type,
+                prize_name=self.prize_name,
+            )
+        )
+# ==========================
+# 🌕 角色獎品｜選擇媽咪 View
+# ==========================
+class MidAutumnMommyView(discord.ui.View):
+    def __init__(self, prize_type, prize_name):
+        super().__init__(
+            timeout=300
+        )
+        self.add_item(
+            MidAutumnMommySelect(
+                prize_type=prize_type,
+                prize_name=prize_name,
+            )
+        )
+# ==========================
+# 🌕 角色獎品｜輸入角色名稱
+# ==========================
+class MidAutumnCharacterModal(discord.ui.Modal):
+    def __init__(
+        self,
+        mommy_key,
+        prize_type,
+        prize_name,
+    ):
+        super().__init__(
+            title="🌕 中秋限定｜角色資料"
+        )
+        self.mommy_key = mommy_key
+        self.prize_type = prize_type
+        self.prize_name = prize_name
+        self.character_name = discord.ui.TextInput(
+            label="角色名稱",
+            placeholder="請輸入你的角色名稱",
+            required=True,
+            min_length=1,
+            max_length=50,
+        )
+        self.add_item(
+            self.character_name
+        )
+    async def on_submit(
+        self,
+        interaction: discord.Interaction,
+    ):
+        character_name = self.character_name.value.strip()
+        if not character_name:
+            await interaction.response.send_message(
+                "❌ 角色名稱不能是空白。",
+                ephemeral=True,
+            )
+            return
+        mommy_data = MID_AUTUMN_MOMMIES.get(
+            self.mommy_key
+        )
+        if not mommy_data:
+            await interaction.response.send_message(
+                "❌ 找不到指定的媽咪資料。",
+                ephemeral=True,
+            )
+            return
+        # ==========================
+        # 📩 取得媽咪
+        # ==========================
+        mommy = interaction.client.get_user(
+            mommy_data["user_id"]
+        )
+        if mommy is None:
+            try:
+                mommy = await interaction.client.fetch_user(
+                    mommy_data["user_id"]
+                )
+            except Exception:
+                mommy = None
+        # ==========================
+        # 🌕 建立通知 Embed
+        # ==========================
+        notification_embed = discord.Embed(
+            title="🌕 中秋限定盲盒｜角色獎品通知",
+            description=(
+                "有玩家抽中了中秋限定角色獎品！\n\n"
+                f"👤 **玩家**\n"
+                f"{interaction.user.mention}\n\n"
+                f"🎭 **角色名稱**\n"
+                f"**{character_name}**\n\n"
+                f"🎁 **獎品**\n"
+                f"**{self.prize_name}**\n\n"
+                f"🌕 **指定媽咪**\n"
+                f"**{mommy_data['name']}**\n\n"
+                "📌 玩家已完成資料填寫，\n"
+                "請協助後續獎品安排。"
+            ),
+            color=0xF5B041,
+        )
+        notification_embed.set_footer(
+            text="🌕 Moon Bot｜中秋限定盲盒｜2026/9/25"
+        )
+        # ==========================
+        # 📩 自動 DM 媽咪
+        # ==========================
+        dm_success = False
+        if mommy:
+            try:
+                await mommy.send(
+                    embed=notification_embed
+                )
+                dm_success = True
+            except discord.Forbidden:
+                dm_success = False
+            except Exception:
+                dm_success = False
+        # ==========================
+        # 🌕 玩家回覆
+        # ==========================
+        if dm_success:
+            await interaction.response.send_message(
+                "✅ **資料已成功送出！**\n\n"
+                f"🌕 媽咪：**{mommy_data['name']}**\n"
+                f"🎭 角色名稱：**{character_name}**\n"
+                f"🎁 獎品：**{self.prize_name}**\n\n"
+                "📩 機器人已自動通知媽咪，\n"
+                "請等待後續獎品安排。",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "⚠️ **資料已確認，但通知媽咪失敗。**\n\n"
+                f"🌕 媽咪：**{mommy_data['name']}**\n"
+                f"🎭 角色名稱：**{character_name}**\n"
+                f"🎁 獎品：**{self.prize_name}**\n\n"
+                "請聯絡管理員協助處理。",
+                ephemeral=True,
+            )
+# ==========================
+# 🌕 角色獎品｜填寫資料按鈕
+# ==========================
+class MidAutumnPrizeView(discord.ui.View):
+    def __init__(self, prize_type, prize_name):
+        super().__init__(
+            timeout=300
+        )
+        self.prize_type = prize_type
+        self.prize_name = prize_name
+    @discord.ui.button(
+        label="🌕 填寫角色資料",
+        style=discord.ButtonStyle.primary,
+        custom_id="mid_autumn_prize_info",
+    )
+    async def fill_character_info(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        await interaction.response.send_message(
+            "🌕 **中秋限定｜角色獎品資料**\n\n"
+            "請先選擇這次希望合作的媽咪。",
+            view=MidAutumnMommyView(
+                prize_type=self.prize_type,
+                prize_name=self.prize_name,
+            ),
+            ephemeral=True,
+        )
+# ==========================
+# 🌕 執行中秋限定盲盒
+# ==========================
 async def run_limited_lottery(
     interaction: discord.Interaction,
     draw_number: int,
     price: int,
 ):
-
     user_id = str(interaction.user.id)
-
     # -------------------------
     # 👑 管理員測試模式
     # -------------------------
-
     is_test = interaction.user.id in BOT_ADMINS
-
     # -------------------------
     # 🔒 防止重複抽獎
     # -------------------------
-
     if interaction.user.id in limited_lottery_running:
-
         await interaction.response.send_message(
-            "🌙 你的七夕盲盒正在開啟中，\n"
+            "🌕 你的中秋盲盒正在開啟中，\n"
             "請稍等一下再操作喔！",
             ephemeral=True,
         )
-
         return
-
-    limited_lottery_running.add(interaction.user.id)
-
+    limited_lottery_running.add(
+        interaction.user.id
+    )
     try:
-
         # ==========================
         # 💰 查詢努努幣
         # ==========================
-
         c.execute(
             """
             SELECT money
@@ -154,71 +340,49 @@ async def run_limited_lottery(
             """,
             (user_id,),
         )
-
         data = c.fetchone()
-
         if not data:
-
             await interaction.response.send_message(
                 "❌ 找不到你的努努幣帳戶資料。",
                 ephemeral=True,
             )
-
             return
-
         money = data["money"]
-
         # ==========================
         # 💰 檢查餘額
         # ==========================
-
         if money < price:
-
             await interaction.response.send_message(
                 "❌ 你的努努幣不足！\n\n"
                 f"💰 本次需要：**{price:,} 努努幣**\n"
                 f"💰 目前餘額：**{money:,} 努努幣**",
                 ephemeral=True,
             )
-
             return
-
         # ==========================
         # 🎲 抽取獎品
         # ==========================
-
         prizes = []
-
-        for prize in LIMITED_LOTTERY_PRIZES:
-
+        for prize_data in LIMITED_LOTTERY_PRIZES:
             prizes.extend(
-                [prize] * prize["weight"]
+                [prize_data] * prize_data["weight"]
             )
-
         prize = random.choice(prizes)
-
         prize_type = prize["type"]
         prize_name = prize["name"]
         prize_value = prize["value"]
-
         # ==========================
         # 💰 扣除參與費
         # ==========================
-
         money -= price
-
         # ==========================
         # 💰 努努幣獎品
         # ==========================
-
         if prize_type == "money":
-
             money += int(prize_value)
-
         # ==========================
         # 💾 更新玩家餘額
         # ==========================
-
         c.execute(
             """
             UPDATE users
@@ -230,11 +394,9 @@ async def run_limited_lottery(
                 user_id,
             ),
         )
-
         # ==========================
         # 💾 記錄抽獎結果
         # ==========================
-
         c.execute(
             """
             INSERT INTO limited_lottery_entries (
@@ -258,144 +420,103 @@ async def run_limited_lottery(
                 datetime.now().isoformat(),
             ),
         )
-
         conn.commit()
-
         # ==========================
-        # 🌙 開始盲盒動畫
+        # 🌕 開始盲盒動畫
         # ==========================
-
         await interaction.response.send_message(
-            "🌙 **七夕限定盲盒**\n\n"
+            "🌕 **中秋限定盲盒**\n\n"
             "🎁 你的盲盒正在準備中……",
             ephemeral=True,
         )
-
-        # -------------------------
-        # ✨ 第一階段
-        # -------------------------
-
         await asyncio.sleep(1)
-
         await interaction.edit_original_response(
             content=(
-                "🌙 **七夕限定盲盒**\n\n"
+                "🌕 **中秋限定盲盒**\n\n"
                 "🎁 盲盒正在晃動……\n"
                 "✨ 裡面好像有東西！"
             ),
             embed=None,
+            view=None,
         )
-
-        # -------------------------
-        # ✨ 第二階段
-        # -------------------------
-
         await asyncio.sleep(1)
-
         await interaction.edit_original_response(
             content=(
-                "🌙 **七夕限定盲盒**\n\n"
+                "🌕 **中秋限定盲盒**\n\n"
                 "✨✨✨\n"
-                "命運正在揭曉……"
+                "月光正在聚集……"
             ),
             embed=None,
+            view=None,
         )
-
-        # -------------------------
-        # ✨ 第三階段
-        # -------------------------
-
         await asyncio.sleep(1)
-
         await interaction.edit_original_response(
             content=(
-                "🌙 **七夕限定盲盒**\n\n"
+                "🌕 **中秋限定盲盒**\n\n"
                 "💫 **砰！**\n\n"
                 "🎁 盲盒已經打開！"
             ),
             embed=None,
+            view=None,
         )
-
-        # -------------------------
-        # ✨ 最後揭曉
-        # -------------------------
-
         await asyncio.sleep(1)
-
         # ==========================
         # 🎁 建立最終結果
         # ==========================
-
+        result_view = None
         if prize_type == "money":
-
             result_description = (
                 "🎉 **恭喜你！**\n\n"
                 f"## {prize_name}\n\n"
                 "💰 獎勵已經自動加入你的錢包！"
             )
-
-        elif prize_type == "sticker":
-
+        elif prize_type in ("sticker", "couple"):
             result_description = (
                 "🎉 **恭喜你！**\n\n"
                 f"## {prize_name}\n\n"
-                "📌 **領獎方式**\n\n"
-                "請務必將本次**抽獎結果截圖保存**，\n"
-                "私訊**管理員**並告知角色名稱。\n\n"
-                "⚠️ **未提供抽獎結果截圖，將無法領取獎品。**"
+                "🌕 **請完成領獎資料**\n\n"
+                "點擊下方按鈕後：\n"
+                "① 選擇合作的媽咪\n"
+                "② 輸入角色名稱\n"
+                "③ 按下確認送出\n\n"
+                "📩 完成後機器人會自動通知該媽咪。"
             )
-
-        elif prize_type == "couple":
-
-            result_description = (
-                "🎉 **恭喜你！**\n\n"
-                f"## {prize_name}\n\n"
-                "📌 **領獎方式**\n\n"
-                "請務必將本次**抽獎結果截圖保存**，\n"
-                "私訊**管理員**並告知角色名稱。\n\n"
-                "⚠️ **未提供抽獎結果截圖，將無法領取獎品。**"
+            result_view = MidAutumnPrizeView(
+                prize_type=prize_type,
+                prize_name=prize_name,
             )
         else:
-
             result_description = (
                 "🎉 **恭喜你！**\n\n"
                 f"## {prize_name}"
             )
-
         # ==========================
-        # 🌙 最終結果 Embed
+        # 🌕 最終結果 Embed
         # ==========================
-
         embed = discord.Embed(
-            title="🌙 七夕限定盲盒",
+            title="🌕 中秋限定盲盒",
             description=result_description,
-            color=0xE91E63,
+            color=0xF5B041,
         )
-
         embed.add_field(
             name="🎟️ 本次抽獎",
             value=f"第 **{draw_number} 次**",
             inline=True,
         )
-
         embed.add_field(
             name="💸 抽獎費用",
             value=f"{price:,} 努努幣",
             inline=True,
         )
-
         embed.add_field(
             name="💰 目前餘額",
             value=f"{money:,} 努努幣",
             inline=False,
         )
-
         # -------------------------
         # 👑 管理員測試提示
         # -------------------------
-
         if is_test:
-
             embed.add_field(
                 name="🧪 測試模式",
                 value=(
@@ -404,36 +525,28 @@ async def run_limited_lottery(
                 ),
                 inline=False,
             )
-
         embed.set_footer(
-            text="🌙 Moon Bot｜七夕限定盲盒｜2026/8/19"
+            text="🌕 Moon Bot｜中秋限定盲盒｜2026/9/25"
         )
-
         # ==========================
         # 🎁 顯示最終結果
         # ==========================
-
         await interaction.edit_original_response(
             content=None,
             embed=embed,
+            view=result_view,
         )
-
     finally:
-
         # ==========================
         # 🔓 解開玩家抽獎鎖
         # ==========================
-
         limited_lottery_running.discard(
             interaction.user.id
         )
-
 # ==========================
-# 🌙 建立限定盲盒資料表
+# 🌕 建立限定盲盒資料表
 # ==========================
-
 def init_limited_lottery_database():
-
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS limited_lottery_entries (
@@ -448,44 +561,36 @@ def init_limited_lottery_database():
         )
         """
     )
-
     # -------------------------
-    # 🌙 舊資料表補上測試欄位
+    # 🌕 舊資料表補上測試欄位
     # -------------------------
-
     try:
-
         c.execute(
             """
             ALTER TABLE limited_lottery_entries
             ADD COLUMN is_test INTEGER DEFAULT 0
             """
         )
-
     except Exception:
-
         pass
-
     conn.commit()
-
 # ==========================
-# 🌙 七夕限定盲盒面板
+# 🌕 中秋限定盲盒面板
 # ==========================
-
-
-class LimitedLotteryView(discord.ui.View):
-
+class LimitedLotteryView(
+    discord.ui.View
+):
     def __init__(self):
-        super().__init__(timeout=None)
-
+        super().__init__(
+            timeout=None
+        )
     # ==========================
     # 🎟️ 第一次抽獎
     # ==========================
-
     @discord.ui.button(
         label="🎁 第一次抽獎｜500 努努幣",
         style=discord.ButtonStyle.primary,
-        custom_id="limited_lottery_first",
+        custom_id="mid_autumn_lottery_first",
         row=0,
     )
     async def first_draw(
@@ -493,69 +598,41 @@ class LimitedLotteryView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-
-        # -------------------------
-        # 🌙 活動日期檢查
-        # -------------------------
-
-        if not is_qixi_day():
-
+        if not is_mid_autumn_day():
             await interaction.response.send_message(
-                "🌙 七夕限定盲盒目前沒有開放喔！\n"
-                "本活動僅限 **2026/8/19** 當日參與。",
+                "🌕 中秋限定盲盒目前沒有開放喔！\n"
+                "本活動僅限 **2026/9/25** 當日參與。",
                 ephemeral=True,
             )
-
             return
-
-        # -------------------------
-        # 🌙 查詢參與次數
-        # -------------------------
-
-        count = get_limited_lottery_count(interaction.user.id)
-
+        count = get_limited_lottery_count(
+            interaction.user.id
+        )
         if count >= LIMITED_LOTTERY_MAX_TIMES:
-
             await interaction.response.send_message(
-                "❌ 你已經完成本次七夕限定盲盒的 **2 次抽獎**。",
+                "❌ 你已經完成本次中秋限定盲盒的 **2 次抽獎**。",
                 ephemeral=True,
             )
-
             return
-
-        # -------------------------
-        # 🌙 確認是否為第一次
-        # -------------------------
-
         if count != 0:
-
             await interaction.response.send_message(
                 "⚠️ 你已經使用過第一次抽獎機會了。\n"
                 "如果還有剩餘次數，請使用 **第二次抽獎｜5,000 努努幣**。",
                 ephemeral=True,
             )
-
             return
-
-        # -------------------------
-        # 🌙 暫時顯示確認訊息
-        # -------------------------
-
         await run_limited_lottery(
             interaction,
             draw_number=1,
             price=LIMITED_LOTTERY_FIRST_PRICE,
         )
-
-
     # ==========================
     # 🎟️ 第二次抽獎
     # ==========================
-
     @discord.ui.button(
-        label="🌙 第二次抽獎｜5,000 努努幣",
+        label="🌕 第二次抽獎｜5,000 努努幣",
         style=discord.ButtonStyle.success,
-        custom_id="limited_lottery_second",
+        custom_id="mid_autumn_lottery_second",
         row=1,
     )
     async def second_draw(
@@ -563,185 +640,128 @@ class LimitedLotteryView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-
-        # -------------------------
-        # 🌙 活動日期檢查
-        # -------------------------
-
-        if not is_qixi_day():
-
+        if not is_mid_autumn_day():
             await interaction.response.send_message(
-                "🌙 七夕限定盲盒目前沒有開放喔！\n"
-                "本活動僅限 **2026/8/19** 當日參與。",
+                "🌕 中秋限定盲盒目前沒有開放喔！\n"
+                "本活動僅限 **2026/9/25** 當日參與。",
                 ephemeral=True,
             )
-
             return
-
-        # -------------------------
-        # 🌙 查詢參與次數
-        # -------------------------
-
-        count = get_limited_lottery_count(interaction.user.id)
-
-        # -------------------------
-        # 🌙 尚未完成第一次
-        # -------------------------
-
-        if count == 0 and interaction.user.id not in BOT_ADMINS:
-
+        count = get_limited_lottery_count(
+            interaction.user.id
+        )
+        if (
+            count == 0
+            and interaction.user.id not in BOT_ADMINS
+        ):
             await interaction.response.send_message(
                 "❌ 你還沒有進行第一次抽獎。\n\n"
                 "請先完成 **第一次抽獎｜500 努努幣**，"
                 "才能進行第二次抽獎。",
                 ephemeral=True,
             )
-
             return
-
-        # -------------------------
-        # 🌙 已經完成兩次
-        # -------------------------
-
         if count >= LIMITED_LOTTERY_MAX_TIMES:
-
             await interaction.response.send_message(
-                "❌ 你已經完成本次七夕限定盲盒的 **2 次抽獎**。",
+                "❌ 你已經完成本次中秋限定盲盒的 **2 次抽獎**。",
                 ephemeral=True,
             )
-
             return
-
-        # -------------------------
-        # 🌙 暫時顯示確認訊息
-        # -------------------------
-
         await run_limited_lottery(
             interaction,
             draw_number=2,
             price=LIMITED_LOTTERY_SECOND_PRICE,
         )
-
-
 # ==========================
-# 🌙 七夕限定盲盒 Embed
+# 🌕 中秋限定盲盒 Embed
 # ==========================
-
-
 def create_limited_lottery_embed():
-
     embed = discord.Embed(
-        title="🌙 七夕限定盲盒",
+        title="🌕 中秋限定盲盒",
         description=(
-            "💫 **一年一度的七夕限定活動！**\n\n"
-            "8/19 七夕當日限定開放，\n"
+            "🌕 **一年一度的中秋限定活動！**\n\n"
+            "9/25 中秋當日限定開放，\n"
             "每位成員最多可以參與 **2 次**。\n\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
-            
             "🎁 **盲盒獎品**\n\n"
             "💰 努努幣 5,000　｜　40%\n"
             "💰 努努幣 8,000　｜　30%\n"
             "🎨 角色 Q 版貼圖 ×1　｜　20%\n"
             "💕 角色合照 ×1　｜　10%\n\n"
-            
             "━━━━━━━━━━━━━━━━━━\n\n"
-            
             "📌 **角色獎品領取方式**\n\n"
-            "🎨 抽到 **角色 Q 版貼圖**\n"
-            "💕 抽到 **角色合照**\n\n"
-            "請務必將**抽獎結果截圖保存**，\n"
-            "私訊**管理員**並告知角色名稱。\n\n"
-            "⚠️ **未提供抽獎結果截圖，將無法領取獎品。**\n\n"
-            
+            "🎨 **角色 Q 版貼圖**\n"
+            "💕 **角色合照**\n\n"
+            "抽到角色獎品後，\n"
+            "點擊抽獎結果中的按鈕，\n"
+            "選擇合作的媽咪，\n"
+            "再輸入角色名稱。\n\n"
+            "📩 確認後機器人會自動通知該媽咪。\n\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
-            
             "🎟️ **抽獎費用**\n\n"
             "第一次　→　💰 **500 努努幣**\n"
             "第二次　→　💰 **5,000 努努幣**\n\n"
             "每人最多 **2 次**，每次皆為獨立抽獎。\n\n"
-            "💌 **七夕限定，只有一天！**"
+            "🌕 **中秋限定，只有一天！**"
         ),
-        color=0xE91E63,
+        color=0xF5B041,
     )
-
     embed.set_footer(
-        text="🌙 Moon Bot｜七夕限定盲盒｜2026/8/19"
+        text="🌕 Moon Bot｜中秋限定盲盒｜2026/9/25"
     )
-
     return embed
-
-
 # ==========================
-# 🌙 發送七夕限定盲盒面板
+# 🌕 發送中秋限定盲盒面板
 # ==========================
-
-
 async def send_limited_lottery_panel(channel):
-
     embed = create_limited_lottery_embed()
-
     await channel.send(
         embed=embed,
         view=LimitedLotteryView(),
     )
-    
 # ==========================
-# 🧪 七夕限定盲盒｜管理員測試指令
+# 🧪 中秋限定盲盒｜管理員測試指令
 # ==========================
-
 @app_commands.command(
-    name="qixi_test",
-    description="🌙 發送七夕限定盲盒測試面板",
+    name="mid_autumn_test",
+    description="🌕 發送中秋限定盲盒測試面板",
 )
 async def limited_lottery_test(
     interaction: discord.Interaction,
 ):
-
-    # -------------------------
-    # 👑 管理員限定
-    # -------------------------
-
     if interaction.user.id not in BOT_ADMINS:
-
         await interaction.response.send_message(
             "❌ 只有管理員可以使用這個測試指令。",
             ephemeral=True,
         )
-
         return
-
-    # -------------------------
-    # 🌙 發送測試面板
-    # -------------------------
-
     await send_limited_lottery_panel(
         interaction.channel
     )
-
     await interaction.response.send_message(
-        "✅ 七夕限定盲盒測試面板已發送！",
+        "✅ 中秋限定盲盒測試面板已發送！",
         ephemeral=True,
     )
-    
 # ==========================
-# 🌙 啟動限定盲盒系統
+# 🌕 啟動限定盲盒系統
 # ==========================
-
 def setup_limited_lottery(bot):
-
     init_limited_lottery_database()
-
     # -------------------------
-    # 🌙 註冊永久按鈕
+    # 🌕 註冊永久盲盒按鈕
     # -------------------------
-
-    bot.add_view(LimitedLotteryView())
-
+    bot.add_view(
+        LimitedLotteryView()
+    )
     # -------------------------
     # 🧪 註冊管理員測試指令
     # -------------------------
-
-    if bot.tree.get_command("qixi_test") is None:
-        bot.tree.add_command(limited_lottery_test)
-
-    print("✅ 七夕限定盲盒系統已載入")
+    if bot.tree.get_command(
+        "mid_autumn_test"
+    ) is None:
+        bot.tree.add_command(
+            limited_lottery_test
+        )
+    print(
+        "✅ 中秋限定盲盒系統已載入"
+    )
