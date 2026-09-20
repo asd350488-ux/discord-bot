@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import discord
-from systems.music import setup_music
 from systems.test_achievement_box_discord_ready_v2 import setup as setup_achievement_box_test
 from systems.moon_life import setup_moon_life
 from systems.streak_lottery import setup_streak_lottery
@@ -12,6 +11,7 @@ from systems.character_exam import setup_character_exam
 from systems.bigsmall import setup_bigsmall
 from systems.duel import setup_duel
 from systems.slot import setup_slot
+from systems.music import setup_music
 from config import EXCLUDED_USERS
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -1755,9 +1755,6 @@ async def on_ready():
     
     # 🎓 角色考試系統
     setup_character_test(bot)
-    
-    # 🌙 Moon Music 音樂系統
-    setup_music(bot)
 
     try:
         synced = await bot.tree.sync()
@@ -5106,5 +5103,12 @@ setup_slot(
     NUNU_EMOJI=NUNU_EMOJI,
     SLOT_CHANNEL=SLOT_CHANNEL,
 )
+
+
+# ==========================
+# 🌙 Moon Music 音樂系統
+# ==========================
+
+setup_music(bot)
 
 bot.run(os.getenv("TOKEN"))
