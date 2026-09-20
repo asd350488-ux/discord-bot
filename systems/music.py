@@ -18,6 +18,22 @@ import yt_dlp
 # 🎵 yt-dlp 設定
 # ==========================
 
+# yt-dlp 目前的 YouTube 完整解析需要 EJS + JavaScript runtime。
+# Render 會由 build script 安裝 Deno；這裡自動尋找 Deno 路徑。
+DENO_CANDIDATES = [
+    str(Path.cwd() / ".deno" / "bin" / "deno"),
+    str(Path(__file__).resolve().parents[1] / ".deno" / "bin" / "deno"),
+    "/opt/render/project/src/.deno/bin/deno",
+    "/root/.deno/bin/deno",
+    "/usr/local/bin/deno",
+    "/usr/bin/deno",
+]
+
+DENO_PATH = next(
+    (path for path in DENO_CANDIDATES if Path(path).is_file()),
+    None,
+)
+
 YTDL_OPTIONS = {
 
     "format": "bestaudio/best",
@@ -34,7 +50,17 @@ YTDL_OPTIONS = {
 
     "extract_flat": False,
 
+    # YouTube EJS challenge solver。
+    "remote_components": ["ejs:github"],
+
 }
+
+if DENO_PATH:
+    YTDL_OPTIONS["js_runtimes"] = {
+        "deno": {
+            "path": DENO_PATH,
+        },
+    }
 
 FFMPEG_OPTIONS = {
 
