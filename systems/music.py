@@ -42,7 +42,9 @@ YTDL_OPTIONS = {
 
     "quiet": True,
 
-    "no_warnings": True,
+    "no_warnings": False,
+
+    "verbose": False,
 
     "default_search": "ytsearch",
 
@@ -51,7 +53,7 @@ YTDL_OPTIONS = {
     "extract_flat": False,
 
     # YouTube EJS challenge solver。
-    "remote_components": ["ejs:github"],
+    "remote_components": {"ejs:github"},
 
 }
 
@@ -269,7 +271,11 @@ async def extract_song_info(
             keyword
         )
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            f"[Moon Music] yt-dlp 解析失敗：{type(e).__name__}: {e}"
+        )
 
         return None
 
