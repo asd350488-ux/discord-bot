@@ -34,7 +34,41 @@ DENO_PATH = next(
     None,
 )
 
-YTDL_OPTIONS = {
+# 不使用 YouTube 帳號、密碼或 Cookie。
+# Moon Music 一律以「未登入遊客」方式嘗試播放。
+#
+# YouTube 目前會依不同 player client 套用不同的驗證／PO Token 規則，
+# 所以不能只固定使用單一 client。
+# 先嘗試 web_embedded，再嘗試 yt-dlp 預設 client，最後嘗試 web_safari。
+# 哪一個 client 能成功，會依影片與 YouTube 當下政策而不同。
+YOUTUBE_CLIENT_PROFILES = [
+
+    (
+        "web_embedded",
+        {
+            "player_client": [
+                "web_embedded",
+            ],
+        },
+    ),
+
+    (
+        "default",
+        None,
+    ),
+
+    (
+        "web_safari",
+        {
+            "player_client": [
+                "web_safari",
+            ],
+        },
+    ),
+
+]
+
+BASE_YTDL_OPTIONS = {
 
     "format": "bestaudio/best",
 
@@ -57,12 +91,47 @@ YTDL_OPTIONS = {
 
 }
 
-if DENO_PATH:
-    YTDL_OPTIONS["js_runtimes"] = {
-        "deno": {
-            "path": DENO_PATH,
-        },
-    }
+
+def build_ytdl_options(
+    extractor_args=None,
+):
+
+    options = dict(
+        BASE_YTDL_OPTIONS
+    )
+
+    if DENO_PATH:
+
+        options["js_runtimes"] = {
+            "deno": {
+                "path": DENO_PATH,
+            },
+        }
+
+    if extractor_args:
+
+        options["extractor_args"] = {
+            "youtube": dict(
+                extractor_args
+            ),
+        }
+
+    return options
+
+
+def create_ytdl(
+    extractor_args=None,
+):
+
+    return yt_dlp.YoutubeDL(
+        build_ytdl_options(
+            extractor_args
+        )
+    )
+
+
+# 保留一個預設實例，其他 client 會在解析時個別建立。
+ytdl = create_ytdl()
 
 FFMPEG_OPTIONS = {
 
@@ -75,11 +144,6 @@ FFMPEG_OPTIONS = {
     "options": "-vn",
 
 }
-
-ytdl = yt_dlp.YoutubeDL(
-    YTDL_OPTIONS
-)
-
 
 # ==========================
 # 🎵 歌曲資料
@@ -244,40 +308,40 @@ music_players = {}
 
 async def get_youtube_data(
     keyword: str,
+    extractor_args=None,
 ):
 
     loop = asyncio.get_running_loop()
 
+    def extract():
+
+        player = create_ytdl(
+            extractor_args
+        )
+
+        try:
+
+            return player.extract_info(
+                keyword,
+                download=False,
+            )
+
+        finally:
+
+            try:
+                player.close()
+            except Exception:
+                pass
+
     return await loop.run_in_executor(
-
         None,
-
-        lambda: ytdl.extract_info(
-            keyword,
-            download=False,
-        ),
-
+        extract,
     )
 
 
-async def extract_song_info(
-    keyword: str,
-    requester=None,
+def normalize_youtube_result(
+    data,
 ):
-
-    try:
-
-        data = await get_youtube_data(
-            keyword
-        )
-
-    except Exception as e:
-
-        print(
-            f"[Moon Music] yt-dlp 解析失敗：{type(e).__name__}: {e}"
-        )
-
-        return None
 
     if not data:
         return None
@@ -298,58 +362,114 @@ async def extract_song_info(
         if not entries:
             return None
 
+        # yt-dlp 搜尋結果有時會先回傳 metadata entry，
+        # 所以只取第一個有效結果。
         data = entries[0]
 
-    webpage_url = data.get(
-        "webpage_url",
-        "",
-    )
+    return data
 
-    stream_url = data.get(
-        "url",
-        "",
-    )
 
-    if not webpage_url:
-        webpage_url = data.get(
-            "original_url",
-            "",
+async def extract_song_info(
+    keyword: str,
+    requester=None,
+):
+
+    last_error = None
+
+    for profile_name, extractor_args in YOUTUBE_CLIENT_PROFILES:
+
+        try:
+
+            print(
+                f"[Moon Music] YouTube 嘗試 client：{profile_name}"
+            )
+
+            data = await get_youtube_data(
+                keyword,
+                extractor_args=extractor_args,
+            )
+
+            data = normalize_youtube_result(
+                data
+            )
+
+            if not data:
+                continue
+
+            webpage_url = data.get(
+                "webpage_url",
+                "",
+            )
+
+            stream_url = data.get(
+                "url",
+                "",
+            )
+
+            if not webpage_url:
+                webpage_url = data.get(
+                    "original_url",
+                    "",
+                )
+
+            if not stream_url:
+                print(
+                    f"[Moon Music] {profile_name} 沒有取得播放串流，換下一個 client。"
+                )
+                continue
+
+            print(
+                f"[Moon Music] YouTube 解析成功：{profile_name}"
+            )
+
+            return Song(
+
+                title=data.get(
+                    "title",
+                    "未知歌曲",
+                ),
+
+                url=webpage_url,
+
+                stream_url=stream_url,
+
+                duration=data.get(
+                    "duration",
+                    0,
+                ),
+
+                thumbnail=data.get(
+                    "thumbnail",
+                    "",
+                ),
+
+                uploader=data.get(
+                    "uploader",
+                    "",
+                ),
+
+                webpage_url=webpage_url,
+
+                requester=requester,
+
+            )
+
+        except Exception as e:
+
+            last_error = e
+
+            print(
+                f"[Moon Music] YouTube client={profile_name} 解析失敗："
+                f"{type(e).__name__}: {e}"
+            )
+
+    if last_error:
+
+        print(
+            "[Moon Music] 所有未登入 YouTube client 都失敗。"
         )
 
-    if not stream_url:
-        return None
-
-    return Song(
-
-        title=data.get(
-            "title",
-            "未知歌曲",
-        ),
-
-        url=webpage_url,
-
-        stream_url=stream_url,
-
-        duration=data.get(
-            "duration",
-            0,
-        ),
-
-        thumbnail=data.get(
-            "thumbnail",
-            "",
-        ),
-
-        uploader=data.get(
-            "uploader",
-            "未知作者",
-        ),
-
-        webpage_url=webpage_url,
-
-        requester=requester,
-
-    )
+    return None
 
 
 # ==========================
