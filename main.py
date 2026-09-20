@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import discord
+from systems.music import setup_music
 from systems.test_achievement_box_discord_ready_v2 import setup as setup_achievement_box_test
 from systems.moon_life import setup_moon_life
 from systems.streak_lottery import setup_streak_lottery
@@ -1754,6 +1755,9 @@ async def on_ready():
     
     # 🎓 角色考試系統
     setup_character_test(bot)
+    
+    # 🌙 Moon Music 音樂系統
+    setup_music(bot)
 
     try:
         synced = await bot.tree.sync()
