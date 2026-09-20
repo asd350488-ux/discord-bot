@@ -1,7 +1,8 @@
-discord.py
+discord.py[voice]
 pytz
 Pillow
 aiohttp
-yt-dlp
+yt-dlp[default]
 PyNaCl
 davey
+yt-dlp-ejs
