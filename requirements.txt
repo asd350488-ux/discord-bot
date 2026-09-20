@@ -3,3 +3,4 @@ pytz
 Pillow
 aiohttp
 yt-dlp
+PyNaCl
