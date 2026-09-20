@@ -1750,7 +1750,7 @@ async def music_panel(
 # 🌙 啟動音樂系統
 # ==========================
 
-async def setup_music(
+def setup_music(
     bot,
 ):
 
@@ -1758,7 +1758,6 @@ async def setup_music(
         music_panel
     )
 
-    # Discord 重啟後重新建立 View 的按鈕註冊
     bot.add_view(
         MusicPanelView()
     )
