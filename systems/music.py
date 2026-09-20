@@ -1231,6 +1231,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="🎵 播放歌曲",
+        custom_id="moon_music_play",
         style=discord.ButtonStyle.success,
         row=0,
     )
@@ -1246,6 +1247,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="⏯️ 暫停 / 繼續",
+        custom_id="moon_music_pause",
         style=discord.ButtonStyle.primary,
         row=0,
     )
@@ -1312,6 +1314,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="⏭️ 跳過",
+        custom_id="moon_music_skip",
         style=discord.ButtonStyle.secondary,
         row=0,
     )
@@ -1353,6 +1356,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="⏹️ 停止",
+        custom_id="moon_music_stop",
         style=discord.ButtonStyle.danger,
         row=0,
     )
@@ -1386,6 +1390,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="📋 播放清單",
+        custom_id="moon_music_queue",
         style=discord.ButtonStyle.secondary,
         row=1,
     )
@@ -1448,6 +1453,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="🎶 目前播放",
+        custom_id="moon_music_current",
         style=discord.ButtonStyle.primary,
         row=1,
     )
@@ -1518,6 +1524,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="🔀 隨機",
+        custom_id="moon_music_shuffle",
         style=discord.ButtonStyle.secondary,
         row=2,
     )
@@ -1572,6 +1579,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="🔁 循環",
+        custom_id="moon_music_loop",
         style=discord.ButtonStyle.secondary,
         row=2,
     )
@@ -1617,6 +1625,7 @@ class MusicPanelView(
 
     @discord.ui.button(
         label="🔊 音量",
+        custom_id="moon_music_volume",
         style=discord.ButtonStyle.secondary,
         row=2,
     )
