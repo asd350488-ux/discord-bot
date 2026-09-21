@@ -8,7 +8,9 @@ import discord
 import random
 import asyncio
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from discord import app_commands
+from discord.ext import tasks
 
 from database import conn, c
 from config import BOT_ADMINS
@@ -18,7 +20,32 @@ from config import BOT_ADMINS
 # 🌕 中秋限定盲盒設定
 # ==========================
 
-MID_AUTUMN_DATE = "2026-09-25"
+# ==========================
+# 🌕 中秋活動時間設定
+# ==========================
+
+MID_AUTUMN_START = "2026-09-25 00:00"
+MID_AUTUMN_END = "2026-09-26 00:00"
+
+# 🌕 中秋活動頻道
+MID_AUTUMN_CHANNEL_ID = 1530174213418123326
+
+# 👥 中秋活動指定身分組
+MID_AUTUMN_ROLE_ID = 1504854895826698392
+
+# 🧪 測試模式
+#
+# True：
+#   可以正常測試盲盒。
+#   不受正式活動日期限制。
+#   不修改活動頻道權限。
+#   不會自動清除任何抽獎資料。
+#
+# 正式活動前請改成 False。
+MID_AUTUMN_TEST_MODE = True
+
+# 🇹🇼 使用台灣時間
+MID_AUTUMN_TIMEZONE = ZoneInfo("Asia/Taipei")
 
 # --------------------------
 # 🎟️ 每人最多參與次數
@@ -101,10 +128,46 @@ limited_lottery_running = set()
 # 🌕 判斷是否為中秋活動日
 # ==========================
 
+def get_mid_autumn_now():
+
+    return datetime.now(
+        MID_AUTUMN_TIMEZONE
+    )
+
+
+def get_mid_autumn_start():
+
+    return datetime.strptime(
+        MID_AUTUMN_START,
+        "%Y-%m-%d %H:%M",
+    ).replace(
+        tzinfo=MID_AUTUMN_TIMEZONE
+    )
+
+
+def get_mid_autumn_end():
+
+    return datetime.strptime(
+        MID_AUTUMN_END,
+        "%Y-%m-%d %H:%M",
+    ).replace(
+        tzinfo=MID_AUTUMN_TIMEZONE
+    )
+
+
 def is_mid_autumn_day():
 
-    # 🧪 測試期間暫時不限日期
-    return True
+    # 🧪 測試模式不限正式日期
+    if MID_AUTUMN_TEST_MODE:
+        return True
+
+    now = get_mid_autumn_now()
+
+    return (
+        get_mid_autumn_start()
+        <= now
+        < get_mid_autumn_end()
+    )
 
 
 # ==========================
@@ -1401,10 +1464,336 @@ async def limited_lottery_test(
 
 
 # ==========================
+# 🗑️ 清空盲盒抽獎紀錄｜確認視窗
+# ==========================
+
+class ClearLimitedLotteryConfirmView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=60
+        )
+
+    @discord.ui.button(
+        label="🗑️ 確定清空",
+        style=discord.ButtonStyle.danger,
+    )
+    async def confirm_clear(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        # ==========================
+        # 🔒 再次確認管理員權限
+        # ==========================
+
+        if interaction.user.id not in BOT_ADMINS:
+
+            await interaction.response.send_message(
+                "❌ 只有管理員可以執行這個操作。",
+                ephemeral=True,
+            )
+
+            return
+
+        # ==========================
+        # 🗑️ 清除正式玩家紀錄
+        # ==========================
+
+        try:
+
+            c.execute(
+                """
+                SELECT COUNT(*)
+                FROM limited_lottery_entries
+                WHERE is_test = 0
+                """
+            )
+
+            result = c.fetchone()
+
+            deleted_count = (
+                result[0]
+                if result
+                else 0
+            )
+
+            c.execute(
+                """
+                DELETE FROM limited_lottery_entries
+                WHERE is_test = 0
+                """
+            )
+
+            conn.commit()
+
+        except Exception as e:
+
+            conn.rollback()
+
+            await interaction.response.edit_message(
+                content=(
+                    "❌ **清空盲盒抽獎紀錄失敗。**\n\n"
+                    f"錯誤：`{e}`"
+                ),
+                embed=None,
+                view=None,
+            )
+
+            return
+
+        # ==========================
+        # ✅ 清空完成
+        # ==========================
+
+        await interaction.response.edit_message(
+            content=(
+                "✅ **盲盒抽獎紀錄已清空！**\n\n"
+                f"🗑️ 已清除正式玩家紀錄："
+                f"**{deleted_count} 筆**\n"
+                "🧪 管理員測試紀錄：**保留**\n\n"
+                "現在所有玩家都會重新從第 1 次抽獎開始計算。"
+            ),
+            embed=None,
+            view=None,
+        )
+
+    @discord.ui.button(
+        label="❌ 取消",
+        style=discord.ButtonStyle.secondary,
+    )
+    async def cancel_clear(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+
+        if interaction.user.id not in BOT_ADMINS:
+
+            await interaction.response.send_message(
+                "❌ 只有管理員可以操作這個視窗。",
+                ephemeral=True,
+            )
+
+            return
+
+        await interaction.response.edit_message(
+            content="✅ 已取消，盲盒抽獎紀錄沒有被清除。",
+            embed=None,
+            view=None,
+        )
+
+
+# ==========================
+# 🗑️ 清空盲盒抽獎紀錄
+# ==========================
+
+@app_commands.command(
+    name="clear_lottery_records",
+    description="🗑️ 清空盲盒抽獎紀錄",
+)
+async def clear_limited_lottery_records(
+    interaction: discord.Interaction,
+):
+
+    if interaction.user.id not in BOT_ADMINS:
+
+        await interaction.response.send_message(
+            "❌ 只有管理員可以使用這個指令。",
+            ephemeral=True,
+        )
+
+        return
+
+    await interaction.response.send_message(
+        "⚠️ **清空盲盒抽獎紀錄**\n\n"
+        "確定要清除所有玩家的正式盲盒抽獎紀錄嗎？\n\n"
+        "🗑️ 會刪除：**正式玩家抽獎紀錄**\n"
+        "🧪 不會刪除：**管理員測試紀錄**\n\n"
+        "這個操作完成後無法復原。",
+        view=ClearLimitedLotteryConfirmView(),
+        ephemeral=True,
+    )
+
+
+# ==========================
+# 🌕 中秋活動｜自動開關頻道
+# ==========================
+
+_mid_autumn_bot = None
+
+
+async def update_mid_autumn_channel():
+
+    global _mid_autumn_bot
+
+    bot = _mid_autumn_bot
+
+    if bot is None:
+        return
+
+    # 🧪 測試模式完全不修改頻道權限
+    if MID_AUTUMN_TEST_MODE:
+        return
+
+    channel = bot.get_channel(
+        MID_AUTUMN_CHANNEL_ID
+    )
+
+    if channel is None:
+
+        try:
+
+            channel = await bot.fetch_channel(
+                MID_AUTUMN_CHANNEL_ID
+            )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ 無法取得中秋活動頻道：{e}"
+            )
+
+            return
+
+    if not isinstance(
+        channel,
+        discord.TextChannel,
+    ):
+        print(
+            "⚠️ 中秋活動頻道不是文字頻道，"
+            "無法自動控制查看權限。"
+        )
+
+        return
+
+    role = channel.guild.get_role(
+        MID_AUTUMN_ROLE_ID
+    )
+
+    if role is None:
+
+        print(
+            f"⚠️ 找不到中秋活動指定身分組："
+            f"{MID_AUTUMN_ROLE_ID}"
+        )
+
+        return
+
+    now = get_mid_autumn_now()
+    start = get_mid_autumn_start()
+    end = get_mid_autumn_end()
+
+    # ==========================
+    # 🔓 活動期間｜開放指定身分組
+    # ==========================
+
+    if start <= now < end:
+
+        try:
+
+            overwrite = channel.overwrites_for(
+                role
+            )
+
+            overwrite.view_channel = True
+
+            await channel.set_permissions(
+                role,
+                overwrite=overwrite,
+                reason="🌕 中秋限定盲盒活動開始",
+            )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ 開放中秋活動頻道失敗：{e}"
+            )
+
+        return
+
+    # ==========================
+    # ⏳ 尚未開始｜關閉指定身分組
+    # ==========================
+
+    if now < start:
+
+        try:
+
+            overwrite = channel.overwrites_for(
+                role
+            )
+
+            overwrite.view_channel = False
+
+            await channel.set_permissions(
+                role,
+                overwrite=overwrite,
+                reason="🌕 中秋限定盲盒活動尚未開始",
+            )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ 設定中秋活動未開始權限失敗：{e}"
+            )
+
+        return
+
+    # ==========================
+    # 🔒 活動結束｜關閉指定身分組
+    # ==========================
+
+    try:
+
+        overwrite = channel.overwrites_for(
+            role
+        )
+
+        overwrite.view_channel = False
+
+        await channel.set_permissions(
+            role,
+            overwrite=overwrite,
+            reason="🌕 中秋限定盲盒活動結束",
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ 關閉中秋活動頻道失敗：{e}"
+        )
+
+
+@tasks.loop(minutes=1)
+async def mid_autumn_activity_loop():
+
+    await update_mid_autumn_channel()
+
+
+@mid_autumn_activity_loop.before_loop
+async def before_mid_autumn_activity_loop():
+
+    global _mid_autumn_bot
+
+    if _mid_autumn_bot is not None:
+
+        await _mid_autumn_bot.wait_until_ready()
+
+
+# ==========================
 # 🌕 啟動限定盲盒系統
 # ==========================
 
 def setup_limited_lottery(bot):
+
+    global _mid_autumn_bot
+
+    _mid_autumn_bot = bot
 
     init_limited_lottery_database()
 
@@ -1426,6 +1815,39 @@ def setup_limited_lottery(bot):
 
         bot.tree.add_command(
             limited_lottery_test
+        )
+
+    # -------------------------
+    # 🗑️ 註冊清空盲盒抽獎紀錄指令
+    # -------------------------
+
+    if bot.tree.get_command(
+        "clear_lottery_records"
+    ) is None:
+
+        bot.tree.add_command(
+            clear_limited_lottery_records
+        )
+
+    # -------------------------
+    # 🌕 啟動活動自動開關
+    # -------------------------
+
+    if not MID_AUTUMN_TEST_MODE:
+
+        if not mid_autumn_activity_loop.is_running():
+
+            mid_autumn_activity_loop.start()
+
+        print(
+            "🌕 中秋活動頻道自動開關已啟動"
+        )
+
+    else:
+
+        print(
+            "🧪 中秋盲盒目前為測試模式，"
+            "不執行自動頻道開關"
         )
 
     print(
