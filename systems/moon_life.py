@@ -8,7 +8,7 @@
 
 import json
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import discord
 from discord import app_commands
@@ -95,6 +95,61 @@ RECRUIT_LIMITS = [
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+def recover_model_stamina(model):
+    """每 30 分鐘自動恢復 5 點體力，最高 100。
+
+    以 model_stamina_updated_at 記錄最後一次恢復計算時間；
+    不需要背景排程，玩家重新進入或操作時會依實際經過時間補回。
+    舊資料若沒有時間戳，第一次遇到時只建立基準時間，不追溯補體力。
+    """
+    if not model:
+        return model
+
+    stamina = clamp(model.get("model_stamina", 100), 0, 100)
+    stamp = model.get("model_stamina_updated_at")
+    now = datetime.now(timezone.utc)
+
+    if not stamp:
+        change_model(model["model_id"], model_stamina=stamina, model_stamina_updated_at=now.isoformat())
+        model["model_stamina"] = stamina
+        model["model_stamina_updated_at"] = now.isoformat()
+        return model
+
+    try:
+        updated_at = datetime.fromisoformat(stamp)
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        change_model(model["model_id"], model_stamina=stamina, model_stamina_updated_at=now.isoformat())
+        model["model_stamina"] = stamina
+        model["model_stamina_updated_at"] = now.isoformat()
+        return model
+
+    elapsed_seconds = max(0, (now - updated_at).total_seconds())
+    intervals = int(elapsed_seconds // (30 * 60))
+    if intervals <= 0:
+        model["model_stamina"] = stamina
+        return model
+
+    recovered = intervals * 5
+    new_stamina = min(100, stamina + recovered)
+
+    # 尚未滿體力時保留未滿 30 分鐘的剩餘時間；滿 100 時不累積「溢出的恢復」。
+    if new_stamina >= 100:
+        new_stamp = now.isoformat()
+    else:
+        new_stamp = (updated_at + timedelta(minutes=30 * intervals)).isoformat()
+
+    change_model(
+        model["model_id"],
+        model_stamina=new_stamina,
+        model_stamina_updated_at=new_stamp,
+    )
+    model["model_stamina"] = new_stamina
+    model["model_stamina_updated_at"] = new_stamp
+    return model
 
 
 def parse_json(value, default):
@@ -676,14 +731,14 @@ async def save_initial_models(interaction, owner, names, ages, personalities):
             INSERT INTO moonclub_modelren
             (user_id,owner_name,owner_identity,name,gender,age_year,
              intelligence,emotion,fitness,creativity,social,relationship,affection,
-             model_stamina,personality_scores,personalities,interests,
+             model_stamina,model_stamina_updated_at,personality_scores,personalities,interests,
              interest_progress,experiences,hidden_rarity,potential_direction,
              background_story,created_at)
-            VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','{}','{}',?,?,?,?)
+            VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,?,'[]','{}','{}',?,?,?,?)
         """, (
             user_id, owner, "會館老闆", name, ages[index],
             stats["intelligence"], stats["emotion"], stats["fitness"],
-            stats["creativity"], stats["social"], dump_json(scores),
+            stats["creativity"], stats["social"], now_iso(), dump_json(scores),
             dump_json([personalities[index]]), candidate["rarity"], candidate["potential"],
             candidate["background"], now_iso(),
         ))
@@ -1041,6 +1096,7 @@ async def build_home_embed(user_id):
     model = model_dict(get_model(user_id))
     if not player or not model:
         return None
+    model = recover_model_stamina(model)
 
     rep = club_reputation(user_id)
     cap, stage = recruit_capacity(rep)
@@ -1210,6 +1266,7 @@ class MoonClubHomeView(discord.ui.View):
         if not model:
             await interaction.response.send_message("❌ 目前沒有男模。", ephemeral=True)
             return
+        model = recover_model_stamina(model)
         personalities = parse_json(model["personalities"], [])
         interests = parse_json(model["interests"], [])
         embed = discord.Embed(
@@ -1374,6 +1431,7 @@ def update_personality(model):
 
 def apply_training(user_id, key):
     model = model_dict(get_model(user_id))
+    model = recover_model_stamina(model)
     data = TRAINING_LIBRARY[key]
     training_count, _ = daily_row(user_id, model["model_id"])
     if model.get("model_stamina", 100) < 10:
@@ -1478,6 +1536,7 @@ class InteractionView(discord.ui.View):
     async def run(self, interaction, index):
         user_id = str(interaction.user.id)
         model = model_dict(get_model(user_id))
+        model = recover_model_stamina(model)
         _, interaction_count = daily_row(user_id, model["model_id"])
         name, text = INTERACTIONS[index]
         stamina_cost = [3, 5, 4, 4][index]
@@ -1675,7 +1734,7 @@ class DateSelect(discord.ui.Select):
         options=[discord.SelectOption(label=title,value=str(i),description=f"❤️ 好感度 {req}+ 解鎖") for i,(req,title,_,_) in enumerate(DATE_OPTIONS)]
         super().__init__(placeholder="選擇基本約會內容…", options=options)
     async def callback(self, interaction):
-        user_id=str(interaction.user.id); model=model_dict(get_model(user_id)); idx=int(self.values[0]); required,title,story,gain_range=DATE_OPTIONS[idx]; affection=model.get("affection",0)
+        user_id=str(interaction.user.id); model=model_dict(get_model(user_id)); model=recover_model_stamina(model); idx=int(self.values[0]); required,title,story,gain_range=DATE_OPTIONS[idx]; affection=model.get("affection",0)
         if affection < required:
             await interaction.response.send_message(f"🔒 需要 ❤️ 好感度 **{required}** 才能解鎖這個約會。",ephemeral=True); return
         coin_cost = 500 + (idx * 500)
@@ -1870,11 +1929,11 @@ class RecruitPersonalityView(discord.ui.View):
                      model_stamina,personality_scores,personalities,interests,
                      interest_progress,experiences,hidden_rarity,potential_direction,
                      background_story,created_at)
-                    VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,'[]','{}','{}',?,?,?,?)
+                    VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,?,'[]','{}','{}',?,?,?,?)
                 """, (
                     user_id, player[1], "會館老闆", self.name, self.age,
                     stats["intelligence"], stats["emotion"], stats["fitness"],
-                    stats["creativity"], stats["social"], dump_json(scores),
+                    stats["creativity"], stats["social"], now_iso(), dump_json(scores),
                     dump_json([personality]), self.candidate["rarity"],
                     self.candidate["potential"], self.candidate["background"], now_iso(),
                 ))
