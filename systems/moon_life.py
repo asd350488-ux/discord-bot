@@ -1933,7 +1933,7 @@ class RecruitPersonalityView(discord.ui.View):
                 """, (
                     user_id, player[1], "會館老闆", self.name, self.age,
                     stats["intelligence"], stats["emotion"], stats["fitness"],
-                    stats["creativity"], stats["social"], now_iso(), now_iso(), dump_json(scores),
+                    stats["creativity"], stats["social"], now_iso(), dump_json(scores),
                     dump_json([personality]), self.candidate["rarity"],
                     self.candidate["potential"], self.candidate["background"], now_iso(),
                 ))
