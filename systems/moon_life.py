@@ -1929,7 +1929,7 @@ class RecruitPersonalityView(discord.ui.View):
                      model_stamina,model_stamina_updated_at,personality_scores,personalities,interests,
                      interest_progress,experiences,hidden_rarity,potential_direction,
                      background_story,created_at)
-                    VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,?,'[]','{}','{}',?,?,?,?)
+                    VALUES (?,?,?,?, '男',?,?,?,?,?,?,0,0,100,?,?,?,?,'[]','{}','{}',?,?,?,?)
                 """, (
                     user_id, player[1], "會館老闆", self.name, self.age,
                     stats["intelligence"], stats["emotion"], stats["fitness"],
