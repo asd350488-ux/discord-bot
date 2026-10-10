@@ -9,6 +9,11 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
+from systems.moon_achievement_ui_v2 import (
+    AchievementBoxView,
+    setup_achievement_redemption,
+)
+
 from systems.moon_achievements import (
     AchievementStore,
     ACHIEVEMENTS,
@@ -174,10 +179,59 @@ class AchievementTestView(discord.ui.View):
         )
 
 
+class TestRewardRouteView(discord.ui.View):
+    """測試抽獎已完成後，讓測試者進入正式兌獎的下一步，不再重抽。"""
+    def __init__(self, cog, reward):
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.reward = reward
+
+    @discord.ui.button(label="➡️ 進入獎品兌換流程", style=discord.ButtonStyle.success)
+    async def continue_redemption(self, interaction, button):
+        if interaction.user.id != TESTER_ID:
+            await interaction.response.send_message("❌ 這是開發測試功能，你沒有使用權限。", ephemeral=True)
+            return
+        # 正式 AchievementBoxView 會自己抽一次，因此不能直接使用它，否則會重抽。
+        # 使用與正式流程相同的後續元件，按獎品類型分流。
+        from systems.moon_achievement_ui_v2 import (
+            MOMMY_REWARDS, ADMIN_PROFILE_REWARDS, REWARD_NAMES,
+            MommySelectView, AdminMakerSelectView,
+        )
+        if self.reward in MOMMY_REWARDS:
+            await interaction.response.edit_message(
+                embed=discord.Embed(title="🎉 測試中獎｜選擇媽咪", description=f"🎁 **{REWARD_NAMES[self.reward]}**\n\n請選擇負責媽咪，再填寫角色名稱。"),
+                view=MommySelectView(self.cog.db, TESTER_ID, self.reward),
+            )
+        elif self.reward in ADMIN_PROFILE_REWARDS:
+            await interaction.response.edit_message(
+                embed=discord.Embed(title="🎉 測試中獎｜選擇製作者", description=f"🎁 **{REWARD_NAMES[self.reward]}**\n\n請選擇製作管理員。"),
+                view=AdminMakerSelectView(self.cog.db, TESTER_ID, self.reward),
+            )
+        else:
+            # 正式 UI 的努努幣獎項會直接入帳；測試環境只會寫入本 cog 的 :memory: DB。
+            amount_map = {
+                "15,000 努努幣": 15000,
+                "10,000 努努幣": 10000,
+                "5,000 努努幣": 5000,
+            }
+            amount = amount_map.get(self.reward)
+            if amount is not None:
+                self.cog.db.execute("INSERT OR IGNORE INTO users (user_id, money) VALUES (?, 0)", (str(TESTER_ID),))
+                self.cog.db.execute("UPDATE users SET money=COALESCE(money, 0)+? WHERE user_id=?", (amount, str(TESTER_ID)))
+                self.cog.db.commit()
+            await interaction.response.edit_message(
+                embed=discord.Embed(title="🎉 測試盲盒開獎", description=f"獲得：**{self.reward}**\n\n測試獎勵已記錄在獨立測試資料庫，不會影響正式努努幣。"),
+                view=None,
+            )
+
+
 class AchievementTestCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = sqlite3.connect(":memory:")
+        self.db.row_factory = sqlite3.Row
+        # 測試用獨立帳本：測試盲盒的努努幣只寫入記憶體，不會改動正式玩家資產。
+        self.db.execute("CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, money INTEGER DEFAULT 0)")
         self.store = AchievementStore(self.db)
 
     async def cog_check(self, interaction):
@@ -234,18 +288,21 @@ class AchievementTestCog(commands.Cog):
 
         remaining = self.store.get_draw_count(TESTER_ID)
 
+        # 不只顯示抽獎結果：把已抽中的獎品交給正式兌獎 UI，
+        # 讓測試者可實際走完選媽咪／選製作者／確認／私訊交圖流程。
+        # 先把抽獎結果放回一筆已消耗資格的視覺回報，再以正式 UI 直接處理獎品，
+        # 因此這裡不自行 consume 第二次。下面使用專用測試結果 View。
         embed = discord.Embed(
-            title="🎁 成就盲盒開啟！",
-            description=f"✨ 獲得：**{reward}**",
+            title="🎁 成就盲盒測試結果",
+            description=f"✨ 抽中：**{reward}**\n\n接下來會進入正式獎品兌換流程。",
         )
         embed.add_field(name="測試難度", value=difficulty)
         embed.add_field(name="剩餘資格", value=str(remaining))
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True,
-        )
+        await interaction.response.send_message(embed=embed, view=TestRewardRouteView(self, reward), ephemeral=True)
 
 
 async def setup(bot):
-    await bot.add_cog(AchievementTestCog(bot))
+    cog = AchievementTestCog(bot)
+    # 使用測試專屬記憶體資料庫啟動正式圖片兌換 listener；不碰正式資料庫。
+    await setup_achievement_redemption(bot, cog.db)
+    await bot.add_cog(cog)
