@@ -1,35 +1,100 @@
 # -*- coding: utf-8 -*-
 """
-🌙 Moon Life｜成就盲盒 Discord 測試器
-只供開發測試使用。
-
-測試方式：
-1. /成就盲盒測試
-2. 按「建立1次測試資格」——自動建立 1 次【高】難度，不再詢問難度或次數。
-3. 按「開啟盲盒」。
-4. 若抽到 4 種特殊獎品，會直接進入：
-   選擇負責媽咪 → 輸入角色名稱 → 確認送出。
+🧪 Moon Life｜成就盲盒 Discord 測試器
+只供曦兒開發測試使用。
 """
 
 import sqlite3
-import datetime
 import discord
 from discord.ext import commands
 from discord import app_commands
 
 from systems.moon_achievements import (
     AchievementStore,
+    ACHIEVEMENTS,
+    EASY,
+    MEDIUM,
+    MEDIUM_HIGH,
     HIGH,
+    LOOT_WEIGHTS,
+    roll_loot,
 )
-
-from systems.moon_achievement_ui_v2 import (
-    SPECIAL_REWARDS,
-    REWARD_NAMES,
-    MommySelectView,
-)
-
 
 TESTER_ID = 1301905168094335028
+
+
+class DifficultySelect(discord.ui.Select):
+    def __init__(self, action):
+        self.action = action
+        options = [
+            discord.SelectOption(label="簡單", value="easy", emoji="🟢"),
+            discord.SelectOption(label="中", value="medium", emoji="🟡"),
+            discord.SelectOption(label="中高", value="medium_high", emoji="🟠"),
+            discord.SelectOption(label="高", value="high", emoji="🔴"),
+        ]
+        super().__init__(placeholder="選擇測試難度", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        difficulty_map = {
+            "easy": EASY,
+            "medium": MEDIUM,
+            "medium_high": MEDIUM_HIGH,
+            "high": HIGH,
+        }
+        await self.action(interaction, difficulty_map[self.values[0]])
+
+
+class DifficultyView(discord.ui.View):
+    def __init__(self, action):
+        super().__init__(timeout=120)
+        self.add_item(DifficultySelect(action))
+
+
+class CountModal(discord.ui.Modal, title="建立測試資格"):
+    count = discord.ui.TextInput(
+        label="要建立幾次資格？",
+        placeholder="例如：10",
+        min_length=1,
+        max_length=4,
+    )
+
+    def __init__(self, cog, difficulty):
+        super().__init__()
+        self.cog = cog
+        self.difficulty = difficulty
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            count = int(self.count.value)
+            if count <= 0 or count > 100:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ 請輸入 1～100 的正整數。",
+                ephemeral=True,
+            )
+            return
+
+        now = __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        ).isoformat()
+
+        for _ in range(count):
+            self.cog.store.db.execute(
+                """
+                INSERT INTO moon_achievement_draws
+                (user_id, difficulty, created_at, used)
+                VALUES (?, ?, ?, 0)
+                """,
+                (TESTER_ID, self.difficulty, now),
+            )
+
+        self.cog.store.db.commit()
+
+        await interaction.response.send_message(
+            f"✅ 已建立 **{count} 次**「{self.difficulty}」測試資格。",
+            ephemeral=True,
+        )
 
 
 class AchievementTestView(discord.ui.View):
@@ -38,39 +103,14 @@ class AchievementTestView(discord.ui.View):
         self.cog = cog
 
     @discord.ui.button(
-        label="🎟️ 建立1次測試資格",
+        label="🎟️ 建立測試資格",
         style=discord.ButtonStyle.primary,
         row=0,
     )
     async def add_qualification(self, interaction, button):
-        if interaction.user.id != TESTER_ID:
-            await interaction.response.send_message(
-                "❌ 這是開發測試功能，你沒有使用權限。",
-                ephemeral=True,
-            )
-            return
-
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-
-        self.cog.store.db.execute(
-            """
-            INSERT INTO moon_achievement_draws
-            (user_id, difficulty, created_at, used)
-            VALUES (?, ?, ?, 0)
-            """,
-            (TESTER_ID, HIGH, now),
-        )
-        self.cog.store.db.commit()
-
-        count = self.cog.store.get_draw_count(TESTER_ID)
-
         await interaction.response.send_message(
-            (
-                "✅ 已建立 **1 次**測試資格！\n"
-                "🎯 測試難度：**高**\n"
-                f"🎟️ 目前剩餘資格：**{count} 次**\n\n"
-                "現在直接按「🎁 開啟盲盒」即可。"
-            ),
+            "🎟️ 請選擇測試難度：",
+            view=DifficultyView(self.cog.open_count_modal),
             ephemeral=True,
         )
 
@@ -80,13 +120,6 @@ class AchievementTestView(discord.ui.View):
         row=0,
     )
     async def draw_box(self, interaction, button):
-        if interaction.user.id != TESTER_ID:
-            await interaction.response.send_message(
-                "❌ 這是開發測試功能，你沒有使用權限。",
-                ephemeral=True,
-            )
-            return
-
         await self.cog.draw_box(interaction)
 
     @discord.ui.button(
@@ -95,33 +128,36 @@ class AchievementTestView(discord.ui.View):
         row=1,
     )
     async def status(self, interaction, button):
-        if interaction.user.id != TESTER_ID:
-            await interaction.response.send_message(
-                "❌ 這是開發測試功能，你沒有使用權限。",
-                ephemeral=True,
-            )
-            return
-
         count = self.cog.store.get_draw_count(TESTER_ID)
-
         await interaction.response.send_message(
             f"🎟️ 目前測試盲盒資格：**{count} 次**",
             ephemeral=True,
         )
 
     @discord.ui.button(
-        label="🗑️ 清除測試資料",
-        style=discord.ButtonStyle.danger,
+        label="🎲 查看機率",
+        style=discord.ButtonStyle.secondary,
         row=1,
     )
-    async def reset(self, interaction, button):
-        if interaction.user.id != TESTER_ID:
-            await interaction.response.send_message(
-                "❌ 這是開發測試功能，你沒有使用權限。",
-                ephemeral=True,
-            )
-            return
+    async def probability(self, interaction, button):
+        lines = ["🎲 **目前盲盒機率**"]
+        for difficulty, weights in LOOT_WEIGHTS.items():
+            total = sum(weights.values())
+            lines.append(f"\n**{difficulty}**")
+            for reward, weight in weights.items():
+                lines.append(f"• {reward}：{weight / total * 100:.1f}%")
 
+        await interaction.response.send_message(
+            "\n".join(lines),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="🗑️ 清除測試資料",
+        style=discord.ButtonStyle.danger,
+        row=2,
+    )
+    async def reset(self, interaction, button):
         self.cog.store.db.execute(
             "DELETE FROM moon_achievement_draws WHERE user_id=?",
             (TESTER_ID,),
@@ -133,7 +169,7 @@ class AchievementTestView(discord.ui.View):
         self.cog.store.db.commit()
 
         await interaction.response.send_message(
-            "🗑️ 測試資格已全部清除。",
+            "🗑️ 測試資料已全部清除。",
             ephemeral=True,
         )
 
@@ -158,20 +194,12 @@ class AchievementTestCog(commands.Cog):
         description="開啟成就盲盒開發測試中心",
     )
     async def achievement_box_test(self, interaction):
-        count = self.store.get_draw_count(TESTER_ID)
-
         embed = discord.Embed(
             title="🧪 成就盲盒測試中心",
             description=(
                 "這裡是開發測試功能。\n\n"
-                "🎟️ 每按一次「建立1次測試資格」就會自動建立 **1 次高難度資格**。\n"
-                "不再要求你輸入「高／低」或「幾次」。\n\n"
-                f"🎟️ 目前測試資格：**{count} 次**\n\n"
-                "抽到以下特殊獎品時，會直接進入正式兌換流程：\n"
-                "🎬 影片合集\n"
-                "📷 照片合集\n"
-                "💍 結婚證書\n"
-                "🪪 雙人徽章"
+                "可以快速建立不同難度的盲盒資格，"
+                "不用真的完成成就即可測試抽獎。"
             ),
         )
         embed.set_footer(text="只有曦兒可以使用")
@@ -182,10 +210,15 @@ class AchievementTestCog(commands.Cog):
             ephemeral=True,
         )
 
+    async def open_count_modal(self, interaction, difficulty):
+        await interaction.response.send_modal(
+            CountModal(self, difficulty)
+        )
+
     async def draw_box(self, interaction):
         if self.store.get_draw_count(TESTER_ID) <= 0:
             await interaction.response.send_message(
-                "❌ 目前沒有測試盲盒資格。\n請先按「🎟️ 建立1次測試資格」。",
+                "❌ 目前沒有測試盲盒資格。",
                 ephemeral=True,
             )
             return
@@ -201,46 +234,12 @@ class AchievementTestCog(commands.Cog):
 
         remaining = self.store.get_draw_count(TESTER_ID)
 
-        # ⭐ 四種特殊獎品：接正式兌換流程
-        if reward in SPECIAL_REWARDS:
-            embed = discord.Embed(
-                title="🎉 恭喜你抽中特殊獎品！",
-                description=(
-                    f"🎁 **{REWARD_NAMES[reward]}**\n\n"
-                    "請選擇負責的媽咪，接著輸入角色名稱。"
-                ),
-            )
-            embed.add_field(
-                name="🎯 測試難度",
-                value=str(difficulty),
-                inline=True,
-            )
-            embed.add_field(
-                name="🎟️ 剩餘資格",
-                value=str(remaining),
-                inline=True,
-            )
-
-            await interaction.response.send_message(
-                embed=embed,
-                view=MommySelectView(
-                    self.store.db,
-                    TESTER_ID,
-                    reward,
-                ),
-                ephemeral=True,
-            )
-            return
-
-        # ⭐ 努努幣：直接顯示結果
         embed = discord.Embed(
             title="🎁 成就盲盒開啟！",
-            description=(
-                f"✨ 獲得：**{REWARD_NAMES.get(reward, reward)}**\n\n"
-                f"🎯 測試難度：**{difficulty}**\n"
-                f"🎟️ 剩餘資格：**{remaining} 次**"
-            ),
+            description=f"✨ 獲得：**{reward}**",
         )
+        embed.add_field(name="測試難度", value=difficulty)
+        embed.add_field(name="剩餘資格", value=str(remaining))
 
         await interaction.response.send_message(
             embed=embed,
