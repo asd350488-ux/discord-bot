@@ -14,29 +14,21 @@ from zoneinfo import ZoneInfo
 import discord
 from discord import app_commands
 
-try:
-    from systems.moon_achievement_ui_v2 import MommySelectView, SPECIAL_REWARDS, REWARD_NAMES
-except ImportError:
-    from moon_achievement_ui_v2 import MommySelectView, SPECIAL_REWARDS, REWARD_NAMES
+from systems.moon_achievement_ui_v2 import (
+    MommySelectView,
+    AdminMakerSelectView,
+    MOMMY_REWARDS,
+    ADMIN_PROFILE_REWARDS,
+    REWARD_NAMES,
+)
 
-try:
-    from systems.moon_achievements import (
-        AchievementStore,
-        AchievementEngine,
-        ACHIEVEMENTS,
-        EASY, MEDIUM, MEDIUM_HIGH, HIGH,
-        REWARD_VIDEO, REWARD_PHOTO, REWARD_CERTIFICATE, REWARD_BADGE,
-        REWARD_NUNU_30000, REWARD_NUNU_40000, REWARD_NUNU_50000,
-    )
-except ImportError:
-    from moon_achievements import (
-        AchievementStore,
-        AchievementEngine,
-        ACHIEVEMENTS,
-        EASY, MEDIUM, MEDIUM_HIGH, HIGH,
-        REWARD_VIDEO, REWARD_PHOTO, REWARD_CERTIFICATE, REWARD_BADGE,
-        REWARD_NUNU_30000, REWARD_NUNU_40000, REWARD_NUNU_50000,
-    )
+from systems.moon_achievements import (
+    AchievementStore,
+    AchievementEngine,
+    ACHIEVEMENTS,
+    EASY, MEDIUM, MEDIUM_HIGH, HIGH,
+    REWARD_NUNU_15000, REWARD_NUNU_10000, REWARD_NUNU_5000,
+)
 
 try:
     from database import conn, c
@@ -992,15 +984,17 @@ def achievement_draw_count(user_id):
 MOON_ADD_MONEY = None
 
 def achievement_reward_to_player(user_id, reward, source_achievement_id=None):
-    """把盲盒結果落地；特殊獎勵先記錄，努努幣直接進 users.money。"""
+    """把新版盲盒獎品正式記錄；努努幣透過 main.py 的 add_money() 入帳。"""
     uid = str(user_id)
-    if reward == REWARD_NUNU_30000:
-        amount = 30000
-    elif reward == REWARD_NUNU_40000:
-        amount = 40000
-    elif reward == REWARD_NUNU_50000:
-        amount = 50000
-    else:
+    money_rewards = {
+        REWARD_NUNU_15000: 15000,
+        REWARD_NUNU_10000: 10000,
+        REWARD_NUNU_5000: 5000,
+    }
+    amount = money_rewards.get(reward)
+
+    # 圖片類獎品先記錄中獎結果，實際兌換由 UI 建立案件並私訊製作者。
+    if amount is None:
         c.execute(
             "INSERT INTO moonclub_achievement_rewards (user_id,reward,source_achievement_id,created_at) VALUES (?,?,?,?)",
             (uid, reward, source_achievement_id, now_iso()),
@@ -1008,11 +1002,12 @@ def achievement_reward_to_player(user_id, reward, source_achievement_id=None):
         conn.commit()
         return reward
 
-    # 測試帳號只記錄測試獎勵；正式帳號統一交給 main.py 的 add_money() 入帳。
+    # 測試帳號維持原有測試規則：只記錄中獎，不實際增加努努幣。
     if not is_moonclub_tester(uid):
         if MOON_ADD_MONEY is None:
             raise RuntimeError("Moon Life 尚未接入 main.py 的 add_money()")
         MOON_ADD_MONEY(int(uid), amount)
+
     c.execute(
         "INSERT INTO moonclub_achievement_rewards (user_id,reward,source_achievement_id,created_at) VALUES (?,?,?,?)",
         (uid, reward, source_achievement_id, now_iso()),
@@ -1049,8 +1044,8 @@ class AchievementBoxView(discord.ui.View):
         # 先把本次獎品正式記錄。
         achievement_reward_to_player(self.owner_user_id, reward)
 
-        # 四種媽咪獎品：抽中後立即進入「選媽咪 → 填角色 → 通知媽咪」流程。
-        if reward in SPECIAL_REWARDS:
+        # 媽咪製作的圖片獎品：選擇媽咪並填寫角色名稱。
+        if reward in MOMMY_REWARDS:
             await interaction.response.edit_message(
                 embed=discord.Embed(
                     title="🎉 恭喜你抽中特殊獎品！",
@@ -1064,7 +1059,22 @@ class AchievementBoxView(discord.ui.View):
             )
             return
 
-        # 努努幣等一般獎品維持原本流程。
+        # 隨機風格人設圖：選擇菜菜或小 E，不需要填寫角色名稱。
+        if reward in ADMIN_PROFILE_REWARDS:
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="🎉 恭喜你抽中隨機風格人設圖！",
+                    description=(
+                        f"🎁 **{REWARD_NAMES[reward]}**\n\n"
+                        "請選擇負責製作的管理員。你只需要提交一張人設圖，不需要填寫角色名稱。"
+                    ),
+                    color=MOONCLUB_COLOR,
+                ),
+                view=AdminMakerSelectView(conn, self.owner_user_id, reward),
+            )
+            return
+
+        # 努努幣獎品已透過 achievement_reward_to_player() 入帳。
         await interaction.response.edit_message(
             embed=discord.Embed(
                 title="🎁 成就盲盒｜開啟成功！",
