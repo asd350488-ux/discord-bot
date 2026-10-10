@@ -261,6 +261,12 @@ def init_moonclub_tables():
         )
     """)
 
+    # 工作次數欄位安全遷移：保留舊紀錄，只為既有資料補預設值。
+    daily_columns = {row[1] for row in c.execute("PRAGMA table_info(moonclub_model_daily)").fetchall()}
+    if "work_count" not in daily_columns:
+        c.execute("ALTER TABLE moonclub_model_daily ADD COLUMN work_count INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+
     # 舊資料庫可直接沿用；只補 V13 需要的新欄位，不再使用舊寶寶欄位。
     model_columns = {row[1] for row in c.execute("PRAGMA table_info(moonclub_modelren)").fetchall()}
     for column, ddl in {
@@ -1109,7 +1115,7 @@ async def build_home_embed(user_id):
         description=(
             f"{OWNER_ICON} 會館老闆：**{player[1]}**\n"
             f"{MODEL_ICON} 目前培養：**{model['name']}**（{model['age_year']} 歲）\n\n"
-            f"🏛️ 知名度：**{rep} / 1000**｜{stage}\n"
+            f"🏛️ 會館知名度：**{rep} / 1000**｜{stage}\n"
             f"👥 簽約名額：**{count} / {cap}**\n"
             f"⚡ 個人體力：**{model.get('model_stamina', 100)} / 100**\n"
             f"💕 默契：**{model['relationship']} / 1000**（{relationship_name(model['relationship'])}）\n"
@@ -1210,10 +1216,10 @@ class FameChoiceView(discord.ui.View):
         mark_moonclub_achievement_event(user_id, event_id, model["model_id"])
         check_moonclub_achievements(user_id)
         add_memory(user_id, model["model_id"], title,
-                   f"{story}\n選擇：{label}。🌟 知名度 {before} → {after}。")
+                   f"{story}\n選擇：{label}。🌟 男模個人知名度 {before} → {after}。")
         await interaction.response.edit_message(
             embed=discord.Embed(title=title,
-                description=f"👤 **{model['name']}**\n{story}\n\n✨ 你的選擇：**{label}**\n🌟 知名度：**{before} → {after} / 1000**（{fame_name(after)}）",
+                description=f"👤 **{model['name']}**\n{story}\n\n✨ 你的選擇：**{label}**\n🌟 男模個人知名度：**{before} → {after} / 1000**（{fame_name(after)}）",
                 color=MOONCLUB_COLOR),
             view=BackHomeView())
 
@@ -1221,7 +1227,7 @@ class FameView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
 
-    @discord.ui.button(label="🌟 查看下一個事業事件", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="🌟 查看下一個個人知名度事件", style=discord.ButtonStyle.success)
     async def open_event(self, interaction, button):
         user_id = str(interaction.user.id)
         model = model_dict(get_model(user_id))
@@ -1229,10 +1235,10 @@ class FameView(discord.ui.View):
             await interaction.response.send_message("❌ 目前沒有男模。", ephemeral=True); return
         event = next_fame_event(user_id, model)
         if not event:
-            await interaction.response.send_message("🌙 目前沒有符合前因後果的知名度事件。先繼續培訓、工作與累積經歷吧。", ephemeral=True); return
+            await interaction.response.send_message("🌙 目前沒有符合前因後果的男模個人知名度事件。先繼續培訓、工作與累積經歷吧。", ephemeral=True); return
         _, required, title, story, _ = event
         await interaction.response.edit_message(
-            embed=discord.Embed(title=title, description=f"👤 **{model['name']}**\n🌟 知名度門檻：{required}\n\n{story}\n\n請選擇接下來的態度：", color=MOONCLUB_COLOR),
+            embed=discord.Embed(title=title, description=f"👤 **{model['name']}**\n🌟 男模個人知名度門檻：{required}\n\n{story}\n\n請選擇接下來的態度：", color=MOONCLUB_COLOR),
             view=FameChoiceView(event))
 
     @discord.ui.button(label="⬅️ 回 Moon Club", style=discord.ButtonStyle.secondary)
@@ -1245,6 +1251,101 @@ class AchievementBoxHomeButton(discord.ui.Button):
 
     async def callback(self, interaction):
         await open_achievement_box(interaction)
+
+
+# ==========================================================
+# 💼 男模工作｜個人知名度成長，與會館知名度分開計算
+# ==========================================================
+WORK_LIBRARY = {
+    "photo": {"name": "📸 平面拍攝", "fame": (3, 5), "pay": (1200, 1800), "stamina": 10, "rep": (0, 1)},
+    "runway": {"name": "👔 品牌走秀", "fame": (5, 8), "pay": (1800, 2600), "stamina": 12, "rep": (0, 2)},
+    "performance": {"name": "🎭 舞台演出", "fame": (6, 10), "pay": (2200, 3200), "stamina": 15, "rep": (0, 2)},
+    "public": {"name": "🎤 公開活動", "fame": (8, 12), "pay": (2800, 4000), "stamina": 18, "rep": (1, 3)},
+    "special": {"name": "🌟 特別邀約", "fame": (15, 25), "pay": (4000, 6000), "stamina": 25, "rep": (1, 3), "min_fame": 450},
+}
+
+def apply_model_work(user_id, key):
+    model = model_dict(get_model(user_id))
+    if not model:
+        return None, "❌ 目前沒有男模。"
+    model = recover_model_stamina(model)
+    data = WORK_LIBRARY[key]
+    daily_row(user_id, model["model_id"])
+    today = datetime.now(timezone.utc).date().isoformat()
+    c.execute("SELECT work_count FROM moonclub_model_daily WHERE user_id=? AND model_id=? AND action_date=?",
+              (str(user_id), int(model["model_id"]), today))
+    row = c.fetchone()
+    work_count = int(row[0] or 0) if row else 0
+    if work_count >= 3:
+        return None, "🌙 這位男模今天已完成 3 次工作，先讓他休息，明天再接新工作吧。"
+    if int(model.get("fame", 0)) < int(data.get("min_fame", 0)):
+        return None, f"🔒「{data['name']}」需要男模個人知名度達到 {data['min_fame']} 才會解鎖。"
+    if int(model.get("model_stamina", 100)) < data["stamina"]:
+        return None, f"⚡ 體力不足，需要 {data['stamina']} 點體力，目前只有 {model.get('model_stamina', 100)}。"
+    if MOON_ADD_MONEY is None:
+        return None, "❌ 努努幣入帳功能尚未連接，請先確認 Moon Life 已由 main.py 正常載入。"
+    fame_gain = random.randint(*data["fame"])
+    pay = random.randint(*data["pay"])
+    rep_gain = random.randint(*data["rep"])
+    before_fame = int(model.get("fame", 0))
+    after_fame = clamp(before_fame + fame_gain, 0, 1000)
+    actual_fame_gain = after_fame - before_fame
+    stamina_after = clamp(int(model.get("model_stamina", 100)) - data["stamina"], 0, 100)
+    try:
+        MOON_ADD_MONEY(int(user_id), pay)
+    except Exception:
+        return None, "❌ 努努幣入帳失敗，這次工作沒有扣除體力或增加知名度，請稍後再試。"
+    change_model(model["model_id"], fame=after_fame, model_stamina=stamina_after,
+                 model_stamina_updated_at=datetime.now(timezone.utc).isoformat())
+    c.execute("UPDATE moonclub_model_daily SET work_count=work_count+1 WHERE user_id=? AND model_id=? AND action_date=?",
+              (str(user_id), int(model["model_id"]), today))
+    if rep_gain:
+        add_reputation(user_id, rep_gain)
+    add_memory(user_id, model["model_id"], data["name"],
+               f"完成{data['name']}，努努幣 +{pay:,}；🌟男模個人知名度 +{actual_fame_gain}（{before_fame} → {after_fame}）；體力 -{data['stamina']}。")
+    check_moonclub_achievements(user_id)
+    conn.commit()
+    return {"data": data, "pay": pay, "fame_gain": actual_fame_gain, "before_fame": before_fame,
+            "after_fame": after_fame, "stamina": data["stamina"], "stamina_after": stamina_after,
+            "rep_gain": rep_gain, "work_count": work_count + 1}, None
+
+class WorkView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    async def run_work(self, interaction, key):
+        result, error = apply_model_work(str(interaction.user.id), key)
+        if error:
+            await interaction.response.send_message(error, ephemeral=True)
+            return
+        model = model_dict(get_model(str(interaction.user.id)))
+        data = result["data"]
+        extra = f"\n🏛️ 會館知名度 +{result['rep_gain']}" if result["rep_gain"] else ""
+        description = (f"👤 **{model['name']}** 完成工作！\n"
+                       f"💰 努努幣 +**{result['pay']:,}**\n"
+                       f"🌟 男模個人知名度：**{result['before_fame']} → {result['after_fame']} / 1000**（+{result['fame_gain']}）\n"
+                       f"⚡ 體力：-{result['stamina']}（剩餘 {result['stamina_after']} / 100）\n"
+                       f"📋 今日工作：{result['work_count']} / 3" + extra +
+                       "\n\n🌟 男模個人知名度代表這位男模的名氣；🏛️ 會館知名度代表整間 Moon Club 的名聲，兩者分開計算。")
+        await interaction.response.edit_message(embed=discord.Embed(title=f"{data['name']}｜工作完成", description=description, color=MOONCLUB_COLOR), view=BackHomeView())
+
+    @discord.ui.button(label="📸 平面拍攝（+3～5）", style=discord.ButtonStyle.primary, row=0)
+    async def photo(self, interaction, button): await self.run_work(interaction, "photo")
+
+    @discord.ui.button(label="👔 品牌走秀（+5～8）", style=discord.ButtonStyle.primary, row=0)
+    async def runway(self, interaction, button): await self.run_work(interaction, "runway")
+
+    @discord.ui.button(label="🎭 舞台演出（+6～10）", style=discord.ButtonStyle.primary, row=1)
+    async def performance(self, interaction, button): await self.run_work(interaction, "performance")
+
+    @discord.ui.button(label="🎤 公開活動（+8～12）", style=discord.ButtonStyle.success, row=1)
+    async def public(self, interaction, button): await self.run_work(interaction, "public")
+
+    @discord.ui.button(label="🌟 特別邀約（知名度 450 解鎖）", style=discord.ButtonStyle.success, row=2)
+    async def special(self, interaction, button): await self.run_work(interaction, "special")
+
+    @discord.ui.button(label="⬅️ 回 Moon Club", style=discord.ButtonStyle.secondary, row=3)
+    async def back(self, interaction, button): await refresh_home(interaction)
 
 
 class MoonClubHomeView(discord.ui.View):
@@ -1275,7 +1376,7 @@ class MoonClubHomeView(discord.ui.View):
                 f"🎂 年齡：**{model['age_year']} 歲**\n"
                 f"💕 默契：**{model['relationship']} / 1000**\n"
                 f"❤️ 好感度：**{model.get('affection', 0)} / 1000**（{affection_name(model.get('affection', 0))}）\n"
-                f"🌟 知名度：**{model.get('fame', 0)} / 1000**（{fame_name(model.get('fame', 0))}）\n"
+                f"🌟 男模個人知名度：**{model.get('fame', 0)} / 1000**（{fame_name(model.get('fame', 0))}）\n"
                 f"⚡ 體力：**{model.get('model_stamina', 100)} / 100**\n"
                 f"🎭 潛力方向：{model.get('potential_direction') or '尚未確認'}\n\n"
                 f"🧠 智慧：{model['intelligence']}\n"
@@ -1300,7 +1401,7 @@ class MoonClubHomeView(discord.ui.View):
     @discord.ui.button(label="🏋️ 培訓", style=discord.ButtonStyle.success, row=1)
     async def training(self, interaction, button):
         await interaction.response.edit_message(
-            embed=discord.Embed(title="🏋️ 男模培訓", description="選擇一種成人職涯培訓方向。", color=MOONCLUB_COLOR),
+            embed=discord.Embed(title="🏋️ 男模培訓", description="選擇一種男模培訓方向。培訓主要提升個人能力；偶爾也會讓🏛️會館知名度小幅增加，但不會直接增加🌟男模個人知名度。", color=MOONCLUB_COLOR),
             view=TrainingView(),
         )
 
@@ -1343,12 +1444,32 @@ class MoonClubHomeView(discord.ui.View):
         if not model:
             await interaction.response.send_message("❌ 目前沒有男模。", ephemeral=True); return
         await interaction.response.edit_message(
-            embed=discord.Embed(title="🌟 知名度", description=f"👤 **{model['name']}**\n🌟 知名度：**{model.get('fame',0)} / 1000**（{fame_name(model.get('fame',0))}）\n\n知名度事件會依照目前數值與過去經歷循序解鎖。", color=MOONCLUB_COLOR),
+            embed=discord.Embed(title="🌟 男模個人知名度", description=f"👤 **{model['name']}**\n🌟 男模個人知名度：**{model.get('fame',0)} / 1000**（{fame_name(model.get('fame',0))}）\n\n此數值只代表這位男模在外界的名氣，會用來解鎖個人知名度事件。\n\n🏛️ 會館知名度則代表整間 Moon Club 的名聲，會影響簽約名額與新人招募。", color=MOONCLUB_COLOR),
             view=FameView())
 
     @discord.ui.button(label="🎴 招募新人", style=discord.ButtonStyle.success, row=2)
     async def recruit(self, interaction, button):
         await start_recruitment(interaction)
+
+    @discord.ui.button(label="💼 男模工作", style=discord.ButtonStyle.success, row=3)
+    async def work(self, interaction, button):
+        user_id = str(interaction.user.id)
+        model = model_dict(get_model(user_id))
+        if not model:
+            await interaction.response.send_message("❌ 目前沒有男模。", ephemeral=True)
+            return
+        model = recover_model_stamina(model)
+        today = datetime.now(timezone.utc).date().isoformat()
+        daily_row(user_id, model["model_id"])
+        c.execute("SELECT work_count FROM moonclub_model_daily WHERE user_id=? AND model_id=? AND action_date=?",
+                  (user_id, int(model["model_id"]), today))
+        row = c.fetchone()
+        count = int(row[0] or 0) if row else 0
+        description = (f"👤 **{model['name']}**\n🌟 男模個人知名度：**{model.get('fame', 0)} / 1000**\n"
+                       f"🏛️ 會館知名度：**{club_reputation(user_id)} / 1000**\n⚡ 體力：**{model.get('model_stamina', 100)} / 100**\n"
+                       f"📋 今日工作：**{count} / 3**\n\n選擇工作以賺取努努幣並提升男模個人知名度。工作可能另外提升少量會館知名度；兩種知名度分開計算。\n"
+                       "🌟 特別邀約需男模個人知名度達到 450。")
+        await interaction.response.edit_message(embed=discord.Embed(title="💼 男模工作", description=description, color=MOONCLUB_COLOR), view=WorkView())
 
     @discord.ui.button(label="📖 職涯紀錄", style=discord.ButtonStyle.secondary, row=2)
     async def memories(self, interaction, button):
@@ -1491,7 +1612,7 @@ class TrainingView(discord.ui.View):
             await interaction.response.send_message(error, ephemeral=True)
             return
         model, data, stat, gain, rep_gain = result
-        extra = f"\n🏛️ Moon Club 知名度 +{rep_gain}" if rep_gain else ""
+        extra = f"\n🏛️ 會館知名度 +{rep_gain}" if rep_gain else ""
         await interaction.response.edit_message(
             embed=discord.Embed(
                 title=data["name"],
@@ -1791,13 +1912,13 @@ async def start_recruitment(interaction):
         next_level = next((x for x in RECRUIT_LIMITS if x[0] > rep), None)
         extra = f"\n下一次解鎖：知名度 {next_level[0]}" if next_level else "\n已達最高招募名額。"
         await interaction.response.send_message(
-            f"🔒 目前名額已滿（{count}/{capacity}）。\n🏛️ 知名度：{rep}/1000｜{stage}{extra}",
+            f"🔒 目前名額已滿（{count}/{capacity}）。\n🏛️ 會館知名度：{rep}/1000｜{stage}{extra}",
             ephemeral=True,
         )
         return
 
     candidates = [generate_candidate() for _ in range(3)]
-    lines = [f"🏛️ 知名度：**{rep}/1000**｜{stage}\n👥 名額：**{count}/{capacity}**"]
+    lines = [f"🏛️ 會館知名度：**{rep}/1000**｜{stage}\n👥 簽約名額：**{count}/{capacity}**"]
     for index, candidate in enumerate(candidates, 1):
         st = candidate["stats"]
         lines.append(
@@ -2045,8 +2166,8 @@ async def open_moonclub_game(interaction: discord.Interaction):
                 "👥 一開始可以培養兩位新人男模\n"
                 "🏋️ 培訓五大能力與專長\n"
                 "💕 建立最高 1000 點默契\n"
-                "🏛️ 提升 Moon Club 知名度\n"
-                "🎴 知名度達標後解鎖新人招募\n\n"
+                "🏛️ 提升會館知名度（影響簽約名額與新人招募）\n"
+                "🎴 會館知名度達標後解鎖更多新人簽約名額\n\n"
                 "✨ 現在，讓 Moon Club 正式開幕吧！"
             ),
             color=MOONCLUB_COLOR,
