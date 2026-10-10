@@ -9,6 +9,7 @@
 import json
 import random
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
@@ -46,6 +47,8 @@ try:
     from config import BOT_ADMINS
 except ImportError:
     BOT_ADMINS = []
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
 MOONCLUB_COLOR = 0xB9A7E8
 MOONCLUB_TESTERS = {871398865012666389}
@@ -1271,7 +1274,7 @@ def apply_model_work(user_id, key):
     model = recover_model_stamina(model)
     data = WORK_LIBRARY[key]
     daily_row(user_id, model["model_id"])
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(TAIPEI_TZ).date().isoformat()
     c.execute("SELECT work_count FROM moonclub_model_daily WHERE user_id=? AND model_id=? AND action_date=?",
               (str(user_id), int(model["model_id"]), today))
     row = c.fetchone()
@@ -1459,7 +1462,7 @@ class MoonClubHomeView(discord.ui.View):
             await interaction.response.send_message("❌ 目前沒有男模。", ephemeral=True)
             return
         model = recover_model_stamina(model)
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = datetime.now(TAIPEI_TZ).date().isoformat()
         daily_row(user_id, model["model_id"])
         c.execute("SELECT work_count FROM moonclub_model_daily WHERE user_id=? AND model_id=? AND action_date=?",
                   (user_id, int(model["model_id"]), today))
@@ -1532,7 +1535,7 @@ class ModelSelectView(discord.ui.View):
 # ==========================================================
 
 def daily_row(user_id, model_id):
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(TAIPEI_TZ).date().isoformat()
     c.execute("""
         INSERT INTO moonclub_model_daily (user_id,model_id,action_date,training_count,interaction_count)
         VALUES (?,?,?,0,0)
@@ -1588,7 +1591,7 @@ def apply_training(user_id, key):
         UPDATE moonclub_model_daily
         SET training_count=training_count+1
         WHERE user_id=? AND model_id=? AND action_date=?
-    """, (str(user_id), model["model_id"], datetime.now(timezone.utc).date().isoformat()))
+    """, (str(user_id), model["model_id"], datetime.now(TAIPEI_TZ).date().isoformat()))
 
     rep_gain = 2 if random.random() < 0.35 else 0
     if rep_gain:
@@ -1678,7 +1681,7 @@ class InteractionView(discord.ui.View):
             UPDATE moonclub_model_daily
             SET interaction_count=interaction_count+1
             WHERE user_id=? AND model_id=? AND action_date=?
-        """, (user_id, model["model_id"], datetime.now(timezone.utc).date().isoformat()))
+        """, (user_id, model["model_id"], datetime.now(TAIPEI_TZ).date().isoformat()))
         add_memory(user_id, model["model_id"], name, f"{text} 默契 {before} → {after}。")
         await interaction.response.edit_message(
             embed=discord.Embed(
