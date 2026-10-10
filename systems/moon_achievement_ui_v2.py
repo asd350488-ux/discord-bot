@@ -24,7 +24,6 @@ MOMMY_LIST = {
     "🫧 韓馨": 1153640526063607820,
     "☀️ 星弦": 1218542666879598613,
     "🌻 曦兒": 1301905168094335028,
-    "🐈 小貓": 806960151578804275,
 }
 
 ADMIN_MAKER_LIST = {
@@ -40,10 +39,9 @@ MOMMY_REWARDS = {
 }
 # 菜菜／小 E 製作，不詢問媽咪或角色名稱
 ADMIN_PROFILE_REWARDS = {REWARD_RANDOM_PROFILE_2, REWARD_RANDOM_PROFILE_1}
+# 舊版測試器相容名稱；正式流程使用 MOMMY_REWARDS。
+SPECIAL_REWARDS = MOMMY_REWARDS
 IMAGE_REWARDS = MOMMY_REWARDS | ADMIN_PROFILE_REWARDS
-
-# 舊版測試器相容名稱：保留 SPECIAL_REWARDS，避免舊測試模組匯入失敗。
-SPECIAL_REWARDS = IMAGE_REWARDS
 
 REWARD_NAMES = {
     REWARD_VIDEO: "🎬 影片合集（張數由媽咪決定）",
@@ -343,12 +341,17 @@ async def send_upload_request(bot, db, redemption_id, user_id):
 
 
 class CompleteRedemptionView(discord.ui.View):
-    def __init__(self, db, redemption_id, maker_id):
+    def __init__(self, db, redemption_id, maker_id, player_id=None):
         super().__init__(timeout=None)
         self.db, self.redemption_id, self.maker_id = db, int(redemption_id), int(maker_id)
+        if player_id is not None:
+            self.add_item(discord.ui.Button(
+                label="查看玩家", style=discord.ButtonStyle.link,
+                url=f"https://discord.com/users/{int(player_id)}"
+            ))
         self.add_item(discord.ui.Button(label="✅ 已完成", style=discord.ButtonStyle.success,
                                         custom_id=f"moon_achievement_complete:{self.redemption_id}"))
-        self.children[0].callback = self.complete
+        self.children[-1].callback = self.complete
 
     async def complete(self, interaction):
         if interaction.user.id != self.maker_id and interaction.user.id not in BOT_ADMINS:
@@ -501,13 +504,15 @@ async def setup_achievement_redemption(bot, db):
         try:
             maker = bot.get_user(int(maker_id)) or await bot.fetch_user(int(maker_id))
             embed = discord.Embed(title="🔔 Moon Club 圖片獎品案件", description=(
-                f"👤 玩家：{message.author} (`{message.author.id}`)\n"
+                f"👤 玩家：**{message.author.display_name}**\n"
                 f"🎁 獎品：**{REWARD_NAMES[reward]}**\n"
                 + (f"🎭 角色名稱：**{character_name}**\n" if character_name else "")
                 + f"📌 請製作完成後按下「已完成」。"
             ))
-            forwarded = await maker.send(embed=embed, file=await attachment.to_file(),
-                                         view=CompleteRedemptionView(db, redemption_id, int(maker_id)))
+            forwarded = await maker.send(
+                embed=embed, file=await attachment.to_file(),
+                view=CompleteRedemptionView(db, redemption_id, int(maker_id), message.author.id)
+            )
             db.execute("UPDATE moon_achievement_redemptions SET status='forwarded', maker_message_id=?, maker_channel_id=? WHERE redemption_id=? AND status='image_received'",
                        (forwarded.id, forwarded.channel.id, redemption_id))
             db.commit()
