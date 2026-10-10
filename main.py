@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import discord
 from systems.test_achievement_box_discord_ready_v2 import setup as setup_achievement_box_test
+from systems.moon_achievement_ui_v2 import setup_achievement_redemption
 from systems.moon_life import setup_moon_life
 from systems.streak_lottery import setup_streak_lottery
 from character_birthday import setup_character_birthday
@@ -1752,6 +1753,11 @@ async def on_ready():
 
     # 🧪 成就盲盒 Discord 測試系統
     await setup_achievement_box_test(bot)
+
+    # 🎁 Moon Club 成就盲盒正式兌換流程（避免 on_ready 重複註冊）
+    if not getattr(bot, "_achievement_redemption_setup", False):
+        await setup_achievement_redemption(bot, conn)
+        bot._achievement_redemption_setup = True
     
     # 🎓 角色考試系統
     setup_character_test(bot)
