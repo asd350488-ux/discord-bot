@@ -7,7 +7,7 @@
 - 不使用好感度／默契作為成就條件
 - 成就完成後取得 1 次免費「成就盲盒」資格
 - 同一成就只能取得一次資格
-- 固定盲盒獎池；依成就等級調整機率
+- 固定 15 種盲盒獎池；所有成就難度統一機率
 - 只有存在未使用資格時，Moon Club 面板才顯示成就盲盒按鈕
 
 注意：
@@ -24,26 +24,44 @@ from typing import Callable, Optional, Sequence
 
 
 # ============================================================
-# 🎁 固定盲盒獎池
+# 🎁 固定盲盒獎池（所有成就難度統一機率）
 # ============================================================
 
 REWARD_VIDEO = "影片合集"
 REWARD_PHOTO = "照片合集"
+REWARD_POSTER = "雙人海報"
+REWARD_CHIBI_STICKERS = "雙人 Q 版貼圖"
 REWARD_CERTIFICATE = "結婚證書"
+REWARD_BANNER = "雙人橫幅"
+REWARD_COUPLE_PHOTOS_2 = "雙人合照 × 2 張"
+REWARD_COUPLE_PHOTO_1 = "雙人合照 × 1 張"
+REWARD_ILLUSTRATION = "雙人插畫"
 REWARD_BADGE = "雙人徽章"
-REWARD_NUNU_30000 = "30,000 努努幣"
-REWARD_NUNU_40000 = "40,000 努努幣"
-REWARD_NUNU_50000 = "50,000 努努幣"
+REWARD_RANDOM_PROFILE_2 = "隨機風格人設圖 × 2"
+REWARD_RANDOM_PROFILE_1 = "隨機風格人設圖 × 1"
+REWARD_NUNU_15000 = "15,000 努努幣"
+REWARD_NUNU_10000 = "10,000 努努幣"
+REWARD_NUNU_5000 = "5,000 努努幣"
 
-LOOT_POOL: tuple[str, ...] = (
-    REWARD_VIDEO,
-    REWARD_PHOTO,
-    REWARD_CERTIFICATE,
-    REWARD_BADGE,
-    REWARD_NUNU_30000,
-    REWARD_NUNU_40000,
-    REWARD_NUNU_50000,
-)
+LOOT_WEIGHTS: dict[str, float] = {
+    REWARD_VIDEO: 0.5,
+    REWARD_PHOTO: 1,
+    REWARD_POSTER: 2,
+    REWARD_CHIBI_STICKERS: 3,
+    REWARD_CERTIFICATE: 4,
+    REWARD_BANNER: 5,
+    REWARD_COUPLE_PHOTOS_2: 6,
+    REWARD_COUPLE_PHOTO_1: 7,
+    REWARD_ILLUSTRATION: 8,
+    REWARD_BADGE: 8.5,
+    REWARD_RANDOM_PROFILE_2: 9,
+    REWARD_RANDOM_PROFILE_1: 9.5,
+    REWARD_NUNU_15000: 10,
+    REWARD_NUNU_10000: 12,
+    REWARD_NUNU_5000: 14.5,
+}
+
+LOOT_POOL: tuple[str, ...] = tuple(LOOT_WEIGHTS.keys())
 
 
 # ============================================================
@@ -164,50 +182,10 @@ ACHIEVEMENTS: tuple[Achievement, ...] = (
 
 
 # ============================================================
-# 🎲 成就等級 → 固定獎池機率
+# 🎲 統一獎池機率
 # ============================================================
 
-# 每一組總和 = 100。
-# 越高階：四種特殊獎勵比例越高；努努幣總比例越低。
-# 努努幣內部：30K > 40K > 50K。
-LOOT_WEIGHTS = {
-    EASY: {
-        REWARD_VIDEO: 5,
-        REWARD_PHOTO: 5,
-        REWARD_CERTIFICATE: 4,
-        REWARD_BADGE: 4,
-        REWARD_NUNU_30000: 40,
-        REWARD_NUNU_40000: 25,
-        REWARD_NUNU_50000: 17,
-    },
-    MEDIUM: {
-        REWARD_VIDEO: 8,
-        REWARD_PHOTO: 8,
-        REWARD_CERTIFICATE: 7,
-        REWARD_BADGE: 7,
-        REWARD_NUNU_30000: 35,
-        REWARD_NUNU_40000: 20,
-        REWARD_NUNU_50000: 15,
-    },
-    MEDIUM_HIGH: {
-        REWARD_VIDEO: 12,
-        REWARD_PHOTO: 12,
-        REWARD_CERTIFICATE: 10,
-        REWARD_BADGE: 10,
-        REWARD_NUNU_30000: 27,
-        REWARD_NUNU_40000: 17,
-        REWARD_NUNU_50000: 12,
-    },
-    HIGH: {
-        REWARD_VIDEO: 16,
-        REWARD_PHOTO: 16,
-        REWARD_CERTIFICATE: 14,
-        REWARD_BADGE: 14,
-        REWARD_NUNU_30000: 20,
-        REWARD_NUNU_40000: 12,
-        REWARD_NUNU_50000: 8,
-    },
-}
+# 所有成就難度共用同一組機率，總和為 100%。
 
 
 def get_achievement(achievement_id: str) -> Optional[Achievement]:
@@ -219,12 +197,11 @@ def get_achievement(achievement_id: str) -> Optional[Achievement]:
     )
 
 
-def roll_loot(difficulty: str) -> str:
-    """依成就等級從固定獎池抽出一項獎勵。"""
-    weights = LOOT_WEIGHTS[difficulty]
+def roll_loot(difficulty: str = "") -> str:
+    """所有成就難度共用同一套獎池機率。"""
     return random.choices(
-        population=list(weights.keys()),
-        weights=list(weights.values()),
+        population=list(LOOT_WEIGHTS.keys()),
+        weights=list(LOOT_WEIGHTS.values()),
         k=1,
     )[0]
 
@@ -345,7 +322,7 @@ class AchievementStore:
                 return None, None
 
             draw_id, difficulty = row
-            reward = roll_loot(difficulty)
+            reward = roll_loot()
 
             import datetime
             now = datetime.datetime.now(datetime.timezone.utc).isoformat()
