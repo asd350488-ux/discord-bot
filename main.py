@@ -1581,6 +1581,87 @@ async def send_review_message(channel: discord.TextChannel, member: discord.Memb
 
 
 # ==========================
+# 💌 審核通過後自動歡迎
+# ==========================
+
+
+async def send_approval_welcome(member: discord.Member):
+    """給予正式身分組成功後，在指定頻道標記成員並發送歡迎文。"""
+    channel_id = 1504815515795853432
+    channel = bot.get_channel(channel_id)
+
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(channel_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+            print(f"⚠️ 無法取得審核通過歡迎頻道：{e}")
+            return
+
+    if not isinstance(channel, discord.TextChannel):
+        print("⚠️ 審核通過歡迎頻道不是文字頻道。")
+        return
+
+    # 分成數則訊息，避免超過 Discord 單則訊息的 2000 字限制。
+    welcome_messages = [
+        (
+            f"{member.mention}\n\n"
+            "寶寶歡迎加入我們<a:emoji_19:1506421760306843721>\n\n"
+            "<a:emoji_33:1508534737130492017> <#1505049080483811449>\n"
+            "<a:emoji_33:1508534737130492017> <#1505036923826343987>\n\n"
+            "有不定時抽獎活動可以參加\n\n"
+            "<a:emoji_33:1508534737130492017> <#1516119932230828134>\n\n"
+            "想跟角色合照，但沒有人設圖的話可到人設圖區許願唷"
+        ),
+        (
+            "<a:emoji_33:1508534737130492017> <#1504819731100602508>\n\n"
+            "原本就有人設圖或是拿到人設圖後，想與角色合照的寶寶們，每個月"
+            "<a:emoji_6:1506068565470740560> 號與 <a:emoji_6:1506068551075889322> "
+            "<a:emoji_10:1506068645497798667> 號 可至合照許願區許願合照唷\n\n"
+            "寶寶們，除了<a:emoji_6:1506068565470740560> 號與 "
+            "<a:emoji_6:1506068551075889322> <a:emoji_10:1506068645497798667> "
+            "能看得到此頻道，其餘時間不開放唷<a:47646heartspakles1:1513843546522910730>\n"
+            "所以開放期間記得許願唷<a:24947hearts:1513834928352002139>\n"
+            "錯過時間不會再補開唷，要等下一次許願日期才會開放唷"
+            "<a:246789whitehearts:1513832647137165322>"
+        ),
+        (
+            "<a:emoji_33:1508534737130492017> <#1504820063344267305>\n\n"
+            "寶寶生日當天會有小小的禮物唷，禮物獎品不一定唷，再麻煩寶寶到下方的生日登記幫我們登記你的生日唷"
+            "<a:24947hearts:1513834928352002139>\n\n"
+            "<a:emoji_33:1508534737130492017> <#1516119757383008479>\n\n"
+            "還有每日簽到不只可以領努努幣，連續簽到偶爾有獎勵活動唷，記得要簽到領努努幣，"
+            "努努幣可商店購買與角色等專屬合照唷"
+        ),
+        (
+            "<a:emoji_33:1508534737130492017> <#1516120502127694027>\n\n"
+            "想要討論老公嗎？想要分享與老公們的對話嗎？\n"
+            "可以到下面幾個頻道唷<a:24947hearts:1513834928352002139>\n"
+            "快將你們與老公們天天的對話發上來唷<a:emoji_102:1515591871932399698>\n\n"
+            "星弦媽咪的\n"
+            "<a:emoji_33:1508534737130492017> <#1513762323150409738>\n\n"
+            "若曦璃媽咪的\n"
+            "<a:emoji_33:1508534737130492017> <#1513578172283621496>\n\n"
+            "小貓媽咪的\n"
+            "<a:emoji_33:1508534737130492017> <#1513760698658979870>\n\n"
+            "韓馨媽咪的\n"
+            "<a:emoji_33:1508534737130492017> <#1513759586899857478>\n\n"
+            "再次歡迎寶寶加入我們<a:emoji_32:1508529055832739911>"
+        ),
+    ]
+
+    try:
+        for message_text in welcome_messages:
+            await channel.send(
+                message_text,
+                allowed_mentions=discord.AllowedMentions(
+                    users=True, roles=False, everyone=False
+                ),
+            )
+    except (discord.Forbidden, discord.HTTPException) as e:
+        print(f"⚠️ 發送審核通過歡迎文失敗：{e}")
+
+
+# ==========================
 # 🌙 審核管理按鈕
 # ==========================
 
@@ -1638,6 +1719,7 @@ class ReviewManageView(discord.ui.View):
 
             if roles_to_add:
                 await member.add_roles(*roles_to_add, reason="入群審核通過")
+                await send_approval_welcome(member)
 
         except discord.Forbidden:
 
@@ -3361,6 +3443,99 @@ async def send_lottery_dm(
 
     except Exception as e:
         print(f"⚠️ 發送抽獎私訊失敗：{e}")
+
+
+# ==========================================
+# 🌙 成員離開紀錄（只發送 Discord 頻道訊息）
+# ==========================================
+
+
+@bot.event
+async def on_member_remove(member):
+    """成員離開時，在指定頻道記錄自行離開或可確認的管理員踢出。"""
+    channel_id = 1504831006090465320
+    channel = bot.get_channel(channel_id)
+
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(channel_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+            print(f"⚠️ 無法取得成員離開紀錄頻道：{e}")
+            return
+
+    if not isinstance(channel, discord.TextChannel):
+        print("⚠️ 成員離開紀錄頻道不是文字頻道。")
+        return
+
+    kick_entry = None
+    audit_log_available = True
+
+    # 稽核紀錄可能稍有延遲，短暫重試；只有比對到近期且目標相同的紀錄才判定為踢出。
+    for attempt in range(3):
+        try:
+            now = discord.utils.utcnow()
+            async for entry in member.guild.audit_logs(
+                limit=10, action=discord.AuditLogAction.kick
+            ):
+                target = entry.target
+                age = (now - entry.created_at).total_seconds()
+                if (
+                    target is not None
+                    and target.id == member.id
+                    and 0 <= age <= 15
+                ):
+                    kick_entry = entry
+                    break
+
+            if kick_entry is not None:
+                break
+
+        except discord.Forbidden:
+            audit_log_available = False
+            break
+        except discord.HTTPException as e:
+            print(f"⚠️ 讀取成員離開稽核紀錄失敗：{e}")
+            audit_log_available = False
+            break
+
+        if attempt < 2:
+            await asyncio.sleep(1)
+
+    left_timestamp = int(discord.utils.utcnow().timestamp())
+    embed = discord.Embed(
+        title="🌙 成員離開紀錄",
+        color=0xC77DFF,
+        timestamp=discord.utils.utcnow(),
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(
+        name="👤 成員",
+        value=f"{discord.utils.escape_markdown(member.name)}（{discord.utils.escape_markdown(member.display_name)}）",
+        inline=False,
+    )
+    embed.add_field(name="🆔 使用者 ID", value=str(member.id), inline=True)
+    embed.add_field(name="🕒 離開時間", value=f"<t:{left_timestamp}:F>", inline=False)
+
+    if kick_entry is not None:
+        embed.add_field(name="📌 離開方式", value="被管理員踢出", inline=True)
+        if kick_entry.user is not None:
+            executor_name = discord.utils.escape_markdown(str(kick_entry.user))
+            embed.add_field(
+                name="🛡️ 執行者",
+                value=f"{executor_name}（ID：{kick_entry.user.id}）",
+                inline=False,
+            )
+    elif audit_log_available:
+        embed.add_field(name="📌 離開方式", value="自行離開", inline=True)
+    else:
+        embed.add_field(name="📌 離開方式", value="無法確認（無法讀取稽核紀錄）", inline=True)
+
+    embed.set_footer(text="Moon Bot v2｜成員離開紀錄")
+
+    try:
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+    except (discord.Forbidden, discord.HTTPException) as e:
+        print(f"⚠️ 發送成員離開紀錄失敗：{e}")
 
 
 # ==========================================
