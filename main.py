@@ -3501,7 +3501,13 @@ async def on_member_remove(member):
         if attempt < 2:
             await asyncio.sleep(1)
 
-    left_timestamp = int(discord.utils.utcnow().timestamp())
+    leave_time = datetime.now(tz)
+    weekday_names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+    leave_time_text = (
+        f"{leave_time.year} 年 {leave_time.month} 月 {leave_time.day} 日 "
+        f"{weekday_names[leave_time.weekday()]} "
+        f"{leave_time.strftime('%H:%M')}"
+    )
     embed = discord.Embed(
         title="🌙 成員離開紀錄",
         color=0xC77DFF,
@@ -3510,19 +3516,23 @@ async def on_member_remove(member):
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.add_field(
         name="👤 成員",
-        value=f"{discord.utils.escape_markdown(member.name)}（{discord.utils.escape_markdown(member.display_name)}）",
+        value=discord.utils.escape_markdown(member.display_name),
         inline=False,
     )
-    embed.add_field(name="🆔 使用者 ID", value=str(member.id), inline=True)
-    embed.add_field(name="🕒 離開時間", value=f"<t:{left_timestamp}:F>", inline=False)
+    embed.add_field(name="🕒 離開時間", value=leave_time_text, inline=False)
 
     if kick_entry is not None:
         embed.add_field(name="📌 離開方式", value="被管理員踢出", inline=True)
         if kick_entry.user is not None:
-            executor_name = discord.utils.escape_markdown(str(kick_entry.user))
+            executor_member = member.guild.get_member(kick_entry.user.id)
+            if executor_member is not None:
+                executor_display_name = executor_member.display_name
+            else:
+                executor_display_name = getattr(kick_entry.user, "global_name", None) or kick_entry.user.name
+            executor_name = discord.utils.escape_markdown(executor_display_name)
             embed.add_field(
                 name="🛡️ 執行者",
-                value=f"{executor_name}（ID：{kick_entry.user.id}）",
+                value=executor_name,
                 inline=False,
             )
     elif audit_log_available:
