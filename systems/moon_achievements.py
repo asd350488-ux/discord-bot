@@ -306,9 +306,11 @@ class AchievementStore:
         return int(row[0]) if row else 0
 
     def consume_draw_and_get_reward(self, user_id: int):
-        # 保留所有未使用資格；抽獎時只消耗一張，且在同一交易中完成。
+        # 使用 SAVEPOINT，避免共用 SQLite 連線已在交易中時再次 BEGIN 而報錯。
+        # 只消耗一張資格；若外層已有交易，不會擅自提交外層交易。
+        savepoint = "moon_achievement_draw"
         try:
-            self.db.execute("BEGIN IMMEDIATE")
+            self.db.execute(f"SAVEPOINT {savepoint}")
             row = self.db.execute("""
                 SELECT draw_id, difficulty
                 FROM moon_achievement_draws
@@ -318,7 +320,8 @@ class AchievementStore:
             """, (int(user_id),)).fetchone()
 
             if not row:
-                self.db.rollback()
+                self.db.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                self.db.execute(f"RELEASE SAVEPOINT {savepoint}")
                 return None, None
 
             draw_id, difficulty = row
@@ -334,13 +337,19 @@ class AchievementStore:
             """, (now, draw_id, int(user_id)))
 
             if cur.rowcount != 1:
-                self.db.rollback()
+                self.db.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                self.db.execute(f"RELEASE SAVEPOINT {savepoint}")
                 return None, None
 
-            self.db.commit()
+            self.db.execute(f"RELEASE SAVEPOINT {savepoint}")
             return reward, difficulty
         except Exception:
-            self.db.rollback()
+            try:
+                self.db.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                self.db.execute(f"RELEASE SAVEPOINT {savepoint}")
+            except Exception:
+                # Savepoint may already have been released; preserve the original exception.
+                pass
             raise
 
 
