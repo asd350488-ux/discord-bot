@@ -1081,7 +1081,6 @@ class AchievementBoxView(discord.ui.View):
             embed=discord.Embed(
                 title="🎁 成就盲盒｜開啟成功！",
                 description=(
-                    f"🎟️ 使用：**{difficulty}** 成就資格\n\n"
                     f"✨ 獲得：**{REWARD_NAMES.get(reward, reward)}**\n\n"
                     f"🎟️ 剩餘資格：**{achievement_draw_count(self.owner_user_id)}**"
                 ),
@@ -1272,13 +1271,11 @@ class AchievementCatalogView(discord.ui.View):
     """玩家可查閱 80 個成就、達成條件與完成狀態。"""
     PAGE_SIZE = 10
 
-    def __init__(self, user_id, difficulty="全部", status="全部", page=0):
+    def __init__(self, user_id, status="全部", page=0):
         super().__init__(timeout=300)
         self.user_id = int(user_id)
-        self.difficulty = difficulty
         self.status = status
         self.page = max(0, int(page))
-        self.add_item(AchievementDifficultySelect(self.difficulty))
         self.add_item(AchievementStatusSelect(self.status))
         self._refresh_page_state()
 
@@ -1291,8 +1288,6 @@ class AchievementCatalogView(discord.ui.View):
         items = []
         for achievement in ACHIEVEMENTS:
             completed, completed_at = states.get(achievement.achievement_id, (False, None))
-            if self.difficulty != "全部" and achievement.difficulty != self.difficulty:
-                continue
             if self.status == "已完成" and not completed:
                 continue
             if self.status == "未完成" and completed:
@@ -1321,14 +1316,14 @@ class AchievementCatalogView(discord.ui.View):
         page_items = items[self.page*self.PAGE_SIZE:(self.page+1)*self.PAGE_SIZE]
         for achievement, completed, completed_at in page_items:
             marker = "✅ **已完成**" if completed else "🔒 未完成"
-            body.append(f"{marker}｜**{achievement.name}**\n難度：{achievement.difficulty}\n條件：{achievement.description}")
+            body.append(f"{marker}｜**{achievement.name}**\n📌 達成條件：{achievement.description}")
         if not body:
             body = ["這個篩選條件下沒有成就。"]
         embed = discord.Embed(
             title="🏆 Moon Club｜成就圖鑑",
             description=(f"📊 **總進度：{completed_count} / {len(ACHIEVEMENTS)}**\n"
                          f"🎁 未使用盲盒資格：**{store.get_draw_count(self.user_id)} 次**\n"
-                         f"🔎 分類：{self.difficulty}｜狀態：{self.status}\n\n" + "\n\n".join(body)),
+                         f"🔎 完成狀態：{self.status}\n\n" + "\n\n".join(body)),
             color=MOONCLUB_COLOR,
         )
         embed.set_footer(text=f"第 {self.page+1}/{max_page} 頁｜每頁最多 {self.PAGE_SIZE} 項")
@@ -1357,22 +1352,6 @@ class AchievementCatalogView(discord.ui.View):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ 這不是你的成就圖鑑。", ephemeral=True); return
         await interaction.response.edit_message(embed=await build_home_embed(self.user_id), view=MoonClubHomeView(self.user_id))
-
-
-class AchievementDifficultySelect(discord.ui.Select):
-    def __init__(self, current):
-        options = [discord.SelectOption(label=x, value=x, default=(x == current)) for x in ("全部", EASY, MEDIUM, MEDIUM_HIGH, HIGH)]
-        super().__init__(placeholder="依成就難度篩選", options=options, row=0)
-
-    async def callback(self, interaction):
-        view = self.view
-        if interaction.user.id != view.user_id:
-            await interaction.response.send_message("❌ 這不是你的成就圖鑑。", ephemeral=True); return
-        view.difficulty = self.values[0]; view.page = 0
-        for item in view.children:
-            if isinstance(item, AchievementDifficultySelect):
-                for option in item.options: option.default = option.value == view.difficulty
-        await view._render(interaction)
 
 
 class AchievementStatusSelect(discord.ui.Select):
