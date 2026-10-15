@@ -20,6 +20,8 @@ from systems.moon_achievement_ui_v2 import (
     MOMMY_REWARDS,
     ADMIN_PROFILE_REWARDS,
     REWARD_NAMES,
+    TestMommySelectView,
+    TestMakerSelectView,
 )
 
 from systems.moon_achievements import (
@@ -1266,38 +1268,171 @@ class AchievementBoxHomeButton(discord.ui.Button):
         await open_achievement_box(interaction)
 
 
-class AchievementBoxTestButton(discord.ui.Button):
-    """僅指定測試帳號可見；模擬抽獎結果，不讀寫正式抽獎資料。"""
+class AchievementCatalogView(discord.ui.View):
+    """玩家可查閱 80 個成就、達成條件與完成狀態。"""
+    PAGE_SIZE = 10
+
+    def __init__(self, user_id, difficulty="全部", status="全部", page=0):
+        super().__init__(timeout=300)
+        self.user_id = int(user_id)
+        self.difficulty = difficulty
+        self.status = status
+        self.page = max(0, int(page))
+        self.add_item(AchievementDifficultySelect(self.difficulty))
+        self.add_item(AchievementStatusSelect(self.status))
+        self._refresh_page_state()
+
+    def _filtered(self):
+        rows = c.execute(
+            "SELECT achievement_id, completed, completed_at FROM moon_achievements WHERE user_id=?",
+            (self.user_id,),
+        ).fetchall()
+        states = {str(row[0]): (bool(row[1]), row[2]) for row in rows}
+        items = []
+        for achievement in ACHIEVEMENTS:
+            completed, completed_at = states.get(achievement.achievement_id, (False, None))
+            if self.difficulty != "全部" and achievement.difficulty != self.difficulty:
+                continue
+            if self.status == "已完成" and not completed:
+                continue
+            if self.status == "未完成" and completed:
+                continue
+            items.append((achievement, completed, completed_at))
+        return items
+
+    def _refresh_page_state(self):
+        items = self._filtered()
+        max_page = max(0, (len(items) - 1) // self.PAGE_SIZE)
+        self.page = min(self.page, max_page)
+        self.previous.disabled = self.page <= 0
+        self.next.disabled = self.page >= max_page
+
+    def build_embed(self):
+        items = self._filtered()
+        max_page = max(1, (len(items) + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+        state_rows = c.execute(
+            "SELECT achievement_id, completed, completed_at FROM moon_achievements WHERE user_id=?",
+            (self.user_id,),
+        ).fetchall()
+        states = {str(r[0]): (bool(r[1]), r[2]) for r in state_rows}
+        completed_count = sum(1 for a in ACHIEVEMENTS if states.get(a.achievement_id, (False, None))[0])
+        store, _ = _achievement_objects()
+        body = []
+        page_items = items[self.page*self.PAGE_SIZE:(self.page+1)*self.PAGE_SIZE]
+        for achievement, completed, completed_at in page_items:
+            marker = "✅ **已完成**" if completed else "🔒 未完成"
+            body.append(f"{marker}｜**{achievement.name}**\n難度：{achievement.difficulty}\n條件：{achievement.description}")
+        if not body:
+            body = ["這個篩選條件下沒有成就。"]
+        embed = discord.Embed(
+            title="🏆 Moon Club｜成就圖鑑",
+            description=(f"📊 **總進度：{completed_count} / {len(ACHIEVEMENTS)}**\n"
+                         f"🎁 未使用盲盒資格：**{store.get_draw_count(self.user_id)} 次**\n"
+                         f"🔎 分類：{self.difficulty}｜狀態：{self.status}\n\n" + "\n\n".join(body)),
+            color=MOONCLUB_COLOR,
+        )
+        embed.set_footer(text=f"第 {self.page+1}/{max_page} 頁｜每頁最多 {self.PAGE_SIZE} 項")
+        return embed
+
+    async def _render(self, interaction):
+        self._refresh_page_state()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="⬅️ 上一頁", style=discord.ButtonStyle.secondary, row=2)
+    async def previous(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的成就圖鑑。", ephemeral=True); return
+        self.page = max(0, self.page - 1)
+        await self._render(interaction)
+
+    @discord.ui.button(label="下一頁 ➡️", style=discord.ButtonStyle.secondary, row=2)
+    async def next(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的成就圖鑑。", ephemeral=True); return
+        self.page += 1
+        await self._render(interaction)
+
+    @discord.ui.button(label="🏠 回男模會館", style=discord.ButtonStyle.primary, row=2)
+    async def back_home(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的成就圖鑑。", ephemeral=True); return
+        await interaction.response.edit_message(embed=await build_home_embed(self.user_id), view=MoonClubHomeView(self.user_id))
+
+
+class AchievementDifficultySelect(discord.ui.Select):
+    def __init__(self, current):
+        options = [discord.SelectOption(label=x, value=x, default=(x == current)) for x in ("全部", EASY, MEDIUM, MEDIUM_HIGH, HIGH)]
+        super().__init__(placeholder="依成就難度篩選", options=options, row=0)
+
+    async def callback(self, interaction):
+        view = self.view
+        if interaction.user.id != view.user_id:
+            await interaction.response.send_message("❌ 這不是你的成就圖鑑。", ephemeral=True); return
+        view.difficulty = self.values[0]; view.page = 0
+        for item in view.children:
+            if isinstance(item, AchievementDifficultySelect):
+                for option in item.options: option.default = option.value == view.difficulty
+        await view._render(interaction)
+
+
+class AchievementStatusSelect(discord.ui.Select):
+    def __init__(self, current):
+        options = [discord.SelectOption(label=x, value=x, default=(x == current)) for x in ("全部", "未完成", "已完成")]
+        super().__init__(placeholder="依完成狀態篩選", options=options, row=1)
+
+    async def callback(self, interaction):
+        view = self.view
+        if interaction.user.id != view.user_id:
+            await interaction.response.send_message("❌ 這不是你的成就圖鑑。", ephemeral=True); return
+        view.status = self.values[0]; view.page = 0
+        for item in view.children:
+            if isinstance(item, AchievementStatusSelect):
+                for option in item.options: option.default = option.value == view.status
+        await view._render(interaction)
+
+
+class AchievementCatalogButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="🧪 測試用勿按", style=discord.ButtonStyle.danger, row=3)
+        super().__init__(label="🏆 成就圖鑑", style=discord.ButtonStyle.primary, row=4)
+
+    async def callback(self, interaction):
+        view = AchievementCatalogView(interaction.user.id)
+        await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
+
+
+class AchievementBoxTestButton(discord.ui.Button):
+    """僅指定測試帳號可見；走特殊獎品的實際互動流程，但隔離正式資料。"""
+    def __init__(self):
+        super().__init__(label="🧪 測試用勿按", style=discord.ButtonStyle.danger, row=4)
 
     async def callback(self, interaction):
         if not is_moonclub_tester(interaction.user.id):
             await interaction.response.send_message("❌ 此測試按鈕僅供指定測試帳號使用。", ephemeral=True)
             return
-
-        # 只抽取顯示用獎品，不呼叫 AchievementStore，也不寫入任何資料表。
         reward = random.choice(list(REWARD_NAMES.keys()))
         reward_name = REWARD_NAMES.get(reward, reward)
-        is_special = reward in MOMMY_REWARDS or reward in ADMIN_PROFILE_REWARDS
-        description = (
-            f"🧪 **這是測試結果，不是正式抽獎！**\n\n"
-            f"🎁 模擬中獎：**{reward_name}**\n\n"
-            "✅ 不扣正式成就盲盒資格\n"
-            "✅ 不增加或扣除努努幣\n"
-            "✅ 不建立正式獎品兌換紀錄\n"
-            "✅ 不修改成就完成紀錄"
-        )
-        if is_special:
-            description += "\n\n🖼️ 此獎品屬於特殊獎品類型；本次只模擬中獎顯示，不會建立媽咪／製作者案件。"
-        await interaction.response.send_message(
-            embed=discord.Embed(
-                title="🧪 成就盲盒｜測試模式",
-                description=description,
-                color=MOONCLUB_COLOR,
-            ),
-            ephemeral=True,
-        )
+        if reward in MOMMY_REWARDS:
+            await interaction.response.send_message(
+                embed=discord.Embed(title="🧪 成就盲盒｜完整流程測試", description=(
+                    f"🎁 模擬中獎：**{reward_name}**\n\n"
+                    "接下來會實際測試：選擇媽咪 → 填寫角色名稱 → 確認 → 私訊上傳圖片 → 轉交製作者。\n"
+                    "本次使用獨立測試流程，不消耗正式資格、不修改正式努努幣、不建立正式兌換紀錄。"), color=MOONCLUB_COLOR),
+                view=TestMommySelectView(reward), ephemeral=True)
+            return
+        if reward in ADMIN_PROFILE_REWARDS:
+            await interaction.response.send_message(
+                embed=discord.Embed(title="🧪 成就盲盒｜完整流程測試", description=(
+                    f"🎁 模擬中獎：**{reward_name}**\n\n"
+                    "接下來會實際測試：選擇製作管理員 → 確認 → 私訊上傳圖片 → 轉交製作者。\n"
+                    "本次使用獨立測試流程，不消耗正式資格、不修改正式努努幣、不建立正式兌換紀錄。"), color=MOONCLUB_COLOR),
+                view=TestMakerSelectView(reward), ephemeral=True)
+            return
+        amount = {REWARD_NUNU_15000: 15000, REWARD_NUNU_10000: 10000, REWARD_NUNU_5000: 5000}.get(reward, 0)
+        await interaction.response.send_message(embed=discord.Embed(
+            title="🧪 成就盲盒｜獎金流程測試",
+            description=(f"🎁 模擬中獎：**{reward_name}**\n\n"
+                         + (f"💰 模擬入帳：**+{amount:,} 努努幣**\n\n" if amount else "")
+                         + "✅ 不實際增加努努幣\n✅ 不扣正式成就盲盒資格\n✅ 不建立正式獎品兌換紀錄\n✅ 不修改成就完成紀錄"), color=MOONCLUB_COLOR), ephemeral=True)
 
 
 # ==========================================================
@@ -1401,6 +1536,8 @@ class MoonClubHomeView(discord.ui.View):
         if user_id is not None and achievement_draw_count(str(user_id)) > 0:
             self.add_item(AchievementBoxHomeButton())
         # 測試按鈕只會出現在指定測試帳號自己的主面板。
+        if user_id is not None:
+            self.add_item(AchievementCatalogButton())
         if user_id is not None and is_moonclub_tester(user_id):
             self.add_item(AchievementBoxTestButton())
 
