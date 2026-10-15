@@ -423,6 +423,34 @@ class CompleteRedemptionView(discord.ui.View):
 # 測試流程只存在記憶體，不寫入正式兌換資料表、不修改正式努努幣或抽獎次數。
 TEST_PENDING = {}
 TEST_OWNER_ID = 1301905168094335028
+ADMIN_MAKER_IDS = {873202145367846942, 844778614268100638}
+
+
+class TestCompleteView(discord.ui.View):
+    """測試案件完成按鈕：只回報測試結果，不碰正式兌換資料表。"""
+    def __init__(self, user_id, reward, character_name=""):
+        super().__init__(timeout=86400)
+        self.user_id = int(user_id)
+        self.reward = reward
+        self.character_name = character_name
+
+    @discord.ui.button(label="🧪 測試完成交付", style=discord.ButtonStyle.success)
+    async def complete_test(self, interaction, button):
+        if interaction.user.id not in BOT_ADMINS and interaction.user.id not in ADMIN_MAKER_IDS:
+            await interaction.response.send_message("❌ 只有指定製作者或授權管理員可以完成測試案件。", ephemeral=True)
+            return
+        try:
+            user = interaction.client.get_user(self.user_id) or await interaction.client.fetch_user(self.user_id)
+            await user.send(
+                f"🧪 **Moon Club 成就盲盒｜測試交付完成**\\n\\n"
+                f"🎁 獎品：**{REWARD_NAMES[self.reward]}**\\n"
+                + (f"🎭 角色名稱：**{self.character_name}**\\n" if self.character_name else "")
+                + "✅ 製作者已按下測試完成。此流程沒有建立正式兌換紀錄、扣除抽獎資格或修改努努幣。"
+            )
+        except Exception:
+            pass
+        button.disabled = True
+        await interaction.response.edit_message(content="🧪 測試案件已標記完成（不影響正式資料）。", view=self)
 
 
 class TestCharacterNameModal(discord.ui.Modal, title="🧪 測試｜填寫角色名稱"):
@@ -657,8 +685,15 @@ async def setup_achievement_redemption(bot, db):
                     + (f"🎭 角色名稱：**{data['character_name']}**\n" if data["character_name"] else "")
                     + "📌 這是測試案件，不是正式玩家兌換，請勿當作正式訂單處理。"
                 ), color=discord.Color.orange())
-                await maker.send(embed=embed, file=await attachment.to_file())
-                await message.channel.send("✅ **完整測試成功！** 圖片已成功轉交給選定製作者。測試流程結束，沒有建立正式兌換紀錄、扣除抽獎次數或增加努努幣。")
+                await maker.send(
+                    embed=embed,
+                    file=await attachment.to_file(),
+                    view=TestCompleteView(TEST_OWNER_ID, data["reward"], data["character_name"]),
+                )
+                await message.channel.send(
+                    "✅ **測試圖片已成功轉交給選定製作者！** 製作者可按案件中的「測試完成交付」按鈕，模擬正式案件完成通知。"
+                    "整個測試不會建立正式兌換紀錄、扣除抽獎次數或增加努努幣。"
+                )
             except Exception as exc:
                 TEST_PENDING[TEST_OWNER_ID] = data
                 await message.channel.send(f"⚠️ 測試圖片轉交失敗，測試狀態已保留，請稍後重傳。原因：`{type(exc).__name__}`")
