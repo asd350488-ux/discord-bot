@@ -43,7 +43,7 @@ except ImportError:
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
 MOONCLUB_COLOR = 0xB9A7E8
-MOONCLUB_TESTERS = {871398865012666389}
+MOONCLUB_TESTERS = {1301905168094335028}
 
 MODEL_ICON = "👤"   # 全系統統一成人男模圖示，不使用 👶／🍼 等寶寶圖示
 OWNER_ICON = "👑"
@@ -1266,6 +1266,40 @@ class AchievementBoxHomeButton(discord.ui.Button):
         await open_achievement_box(interaction)
 
 
+class AchievementBoxTestButton(discord.ui.Button):
+    """僅指定測試帳號可見；模擬抽獎結果，不讀寫正式抽獎資料。"""
+    def __init__(self):
+        super().__init__(label="🧪 測試用勿按", style=discord.ButtonStyle.danger, row=3)
+
+    async def callback(self, interaction):
+        if not is_moonclub_tester(interaction.user.id):
+            await interaction.response.send_message("❌ 此測試按鈕僅供指定測試帳號使用。", ephemeral=True)
+            return
+
+        # 只抽取顯示用獎品，不呼叫 AchievementStore，也不寫入任何資料表。
+        reward = random.choice(list(REWARD_NAMES.keys()))
+        reward_name = REWARD_NAMES.get(reward, reward)
+        is_special = reward in MOMMY_REWARDS or reward in ADMIN_PROFILE_REWARDS
+        description = (
+            f"🧪 **這是測試結果，不是正式抽獎！**\n\n"
+            f"🎁 模擬中獎：**{reward_name}**\n\n"
+            "✅ 不扣正式成就盲盒資格\n"
+            "✅ 不增加或扣除努努幣\n"
+            "✅ 不建立正式獎品兌換紀錄\n"
+            "✅ 不修改成就完成紀錄"
+        )
+        if is_special:
+            description += "\n\n🖼️ 此獎品屬於特殊獎品類型；本次只模擬中獎顯示，不會建立媽咪／製作者案件。"
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="🧪 成就盲盒｜測試模式",
+                description=description,
+                color=MOONCLUB_COLOR,
+            ),
+            ephemeral=True,
+        )
+
+
 # ==========================================================
 # 💼 男模工作｜個人知名度成長，與會館知名度分開計算
 # ==========================================================
@@ -1366,6 +1400,9 @@ class MoonClubHomeView(discord.ui.View):
         super().__init__(timeout=300)
         if user_id is not None and achievement_draw_count(str(user_id)) > 0:
             self.add_item(AchievementBoxHomeButton())
+        # 測試按鈕只會出現在指定測試帳號自己的主面板。
+        if user_id is not None and is_moonclub_tester(user_id):
+            self.add_item(AchievementBoxTestButton())
 
     @discord.ui.button(label="🛒 商店", style=discord.ButtonStyle.primary, row=0)
     async def shop(self, interaction, button):
