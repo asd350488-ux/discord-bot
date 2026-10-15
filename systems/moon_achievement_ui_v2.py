@@ -3,6 +3,7 @@
 
 import asyncio
 import datetime
+import random
 import discord
 from discord.ext import tasks
 
@@ -64,6 +65,33 @@ REWARD_NAMES = {
 UTC = datetime.timezone.utc
 SUBMISSION_HOURS = 48
 REMINDER_HOURS = 24
+
+
+def expire_overdue_redemptions(db, user_id=None):
+    """將超過 48 小時仍未提交圖片的兌換標記為放棄，不再阻擋抽獎。"""
+    query = "SELECT redemption_id, expires_at FROM moon_achievement_redemptions WHERE status='awaiting_image'"
+    params = ()
+    if user_id is not None:
+        query += " AND user_id=?"
+        params = (int(user_id),)
+    now = datetime.datetime.now(UTC)
+    rows = db.execute(query, params).fetchall()
+    expired_ids = []
+    for redemption_id, expires_at in rows:
+        if not expires_at:
+            continue
+        expiry = datetime.datetime.fromisoformat(expires_at)
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=UTC)
+        if now >= expiry.astimezone(UTC):
+            expired_ids.append(redemption_id)
+    if expired_ids:
+        db.executemany(
+            "UPDATE moon_achievement_redemptions SET status='expired' WHERE redemption_id=? AND status='awaiting_image'",
+            [(rid,) for rid in expired_ids]
+        )
+        db.commit()
+    return len(expired_ids)
 
 
 def ensure_redemption_table(db):
@@ -304,7 +332,10 @@ class RetryUploadView(discord.ui.View):
         if not row or row[0] != "awaiting_image":
             await interaction.response.send_message("這筆兌換目前無法重新發送。", ephemeral=True)
             return
-        if datetime.datetime.fromisoformat(row[1]) <= datetime.datetime.now(UTC):
+        retry_expiry = datetime.datetime.fromisoformat(row[1])
+        if retry_expiry.tzinfo is None:
+            retry_expiry = retry_expiry.replace(tzinfo=UTC)
+        if retry_expiry.astimezone(UTC) <= datetime.datetime.now(UTC):
             self.db.execute("UPDATE moon_achievement_redemptions SET status='expired' WHERE redemption_id=?", (self.redemption_id,))
             self.db.commit()
             await interaction.response.send_message("⏰ 提交期限已過，這次兌換視同放棄。", ephemeral=True)
@@ -394,10 +425,47 @@ class AchievementBoxView(discord.ui.View):
         super().__init__(timeout=300)
         self.db, self.user_id = db, int(user_id)
 
+    @discord.ui.button(label="測試用勿按", style=discord.ButtonStyle.danger, row=1)
+    async def test_draw(self, interaction, button):
+        # 僅指定使用者可操作；此測試只預覽獎品，不扣次數、不發努努幣、不建立兌換紀錄。
+        if interaction.user.id != 1560137397402865685:
+            await interaction.response.send_message("❌ 此按鈕僅供指定管理員測試使用。", ephemeral=True)
+            return
+        rewards = list(LOOT_WEIGHTS.keys())
+        weights = list(LOOT_WEIGHTS.values())
+        reward = random.choices(rewards, weights=weights, k=1)[0]
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="🧪 成就盲盒測試結果",
+                description=(
+                    f"🎁 模擬抽中：**{REWARD_NAMES[reward]}**\n\n"
+                    "這是測試預覽，不會扣除抽獎次數、增加努努幣或建立正式兌換紀錄。"
+                ),
+                color=discord.Color.orange(),
+            ),
+            ephemeral=True,
+        )
+
     @discord.ui.button(label="🎁 抽獎", style=discord.ButtonStyle.success)
     async def draw(self, interaction, button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ 這不是你的成就盲盒。", ephemeral=True)
+            return
+        ensure_redemption_table(self.db)
+        # 先處理已逾期的待提交獎項；逾期視同放棄，不再阻擋抽獎。
+        expire_overdue_redemptions(self.db, self.user_id)
+        pending = self.db.execute(
+            "SELECT redemption_id FROM moon_achievement_redemptions "
+            "WHERE user_id=? AND status IN ('awaiting_image', 'image_received') "
+            "ORDER BY redemption_id ASC LIMIT 1",
+            (self.user_id,)
+        ).fetchone()
+        if pending:
+            await interaction.response.send_message(
+                "⏳ 你還有一筆人設圖獎品尚未成功提交並轉交製作者。"
+                "請先完成這次提交，才能繼續抽取成就盲盒。",
+                ephemeral=True
+            )
             return
         store = AchievementStore(self.db)
         reward, _difficulty = store.consume_draw_and_get_reward(self.user_id)
@@ -482,7 +550,10 @@ async def setup_achievement_redemption(bot, db):
         if not row:
             return
         redemption_id, reward, maker_name, maker_id, character_name, expires_at = row
-        if now >= datetime.datetime.fromisoformat(expires_at):
+        expiry = datetime.datetime.fromisoformat(expires_at)
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=UTC)
+        if now >= expiry.astimezone(UTC):
             db.execute("UPDATE moon_achievement_redemptions SET status='expired' WHERE redemption_id=? AND status='awaiting_image'", (redemption_id,))
             db.commit()
             await message.channel.send("⏰ 提交期限已過，這次兌換視同放棄。")
@@ -538,6 +609,12 @@ async def setup_achievement_redemption(bot, db):
                 created_row = db.execute("SELECT created_at FROM moon_achievement_redemptions WHERE redemption_id=?", (redemption_id,)).fetchone()
                 created = datetime.datetime.fromisoformat(created_row[0])
                 expiry = datetime.datetime.fromisoformat(expires_at)
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=UTC)
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=UTC)
+                created = created.astimezone(UTC)
+                expiry = expiry.astimezone(UTC)
                 if now >= expiry:
                     db.execute("UPDATE moon_achievement_redemptions SET status='expired' WHERE redemption_id=? AND status='awaiting_image'", (redemption_id,))
                     db.commit()
