@@ -420,6 +420,100 @@ class CompleteRedemptionView(discord.ui.View):
         await interaction.followup.send("✅ 已標記完成，機器人端相關人設圖訊息已進行清理。", ephemeral=True)
 
 
+# 測試流程只存在記憶體，不寫入正式兌換資料表、不修改正式努努幣或抽獎次數。
+TEST_PENDING = {}
+TEST_OWNER_ID = 1301905168094335028
+
+
+class TestCharacterNameModal(discord.ui.Modal, title="🧪 測試｜填寫角色名稱"):
+    character_name = discord.ui.TextInput(label="角色名稱", placeholder="輸入測試角色名稱", min_length=2, max_length=30, required=True)
+
+    def __init__(self, reward, mommy_name, mommy_id):
+        super().__init__()
+        self.reward, self.mommy_name, self.mommy_id = reward, mommy_name, int(mommy_id)
+
+    async def on_submit(self, interaction):
+        if interaction.user.id != TEST_OWNER_ID:
+            await interaction.response.send_message("❌ 此測試流程僅限指定管理員使用。", ephemeral=True)
+            return
+        name = self.character_name.value.strip()
+        await interaction.response.send_message(
+            embed=discord.Embed(title="🧪 測試｜確認獎品兌換", description=(
+                f"🎁 獎品：**{REWARD_NAMES[self.reward]}**\n👩‍💼 負責媽咪：**{self.mommy_name}**\n"
+                f"🎭 角色名稱：**{name}**\n\n這是完整流程測試，不會建立正式兌換紀錄。"
+            )),
+            view=TestConfirmView(self.reward, self.mommy_name, self.mommy_id, name), ephemeral=True)
+
+
+class TestMommySelect(discord.ui.Select):
+    def __init__(self, reward):
+        super().__init__(placeholder="🧪 測試｜選擇負責媽咪", options=[
+            discord.SelectOption(label=name, value=str(mid)) for name, mid in MOMMY_LIST.items()])
+        self.reward = reward
+
+    async def callback(self, interaction):
+        if interaction.user.id != TEST_OWNER_ID:
+            await interaction.response.send_message("❌ 此測試流程僅限指定管理員使用。", ephemeral=True); return
+        mid = int(self.values[0]); name = next(k for k, v in MOMMY_LIST.items() if v == mid)
+        await interaction.response.send_modal(TestCharacterNameModal(self.reward, name, mid))
+
+
+class TestMommySelectView(discord.ui.View):
+    def __init__(self, reward):
+        super().__init__(timeout=300); self.add_item(TestMommySelect(reward))
+
+
+class TestMakerSelect(discord.ui.Select):
+    def __init__(self, reward):
+        super().__init__(placeholder="🧪 測試｜選擇製作管理員", options=[
+            discord.SelectOption(label=name, value=str(mid)) for name, mid in ADMIN_MAKER_LIST.items()])
+        self.reward = reward
+
+    async def callback(self, interaction):
+        if interaction.user.id != TEST_OWNER_ID:
+            await interaction.response.send_message("❌ 此測試流程僅限指定管理員使用。", ephemeral=True); return
+        mid = int(self.values[0]); name = next(k for k, v in ADMIN_MAKER_LIST.items() if v == mid)
+        await interaction.response.send_message(embed=discord.Embed(
+            title="🧪 測試｜確認隨機風格人設圖",
+            description=f"🎁 獎品：**{REWARD_NAMES[self.reward]}**\n🧑‍💼 製作管理員：**{name}**\n\n確認後會實際測試私訊上傳與轉交，但不建立正式兌換紀錄。"),
+            view=TestConfirmView(self.reward, name, mid, ""), ephemeral=True)
+
+
+class TestMakerSelectView(discord.ui.View):
+    def __init__(self, reward):
+        super().__init__(timeout=300); self.add_item(TestMakerSelect(reward))
+
+
+class TestConfirmView(discord.ui.View):
+    def __init__(self, reward, maker_name, maker_id, character_name=""):
+        super().__init__(timeout=180)
+        self.reward, self.maker_name, self.maker_id, self.character_name = reward, maker_name, int(maker_id), character_name
+
+    @discord.ui.button(label="🧪 確認並測試私訊提交", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction, button):
+        if interaction.user.id != TEST_OWNER_ID:
+            await interaction.response.send_message("❌ 此測試流程僅限指定管理員使用。", ephemeral=True); return
+        TEST_PENDING[TEST_OWNER_ID] = {
+            "reward": self.reward, "maker_name": self.maker_name, "maker_id": self.maker_id,
+            "character_name": self.character_name, "created_at": datetime.datetime.now(UTC).isoformat()
+        }
+        try:
+            await interaction.user.send(
+                f"🧪 **Moon Club 成就盲盒｜測試人設圖提交**\n\n🎁 獎品：**{REWARD_NAMES[self.reward]}**\n"
+                + (f"👩‍💼 負責媽咪／製作者：**{self.maker_name}**\n🎭 角色名稱：**{self.character_name}**\n" if self.character_name else f"🧑‍💼 製作管理員：**{self.maker_name}**\n")
+                + "請直接在這則私訊附上一張圖片。測試圖片會轉交給選定的製作者，但不會建立正式兌換紀錄。")
+        except Exception:
+            TEST_PENDING.pop(TEST_OWNER_ID, None)
+            await interaction.response.send_message("⚠️ 無法私訊你。請先開啟機器人私訊，再重新按測試按鈕。", ephemeral=True); return
+        await interaction.response.send_message("📩 已私訊你測試上傳通知。請在機器人私訊中附上一張圖片，測試圖片轉交成功後即完成流程。", ephemeral=True)
+
+    @discord.ui.button(label="取消測試", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction, button):
+        if interaction.user.id != TEST_OWNER_ID:
+            await interaction.response.send_message("❌ 此測試流程僅限指定管理員使用。", ephemeral=True); return
+        await interaction.response.edit_message(content="已取消測試，沒有建立任何紀錄。", embed=None, view=None)
+
+
 class AchievementBoxView(discord.ui.View):
     def __init__(self, db, user_id):
         super().__init__(timeout=300)
@@ -427,24 +521,28 @@ class AchievementBoxView(discord.ui.View):
 
     @discord.ui.button(label="測試用勿按", style=discord.ButtonStyle.danger, row=1)
     async def test_draw(self, interaction, button):
-        # 僅指定使用者可操作；此測試只預覽獎品，不扣次數、不發努努幣、不建立兌換紀錄。
-        if interaction.user.id != 1560137397402865685:
+        if interaction.user.id != TEST_OWNER_ID:
             await interaction.response.send_message("❌ 此按鈕僅供指定管理員測試使用。", ephemeral=True)
             return
         rewards = list(LOOT_WEIGHTS.keys())
         weights = list(LOOT_WEIGHTS.values())
         reward = random.choices(rewards, weights=weights, k=1)[0]
-        await interaction.response.send_message(
-            embed=discord.Embed(
+        if reward in MOMMY_REWARDS:
+            await interaction.response.send_message(embed=discord.Embed(
+                title="🧪 測試｜抽中特殊獎品",
+                description=f"🎁 **{REWARD_NAMES[reward]}**\n\n下一步：選擇媽咪 → 填寫角色名稱 → 確認兌換 → 私訊提交圖片 → 轉交製作者。\n\n測試不會扣正式抽獎次數或建立正式兌換紀錄。"),
+                view=TestMommySelectView(reward), ephemeral=True)
+        elif reward in ADMIN_PROFILE_REWARDS:
+            await interaction.response.send_message(embed=discord.Embed(
+                title="🧪 測試｜抽中隨機風格人設圖",
+                description=f"🎁 **{REWARD_NAMES[reward]}**\n\n下一步：選擇製作管理員 → 確認 → 私訊提交圖片 → 轉交製作者。\n\n測試不會扣正式抽獎次數或建立正式兌換紀錄。"),
+                view=TestMakerSelectView(reward), ephemeral=True)
+        else:
+            amount = {REWARD_NUNU_15000: 15000, REWARD_NUNU_10000: 10000, REWARD_NUNU_5000: 5000}.get(reward)
+            await interaction.response.send_message(embed=discord.Embed(
                 title="🧪 成就盲盒測試結果",
-                description=(
-                    f"🎁 模擬抽中：**{REWARD_NAMES[reward]}**\n\n"
-                    "這是測試預覽，不會扣除抽獎次數、增加努努幣或建立正式兌換紀錄。"
-                ),
-                color=discord.Color.orange(),
-            ),
-            ephemeral=True,
-        )
+                description=f"🎁 模擬抽中：**{REWARD_NAMES[reward]}**\n\n" + (f"💰 模擬入帳：**+{amount:,} 努努幣**\n\n" if amount else "") + "測試只顯示結果，不會實際增加努努幣、扣除抽獎次數或建立正式兌換紀錄。",
+                color=discord.Color.orange()), ephemeral=True)
 
     @discord.ui.button(label="🎁 抽獎", style=discord.ButtonStyle.success)
     async def draw(self, interaction, button):
@@ -538,6 +636,32 @@ async def setup_achievement_redemption(bot, db):
 
     async def on_message(message):
         if message.author.bot or not isinstance(message.channel, discord.DMChannel):
+            return
+        # 優先處理管理員的測試圖片；不讀寫正式兌換資料表。
+        if message.author.id == TEST_OWNER_ID and TEST_OWNER_ID in TEST_PENDING:
+            if len(message.attachments) != 1:
+                await message.channel.send("🧪 測試流程：請直接附上一張圖片。")
+                return
+            attachment = message.attachments[0]
+            is_image = bool((attachment.content_type and attachment.content_type.startswith("image/")) or
+                            attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")))
+            if not is_image:
+                await message.channel.send("🧪 測試流程：請附上 PNG、JPG 或其他圖片格式。")
+                return
+            data = TEST_PENDING.pop(TEST_OWNER_ID)
+            try:
+                maker = bot.get_user(int(data["maker_id"])) or await bot.fetch_user(int(data["maker_id"]))
+                embed = discord.Embed(title="🧪 測試案件｜Moon Club 成就盲盒", description=(
+                    f"🎁 獎品：**{REWARD_NAMES[data['reward']]}**\n"
+                    f"👤 測試者：管理員測試流程\n"
+                    + (f"🎭 角色名稱：**{data['character_name']}**\n" if data["character_name"] else "")
+                    + "📌 這是測試案件，不是正式玩家兌換，請勿當作正式訂單處理。"
+                ), color=discord.Color.orange())
+                await maker.send(embed=embed, file=await attachment.to_file())
+                await message.channel.send("✅ **完整測試成功！** 圖片已成功轉交給選定製作者。測試流程結束，沒有建立正式兌換紀錄、扣除抽獎次數或增加努努幣。")
+            except Exception as exc:
+                TEST_PENDING[TEST_OWNER_ID] = data
+                await message.channel.send(f"⚠️ 測試圖片轉交失敗，測試狀態已保留，請稍後重傳。原因：`{type(exc).__name__}`")
             return
         ensure_redemption_table(db)
         now = datetime.datetime.now(UTC)
