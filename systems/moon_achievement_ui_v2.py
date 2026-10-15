@@ -405,19 +405,35 @@ class CompleteRedemptionView(discord.ui.View):
             await interaction.followup.send("這筆案件已由其他人處理完成。", ephemeral=True)
             return
 
-        # 完成後刪除機器人轉交給製作者的訊息及玩家提交的人設圖訊息。
+        # 完成後清理製作者收到的機器人案件訊息（附件隨訊息刪除）。
+        maker_message_deleted = False
         try:
             await interaction.message.delete()
-        except Exception:
+            maker_message_deleted = True
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             pass
-        try:
-            if row[1] and row[2]:
+
+        # 玩家在私訊中親自傳送的訊息屬於玩家本人；Discord 通常不允許機器人刪除
+        # 其他使用者的訊息，因此只嘗試清理，並如實回報結果，不假裝一定成功。
+        source_deleted = False
+        source_cleanup_note = "玩家私訊中的原始提交訊息無法由機器人刪除（Discord 權限限制），請玩家自行刪除。"
+        if row[1] and row[2]:
+            try:
                 channel = interaction.client.get_channel(int(row[1])) or await interaction.client.fetch_channel(int(row[1]))
                 user_message = await channel.fetch_message(int(row[2]))
                 await user_message.delete()
-        except Exception:
-            pass
-        await interaction.followup.send("✅ 已標記完成，機器人端相關人設圖訊息已進行清理。", ephemeral=True)
+                source_deleted = True
+                source_cleanup_note = "玩家原始提交訊息已成功刪除。"
+            except discord.NotFound:
+                source_deleted = True
+                source_cleanup_note = "玩家原始提交訊息已不存在。"
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+        maker_note = "已刪除製作者收到的案件訊息與附件。" if maker_message_deleted else "⚠️ 無法刪除製作者收到的案件訊息，請管理員檢查機器人權限。"
+        await interaction.followup.send(
+            f"✅ 案件已標記完成。\n{maker_note}\n{source_cleanup_note}", ephemeral=True
+        )
 
 
 # 測試流程只存在記憶體，不寫入正式兌換資料表、不修改正式努努幣或抽獎次數。
@@ -427,30 +443,64 @@ ADMIN_MAKER_IDS = {873202145367846942, 844778614268100638}
 
 
 class TestCompleteView(discord.ui.View):
-    """測試案件完成按鈕：只回報測試結果，不碰正式兌換資料表。"""
-    def __init__(self, user_id, reward, character_name=""):
+    """測試案件完成按鈕：清理測試圖片訊息，但不碰正式兌換資料表。"""
+    def __init__(self, user_id, reward, character_name="", source_channel_id=None, source_message_id=None):
         super().__init__(timeout=86400)
         self.user_id = int(user_id)
         self.reward = reward
         self.character_name = character_name
+        self.source_channel_id = int(source_channel_id) if source_channel_id else None
+        self.source_message_id = int(source_message_id) if source_message_id else None
 
     @discord.ui.button(label="🧪 測試完成交付", style=discord.ButtonStyle.success)
     async def complete_test(self, interaction, button):
         if interaction.user.id not in BOT_ADMINS and interaction.user.id not in ADMIN_MAKER_IDS:
             await interaction.response.send_message("❌ 只有指定製作者或授權管理員可以完成測試案件。", ephemeral=True)
             return
+        # 先回覆互動，避免刪除案件訊息後 Discord 顯示互動失敗。
+        await interaction.response.send_message("🧹 已完成測試案件，正在清理製作者收到的圖片訊息。", ephemeral=True)
+
+        # 這則是機器人傳給製作者的案件訊息；刪除訊息即可一併刪除附件副本。
+        maker_message_deleted = False
+        try:
+            await interaction.message.delete()
+            maker_message_deleted = True
+        except discord.NotFound:
+            maker_message_deleted = True  # 訊息已不存在，視為已清理
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+        # 測試者在 DM 親自上傳的原圖屬於使用者訊息，Discord 不允許機器人任意刪除。
+        # 仍嘗試刪除；若被拒絕，清楚提示測試者自行刪除，不宣稱已成功。
+        source_deleted = False
+        source_note = "⚠️ 測試者私訊中的原始圖片是使用者本人發送，Discord 不允許機器人刪除；請在與機器人的私訊中長按原圖並自行刪除。"
+        if self.source_channel_id and self.source_message_id:
+            try:
+                channel = (interaction.client.get_channel(self.source_channel_id)
+                           or await interaction.client.fetch_channel(self.source_channel_id))
+                source_message = await channel.fetch_message(self.source_message_id)
+                await source_message.delete()
+                source_deleted = True
+                source_note = "✅ 測試者原始圖片訊息已刪除。"
+            except discord.NotFound:
+                source_deleted = True
+                source_note = "✅ 測試者原始圖片訊息已不存在。"
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+        maker_note = "✅ 製作者收到的案件訊息及圖片副本已刪除。" if maker_message_deleted else "⚠️ 製作者收到的案件訊息未能刪除，請管理員檢查機器人權限。"
+        # 通知測試者完成；不附帶圖片，並明確回報各項清理結果。
         try:
             user = interaction.client.get_user(self.user_id) or await interaction.client.fetch_user(self.user_id)
             await user.send(
-                f"🧪 **Moon Club 成就盲盒｜測試交付完成**\\n\\n"
-                f"🎁 獎品：**{REWARD_NAMES[self.reward]}**\\n"
-                + (f"🎭 角色名稱：**{self.character_name}**\\n" if self.character_name else "")
-                + "✅ 製作者已按下測試完成。此流程沒有建立正式兌換紀錄、扣除抽獎資格或修改努努幣。"
+                f"🧪 **Moon Club 成就盲盒｜測試交付完成**\n\n"
+                f"🎁 獎品：**{REWARD_NAMES[self.reward]}**\n"
+                + (f"🎭 角色名稱：**{self.character_name}**\n" if self.character_name else "")
+                + f"{maker_note}\n{source_note}\n\n"
+                + "📌 測試不影響正式兌換紀錄、抽獎資格或努努幣。"
             )
         except Exception:
             pass
-        button.disabled = True
-        await interaction.response.edit_message(content="🧪 測試案件已標記完成（不影響正式資料）。", view=self)
 
 
 class TestCharacterNameModal(discord.ui.Modal, title="🧪 測試｜填寫角色名稱"):
@@ -685,10 +735,14 @@ async def setup_achievement_redemption(bot, db):
                     + (f"🎭 角色名稱：**{data['character_name']}**\n" if data["character_name"] else "")
                     + "📌 這是測試案件，不是正式玩家兌換，請勿當作正式訂單處理。"
                 ), color=discord.Color.orange())
-                await maker.send(
+                forwarded = await maker.send(
                     embed=embed,
                     file=await attachment.to_file(),
-                    view=TestCompleteView(TEST_OWNER_ID, data["reward"], data["character_name"]),
+                    view=TestCompleteView(
+                        TEST_OWNER_ID, data["reward"], data["character_name"],
+                        source_channel_id=message.channel.id,
+                        source_message_id=message.id,
+                    ),
                 )
                 await message.channel.send(
                     "✅ **測試圖片已成功轉交給選定製作者！** 製作者可按案件中的「測試完成交付」按鈕，模擬正式案件完成通知。"
