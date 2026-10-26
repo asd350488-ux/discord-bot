@@ -246,6 +246,46 @@ class AchievementStore:
             )
         """)
         self.db.commit()
+        # 舊版本可能只留下成就完成紀錄，沒有建立對應的盲盒資格。
+        # 以「各難度已完成成就數」對照「該難度所有資格紀錄（包含已使用）」補齊差額，
+        # 不會重發已存在的資格，也不會重置已使用的資格。
+        self._backfill_missing_draws()
+
+    def _backfill_missing_draws(self) -> None:
+        import datetime
+
+        difficulty_by_id = {a.achievement_id: a.difficulty for a in ACHIEVEMENTS}
+        completed_rows = self.db.execute(
+            "SELECT user_id, achievement_id FROM moon_achievements WHERE completed=1"
+        ).fetchall()
+        completed_counts: dict[tuple[int, str], int] = {}
+        for user_id, achievement_id in completed_rows:
+            difficulty = difficulty_by_id.get(str(achievement_id))
+            if difficulty is None:
+                continue
+            key = (int(user_id), difficulty)
+            completed_counts[key] = completed_counts.get(key, 0) + 1
+
+        draw_rows = self.db.execute(
+            "SELECT user_id, difficulty, COUNT(*) FROM moon_achievement_draws "
+            "GROUP BY user_id, difficulty"
+        ).fetchall()
+        draw_counts = {(int(uid), str(diff)): int(count) for uid, diff, count in draw_rows}
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        missing = []
+        for key, completed_count in completed_counts.items():
+            difference = completed_count - draw_counts.get(key, 0)
+            if difference > 0:
+                uid, difficulty = key
+                missing.extend((uid, difficulty, now) for _ in range(difference))
+
+        if missing:
+            self.db.executemany(
+                "INSERT INTO moon_achievement_draws (user_id, difficulty, created_at, used) "
+                "VALUES (?, ?, ?, 0)",
+                missing,
+            )
+            self.db.commit()
 
     def complete_achievement(self, user_id: int, achievement_id: str) -> bool:
         row = self.db.execute(
