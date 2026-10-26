@@ -740,59 +740,11 @@ class HalloweenCharacterModal(
                 mommy = None
 
         # ==========================
-        # 🎃 建立通知 Embed
+        # 🎃 領獎資料已記錄
+        # 此階段不通知媽咪；只有玩家圖片成功轉交後才通知。
         # ==========================
 
-        notification_embed = discord.Embed(
-            title="🎃 萬聖節限定盲盒｜角色獎品通知",
-            description=(
-                "有玩家抽中了萬聖節限定角色獎品！\n\n"
-
-                f"👤 **玩家**\n"
-                f"{interaction.user.mention}\n\n"
-
-                f"🎭 **角色名稱**\n"
-                f"**{character_name}**\n\n"
-
-                f"🎁 **獎品**\n"
-                f"**{self.prize_name}**\n\n"
-
-                f"🎃 **指定媽咪**\n"
-                f"**{mommy_data['name']}**\n\n"
-
-                "📌 玩家已填寫領獎資料，機器人已請玩家提交角色圖片。\n"
-                "圖片送達後會另外轉交給你。"
-            ),
-            color=0xF5B041,
-        )
-
-        notification_embed.set_footer(
-            text="🎃 Moon Bot｜萬聖節限定盲盒｜2026/10/31"
-        )
-
-        # ==========================
-        # 📩 自動 DM 指定媽咪
-        # ==========================
-
-        dm_success = False
-
-        if mommy:
-
-            try:
-
-                await mommy.send(
-                    embed=notification_embed
-                )
-
-                dm_success = True
-
-            except discord.Forbidden:
-
-                dm_success = False
-
-            except Exception:
-
-                dm_success = False
+        dm_success = True
 
         # ==========================
         # 🎃 玩家回覆
@@ -824,7 +776,7 @@ class HalloweenCharacterModal(
                 f"🎭 角色名稱：**{character_name}**\n"
                 f"🎁 獎品：**{self.prize_name}**\n\n"
 
-                "⚠️ 資料已經鎖定，請聯絡管理員協助通知媽咪。",
+                "📩 請依照機器人私訊指示提交角色圖片；圖片成功轉交後才會通知媽咪。",
                 ephemeral=True,
             )
 
