@@ -201,7 +201,7 @@ class AchievementTestCog(commands.Cog):
         # 啟用正式兌換模組的私訊收圖流程，但資料只寫進本測試 Cog 的記憶體資料庫。
         from systems.moon_achievement_ui_v2 import setup_achievement_redemption
         if not self._redemption_listener_ready:
-            await setup_achievement_redemption(self.bot, self.db)
+            await setup_achievement_redemption(self.bot, self.db, test_mode=True)
             self._redemption_listener_ready = True
 
     async def cog_check(self, interaction):
