@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # ==========================
-# 🌕 中秋限定盲盒抽獎系統
+# 🎃 萬聖節限定盲盒抽獎系統
 # ==========================
 
 import discord
@@ -17,21 +17,21 @@ from config import BOT_ADMINS
 
 
 # ==========================
-# 🌕 中秋限定盲盒設定
+# 🎃 萬聖節限定盲盒設定
 # ==========================
 
 # ==========================
-# 🌕 中秋活動時間設定
+# 🎃 萬聖節活動時間設定
 # ==========================
 
-MID_AUTUMN_START = "2026-09-25 00:00"
-MID_AUTUMN_END = "2026-09-26 00:00"
+HALLOWEEN_START = "2026-10-31 00:00"
+HALLOWEEN_END = "2026-11-01 00:00"
 
-# 🌕 中秋活動頻道
-MID_AUTUMN_CHANNEL_ID = 1530174213418123326
+# 🎃 萬聖節活動頻道
+HALLOWEEN_CHANNEL_ID = 1530174213418123326
 
-# 👥 中秋活動指定身分組
-MID_AUTUMN_ROLE_ID = 1504854895826698392
+# 👥 萬聖節活動指定身分組
+HALLOWEEN_ROLE_ID = 1504854895826698392
 
 # 🧪 測試模式
 #
@@ -42,10 +42,10 @@ MID_AUTUMN_ROLE_ID = 1504854895826698392
 #   不會自動清除任何抽獎資料。
 #
 # 正式活動前請改成 False。
-MID_AUTUMN_TEST_MODE = True
+HALLOWEEN_TEST_MODE = True
 
 # 🇹🇼 使用台灣時間
-MID_AUTUMN_TIMEZONE = ZoneInfo("Asia/Taipei")
+HALLOWEEN_TIMEZONE = ZoneInfo("Asia/Taipei")
 
 # --------------------------
 # 🎟️ 每人最多參與次數
@@ -94,10 +94,10 @@ LIMITED_LOTTERY_PRIZES = [
 
 
 # ==========================
-# 🌕 中秋指定媽咪
+# 🎃 萬聖節指定媽咪
 # ==========================
 
-MID_AUTUMN_MOMMIES = {
+HALLOWEEN_MOMMIES = {
     "hanxin": {
         "name": "🫧 韓馨媽咪",
         "user_id": 1153640526063607820,
@@ -118,60 +118,104 @@ MID_AUTUMN_MOMMIES = {
 
 
 # ==========================
-# 🌕 正在開盲盒的玩家
+# 🎃 正在開盲盒的玩家
 # ==========================
 
 limited_lottery_running = set()
 
 
 # ==========================
-# 🌕 判斷是否為中秋活動日
+# 🎃 判斷是否為萬聖節活動日
 # ==========================
 
-def get_mid_autumn_now():
+def get_halloween_now():
 
     return datetime.now(
-        MID_AUTUMN_TIMEZONE
+        HALLOWEEN_TIMEZONE
     )
 
 
-def get_mid_autumn_start():
+def get_halloween_start():
 
     return datetime.strptime(
-        MID_AUTUMN_START,
+        HALLOWEEN_START,
         "%Y-%m-%d %H:%M",
     ).replace(
-        tzinfo=MID_AUTUMN_TIMEZONE
+        tzinfo=HALLOWEEN_TIMEZONE
     )
 
 
-def get_mid_autumn_end():
+def get_halloween_end():
 
     return datetime.strptime(
-        MID_AUTUMN_END,
+        HALLOWEEN_END,
         "%Y-%m-%d %H:%M",
     ).replace(
-        tzinfo=MID_AUTUMN_TIMEZONE
+        tzinfo=HALLOWEEN_TIMEZONE
     )
 
 
-def is_mid_autumn_day():
+def is_halloween_day():
 
     # 🧪 測試模式不限正式日期
-    if MID_AUTUMN_TEST_MODE:
+    if HALLOWEEN_TEST_MODE:
         return True
 
-    now = get_mid_autumn_now()
+    now = get_halloween_now()
 
     return (
-        get_mid_autumn_start()
+        get_halloween_start()
         <= now
-        < get_mid_autumn_end()
+        < get_halloween_end()
     )
 
 
 # ==========================
-# 🌕 取得玩家正式參與次數
+# 🔒 跨系統人設圖待辦防呆
+# ==========================
+
+def has_pending_character_image(user_id, exclude_halloween_entry_id=None):
+    """只要萬聖節或 Moon Club 尚有待交圖片，就暫停新抽獎／新兌換。"""
+    user_id = str(user_id)
+
+    try:
+        query = """
+            SELECT id FROM halloween_lottery_entries
+            WHERE user_id = ? AND claim_status = 1
+              AND image_status = 'awaiting_image'
+        """
+        params = [user_id]
+        if exclude_halloween_entry_id is not None:
+            query += " AND id != ?"
+            params.append(int(exclude_halloween_entry_id))
+        query += " LIMIT 1"
+        c.execute(query, tuple(params))
+        if c.fetchone():
+            return True
+    except Exception:
+        # 資料表尚未建立時，不因不存在而阻斷啟動。
+        pass
+
+    try:
+        c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='moon_achievement_redemptions'"
+        )
+        if c.fetchone():
+            c.execute(
+                "SELECT redemption_id FROM moon_achievement_redemptions "
+                "WHERE user_id = ? AND status = 'awaiting_image' LIMIT 1",
+                (int(user_id),),
+            )
+            if c.fetchone():
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
+# ==========================
+# 🎃 取得玩家正式參與次數
 # ==========================
 
 def get_limited_lottery_count(user_id):
@@ -186,7 +230,7 @@ def get_limited_lottery_count(user_id):
     c.execute(
         """
         SELECT COUNT(*)
-        FROM limited_lottery_entries
+        FROM halloween_lottery_entries
         WHERE user_id = ?
         AND is_test = 0
         """,
@@ -199,7 +243,7 @@ def get_limited_lottery_count(user_id):
 
 
 # ==========================
-# 🌕 檢查角色獎品是否已完成領獎
+# 🎃 檢查角色獎品是否已完成領獎
 # ==========================
 
 def is_prize_claimed(entry_id):
@@ -207,7 +251,7 @@ def is_prize_claimed(entry_id):
     c.execute(
         """
         SELECT claim_status
-        FROM limited_lottery_entries
+        FROM halloween_lottery_entries
         WHERE id = ?
         """,
         (entry_id,),
@@ -222,7 +266,7 @@ def is_prize_claimed(entry_id):
 
 
 # ==========================
-# 🌕 鎖定角色獎品
+# 🎃 鎖定角色獎品
 # ==========================
 
 def claim_limited_prize(
@@ -232,7 +276,7 @@ def claim_limited_prize(
     character_name,
 ):
 
-    mommy_data = MID_AUTUMN_MOMMIES.get(
+    mommy_data = HALLOWEEN_MOMMIES.get(
         mommy_key
     )
 
@@ -252,9 +296,10 @@ def claim_limited_prize(
 
     c.execute(
         """
-        UPDATE limited_lottery_entries
+        UPDATE halloween_lottery_entries
         SET
             claim_status = 1,
+            image_status = 'awaiting_image',
             mommy_key = ?,
             mommy_user_id = ?,
             mommy_name = ?,
@@ -292,10 +337,10 @@ def claim_limited_prize(
 
 
 # ==========================
-# 🌕 角色獎品｜選擇指定媽咪
+# 🎃 角色獎品｜選擇指定媽咪
 # ==========================
 
-class MidAutumnMommySelect(
+class HalloweenMommySelect(
     discord.ui.Select
 ):
 
@@ -312,7 +357,7 @@ class MidAutumnMommySelect(
 
         options = []
 
-        for key, mommy in MID_AUTUMN_MOMMIES.items():
+        for key, mommy in HALLOWEEN_MOMMIES.items():
 
             options.append(
                 discord.SelectOption(
@@ -323,7 +368,7 @@ class MidAutumnMommySelect(
             )
 
         super().__init__(
-            placeholder="🌕 請選擇指定媽咪",
+            placeholder="🎃 請選擇指定媽咪",
             min_values=1,
             max_values=1,
             options=options,
@@ -353,7 +398,7 @@ class MidAutumnMommySelect(
 
         mommy_key = self.values[0]
 
-        mommy_data = MID_AUTUMN_MOMMIES.get(
+        mommy_data = HALLOWEEN_MOMMIES.get(
             mommy_key
         )
 
@@ -367,7 +412,7 @@ class MidAutumnMommySelect(
             return
 
         await interaction.response.send_modal(
-            MidAutumnCharacterModal(
+            HalloweenCharacterModal(
                 entry_id=self.entry_id,
                 mommy_key=mommy_key,
                 prize_type=self.prize_type,
@@ -377,10 +422,10 @@ class MidAutumnMommySelect(
 
 
 # ==========================
-# 🌕 角色獎品｜選擇指定媽咪 View
+# 🎃 角色獎品｜選擇指定媽咪 View
 # ==========================
 
-class MidAutumnMommyView(
+class HalloweenMommyView(
     discord.ui.View
 ):
 
@@ -396,7 +441,7 @@ class MidAutumnMommyView(
         )
 
         self.add_item(
-            MidAutumnMommySelect(
+            HalloweenMommySelect(
                 entry_id=entry_id,
                 prize_type=prize_type,
                 prize_name=prize_name,
@@ -405,10 +450,58 @@ class MidAutumnMommyView(
 
 
 # ==========================
-# 🌕 角色獎品｜輸入角色名稱
+# 🎃 玩家自願取消角色圖片資格
 # ==========================
 
-class MidAutumnCharacterModal(
+class HalloweenCancelImageView(discord.ui.View):
+
+    def __init__(self, entry_id, user_id):
+        super().__init__(timeout=48 * 60 * 60)
+        self.entry_id = int(entry_id)
+        self.user_id = int(user_id)
+
+    @discord.ui.button(
+        label="🚫 自願取消資格",
+        style=discord.ButtonStyle.danger,
+        custom_id="halloween_cancel_image_qualification",
+    )
+    async def cancel_qualification(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ 這不是你的領獎通知，無法替其他玩家取消。", ephemeral=True
+            )
+            return
+
+        c.execute(
+            "UPDATE halloween_lottery_entries SET image_status='cancelled' "
+            "WHERE id=? AND user_id=? AND image_status='awaiting_image'",
+            (self.entry_id, str(self.user_id)),
+        )
+        changed = c.rowcount == 1
+        conn.commit()
+
+        if not changed:
+            await interaction.response.send_message(
+                "ℹ️ 這筆圖片提交已完成、已取消，或目前不需要提交圖片。",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.edit_message(
+            content=(
+                "🚫 **已自願取消本次角色獎品領取資格。**\n\n"
+                "這份角色獎品將視為放棄，無法恢復或重新領取。\n"
+                "你現在可以繼續使用其他抽獎功能。"
+            ),
+            view=None,
+        )
+
+
+# ==========================
+# 🎃 角色獎品｜輸入角色名稱
+# ==========================
+
+class HalloweenCharacterModal(
     discord.ui.Modal
 ):
 
@@ -421,7 +514,7 @@ class MidAutumnCharacterModal(
     ):
 
         super().__init__(
-            title="🌕 中秋限定｜角色資料"
+            title="🎃 萬聖節限定｜角色資料"
         )
 
         self.entry_id = entry_id
@@ -460,6 +553,22 @@ class MidAutumnCharacterModal(
             return
 
         # ==========================
+        # 🔒 跨系統待交圖片防呆
+        # ==========================
+
+        if has_pending_character_image(
+            interaction.user.id,
+            exclude_halloween_entry_id=self.entry_id,
+        ):
+            await interaction.response.send_message(
+                "⏳ 你目前還有另一筆人設圖尚未提交。\n\n"
+                "請先完成圖片提交，或在原本的提醒私訊按下「自願取消資格」，"
+                "才能建立新的圖片領獎流程。",
+                ephemeral=True,
+            )
+            return
+
+        # ==========================
         # 🔒 提交前再次檢查
         # ==========================
 
@@ -475,7 +584,7 @@ class MidAutumnCharacterModal(
 
             return
 
-        mommy_data = MID_AUTUMN_MOMMIES.get(
+        mommy_data = HALLOWEEN_MOMMIES.get(
             self.mommy_key
         )
 
@@ -515,6 +624,29 @@ class MidAutumnCharacterModal(
             return
 
         # ==========================
+        # 📩 先請玩家私訊提交角色圖片
+        # ==========================
+
+        try:
+            await interaction.user.send(
+                "🎃 **萬聖節限定盲盒｜請提交角色圖片**\n\n"
+                f"🎁 獎品：**{self.prize_name}**\n"
+                f"🎭 角色名稱：**{character_name}**\n"
+                f"🧡 指定媽咪：**{mommy_data['name']}**\n\n"
+                "請直接在這則私訊中附上一張角色圖片並送出。\n"
+                "在圖片成功轉交或自願取消資格前，不能開始其他需要提交人設圖的領獎流程。\n"
+                "若不想領取，請按下方「自願取消資格」。",
+                view=HalloweenCancelImageView(self.entry_id, interaction.user.id),
+            )
+        except Exception:
+            await interaction.response.send_message(
+                "⚠️ 領獎資料已記錄，但我無法私訊你。請先開啟伺服器成員的私訊功能，"
+                "再聯絡管理員協助重新通知提交圖片。",
+                ephemeral=True,
+            )
+            return
+
+        # ==========================
         # 📩 取得指定媽咪
         # ==========================
 
@@ -535,13 +667,13 @@ class MidAutumnCharacterModal(
                 mommy = None
 
         # ==========================
-        # 🌕 建立通知 Embed
+        # 🎃 建立通知 Embed
         # ==========================
 
         notification_embed = discord.Embed(
-            title="🌕 中秋限定盲盒｜角色獎品通知",
+            title="🎃 萬聖節限定盲盒｜角色獎品通知",
             description=(
-                "有玩家抽中了中秋限定角色獎品！\n\n"
+                "有玩家抽中了萬聖節限定角色獎品！\n\n"
 
                 f"👤 **玩家**\n"
                 f"{interaction.user.mention}\n\n"
@@ -552,17 +684,17 @@ class MidAutumnCharacterModal(
                 f"🎁 **獎品**\n"
                 f"**{self.prize_name}**\n\n"
 
-                f"🌕 **指定媽咪**\n"
+                f"🎃 **指定媽咪**\n"
                 f"**{mommy_data['name']}**\n\n"
 
-                "📌 玩家已完成領獎資料填寫，\n"
-                "請協助後續獎品安排。"
+                "📌 玩家已填寫領獎資料，機器人已請玩家提交角色圖片。\n"
+                "圖片送達後會另外轉交給你。"
             ),
             color=0xF5B041,
         )
 
         notification_embed.set_footer(
-            text="🌕 Moon Bot｜中秋限定盲盒｜2026/9/25"
+            text="🎃 Moon Bot｜萬聖節限定盲盒｜2026/10/31"
         )
 
         # ==========================
@@ -590,7 +722,7 @@ class MidAutumnCharacterModal(
                 dm_success = False
 
         # ==========================
-        # 🌕 玩家回覆
+        # 🎃 玩家回覆
         # ==========================
 
         if dm_success:
@@ -598,12 +730,12 @@ class MidAutumnCharacterModal(
             await interaction.response.send_message(
                 "✅ **領獎資料已成功送出！**\n\n"
 
-                f"🌕 指定媽咪：**{mommy_data['name']}**\n"
+                f"🎃 指定媽咪：**{mommy_data['name']}**\n"
                 f"🎭 角色名稱：**{character_name}**\n"
                 f"🎁 獎品：**{self.prize_name}**\n\n"
 
-                "📩 機器人已自動通知指定媽咪，\n"
-                "請等待後續獎品安排。\n\n"
+                "📩 機器人已通知指定媽咪，並私訊你提交角色圖片。\n"
+                "請依照私訊指示傳送圖片，完成後才會轉交給媽咪。\n\n"
 
                 "🔒 此份獎品的領獎資料已鎖定，"
                 "無法再次提交。",
@@ -615,7 +747,7 @@ class MidAutumnCharacterModal(
             await interaction.response.send_message(
                 "⚠️ **領獎資料已成功記錄，但通知媽咪失敗。**\n\n"
 
-                f"🌕 指定媽咪：**{mommy_data['name']}**\n"
+                f"🎃 指定媽咪：**{mommy_data['name']}**\n"
                 f"🎭 角色名稱：**{character_name}**\n"
                 f"🎁 獎品：**{self.prize_name}**\n\n"
 
@@ -625,10 +757,10 @@ class MidAutumnCharacterModal(
 
 
 # ==========================
-# 🌕 角色獎品｜填寫資料按鈕
+# 🎃 角色獎品｜填寫資料按鈕
 # ==========================
 
-class MidAutumnPrizeView(
+class HalloweenPrizeView(
     discord.ui.View
 ):
 
@@ -648,9 +780,9 @@ class MidAutumnPrizeView(
         self.prize_name = prize_name
 
     @discord.ui.button(
-        label="🌕 填寫角色資料",
+        label="🎃 填寫角色資料",
         style=discord.ButtonStyle.primary,
-        custom_id="mid_autumn_prize_info",
+        custom_id="halloween_prize_info",
     )
     async def fill_character_info(
         self,
@@ -675,11 +807,12 @@ class MidAutumnPrizeView(
             return
 
         await interaction.response.send_message(
-            "🌕 **中秋限定｜角色獎品資料**\n\n"
+            "🎃 **萬聖節限定｜角色獎品資料**\n\n"
             "請選擇這次的**指定媽咪**。\n\n"
-            "選擇後再輸入你的角色名稱，"
-            "確認送出後機器人會自動通知該媽咪。",
-            view=MidAutumnMommyView(
+            "選擇後再輸入你的角色名稱。\n\n"
+            "確認送出後，機器人會私訊你提交角色圖片，"
+            "並在收到圖片後轉交給指定媽咪。",
+            view=HalloweenMommyView(
                 entry_id=self.entry_id,
                 prize_type=self.prize_type,
                 prize_name=self.prize_name,
@@ -689,7 +822,7 @@ class MidAutumnPrizeView(
 
 
 # ==========================
-# 🌕 執行中秋限定盲盒
+# 🎃 執行萬聖節限定盲盒
 # ==========================
 
 async def run_limited_lottery(
@@ -711,13 +844,26 @@ async def run_limited_lottery(
     )
 
     # -------------------------
+    # 🔒 跨系統人設圖待辦防呆
+    # -------------------------
+
+    if has_pending_character_image(interaction.user.id):
+        await interaction.response.send_message(
+            "⏳ 你還有一筆人設圖尚未提交成功。\n\n"
+            "請先傳送圖片，或在機器人的提醒私訊中按下「自願取消資格」，"
+            "完成後才能繼續抽獎。",
+            ephemeral=True,
+        )
+        return
+
+    # -------------------------
     # 🔒 防止重複抽獎
     # -------------------------
 
     if interaction.user.id in limited_lottery_running:
 
         await interaction.response.send_message(
-            "🌕 你的中秋盲盒正在開啟中，\n"
+            "🎃 你的萬聖節盲盒正在開啟中，\n"
             "請稍等一下再操作喔！",
             ephemeral=True,
         )
@@ -829,7 +975,7 @@ async def run_limited_lottery(
 
         c.execute(
             """
-            INSERT INTO limited_lottery_entries (
+            INSERT INTO halloween_lottery_entries (
                 user_id,
                 draw_number,
                 price,
@@ -860,11 +1006,11 @@ async def run_limited_lottery(
         conn.commit()
 
         # ==========================
-        # 🌕 開始盲盒動畫
+        # 🎃 開始盲盒動畫
         # ==========================
 
         await interaction.response.send_message(
-            "🌕 **中秋限定盲盒**\n\n"
+            "🎃 **萬聖節限定盲盒**\n\n"
             "🎁 你的盲盒正在準備中……",
             ephemeral=True,
         )
@@ -877,7 +1023,7 @@ async def run_limited_lottery(
 
         await interaction.edit_original_response(
             content=(
-                "🌕 **中秋限定盲盒**\n\n"
+                "🎃 **萬聖節限定盲盒**\n\n"
                 "🎁 盲盒正在晃動……\n"
                 "✨ 裡面好像有東西！"
             ),
@@ -893,7 +1039,7 @@ async def run_limited_lottery(
 
         await interaction.edit_original_response(
             content=(
-                "🌕 **中秋限定盲盒**\n\n"
+                "🎃 **萬聖節限定盲盒**\n\n"
                 "✨✨✨\n"
                 "月光正在聚集……"
             ),
@@ -909,7 +1055,7 @@ async def run_limited_lottery(
 
         await interaction.edit_original_response(
             content=(
-                "🌕 **中秋限定盲盒**\n\n"
+                "🎃 **萬聖節限定盲盒**\n\n"
                 "💫 **砰！**\n\n"
                 "🎁 盲盒已經打開！"
             ),
@@ -946,19 +1092,20 @@ async def run_limited_lottery(
                 "🎉 **恭喜你！**\n\n"
                 f"## {prize_name}\n\n"
 
-                "🌕 **請完成領獎資料**\n\n"
+                "🎃 **請完成領獎資料**\n\n"
 
                 "點擊下方按鈕後：\n"
                 "① 選擇指定媽咪\n"
                 "② 輸入角色名稱\n"
-                "③ 按下確認送出\n\n"
+                "③ 按下確認送出\n"
+                "④ 依照機器人私訊，傳送一張角色圖片\n\n"
 
-                "📩 完成後機器人會自動通知指定媽咪。\n\n"
+                "📩 機器人收到圖片後會轉交給指定媽咪。\n\n"
 
                 "⚠️ **每份角色獎品只能提交一次。**"
             )
 
-            result_view = MidAutumnPrizeView(
+            result_view = HalloweenPrizeView(
                 entry_id=entry_id,
                 prize_type=prize_type,
                 prize_name=prize_name,
@@ -972,11 +1119,11 @@ async def run_limited_lottery(
             )
 
         # ==========================
-        # 🌕 最終結果 Embed
+        # 🎃 最終結果 Embed
         # ==========================
 
         embed = discord.Embed(
-            title="🌕 中秋限定盲盒",
+            title="🎃 萬聖節限定盲盒",
             description=result_description,
             color=0xF5B041,
         )
@@ -1022,7 +1169,7 @@ async def run_limited_lottery(
 
         embed.set_footer(
             text=(
-                "🌕 Moon Bot｜中秋限定盲盒｜2026/9/25"
+                "🎃 Moon Bot｜萬聖節限定盲盒｜2026/10/31"
             )
         )
 
@@ -1048,14 +1195,14 @@ async def run_limited_lottery(
 
 
 # ==========================
-# 🌕 建立限定盲盒資料表
+# 🎃 建立限定盲盒資料表
 # ==========================
 
 def init_limited_lottery_database():
 
     c.execute(
         """
-        CREATE TABLE IF NOT EXISTS limited_lottery_entries (
+        CREATE TABLE IF NOT EXISTS halloween_lottery_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
             draw_number INTEGER NOT NULL,
@@ -1069,20 +1216,22 @@ def init_limited_lottery_database():
             mommy_user_id TEXT,
             mommy_name TEXT,
             character_name TEXT,
-            claimed_at TEXT
+            claimed_at TEXT,
+            image_status TEXT DEFAULT 'not_required',
+            image_message_id TEXT
         )
         """
     )
 
     # ==========================
-    # 🌕 舊資料表補欄位
+    # 🎃 舊資料表補欄位
     # ==========================
 
     existing_columns = set()
 
     c.execute(
         """
-        PRAGMA table_info(limited_lottery_entries)
+        PRAGMA table_info(halloween_lottery_entries)
         """
     )
 
@@ -1104,7 +1253,7 @@ def init_limited_lottery_database():
 
             c.execute(
                 """
-                ALTER TABLE limited_lottery_entries
+                ALTER TABLE halloween_lottery_entries
                 ADD COLUMN is_test INTEGER DEFAULT 0
                 """
             )
@@ -1123,7 +1272,7 @@ def init_limited_lottery_database():
 
             c.execute(
                 """
-                ALTER TABLE limited_lottery_entries
+                ALTER TABLE halloween_lottery_entries
                 ADD COLUMN claim_status INTEGER DEFAULT 0
                 """
             )
@@ -1133,7 +1282,7 @@ def init_limited_lottery_database():
             pass
 
     # -------------------------
-    # 🌕 mommy_key
+    # 🎃 mommy_key
     # -------------------------
 
     if "mommy_key" not in existing_columns:
@@ -1142,7 +1291,7 @@ def init_limited_lottery_database():
 
             c.execute(
                 """
-                ALTER TABLE limited_lottery_entries
+                ALTER TABLE halloween_lottery_entries
                 ADD COLUMN mommy_key TEXT
                 """
             )
@@ -1152,7 +1301,7 @@ def init_limited_lottery_database():
             pass
 
     # -------------------------
-    # 🌕 mommy_user_id
+    # 🎃 mommy_user_id
     # -------------------------
 
     if "mommy_user_id" not in existing_columns:
@@ -1161,7 +1310,7 @@ def init_limited_lottery_database():
 
             c.execute(
                 """
-                ALTER TABLE limited_lottery_entries
+                ALTER TABLE halloween_lottery_entries
                 ADD COLUMN mommy_user_id TEXT
                 """
             )
@@ -1171,7 +1320,7 @@ def init_limited_lottery_database():
             pass
 
     # -------------------------
-    # 🌕 mommy_name
+    # 🎃 mommy_name
     # -------------------------
 
     if "mommy_name" not in existing_columns:
@@ -1180,7 +1329,7 @@ def init_limited_lottery_database():
 
             c.execute(
                 """
-                ALTER TABLE limited_lottery_entries
+                ALTER TABLE halloween_lottery_entries
                 ADD COLUMN mommy_name TEXT
                 """
             )
@@ -1199,7 +1348,7 @@ def init_limited_lottery_database():
 
             c.execute(
                 """
-                ALTER TABLE limited_lottery_entries
+                ALTER TABLE halloween_lottery_entries
                 ADD COLUMN character_name TEXT
                 """
             )
@@ -1218,7 +1367,7 @@ def init_limited_lottery_database():
 
             c.execute(
                 """
-                ALTER TABLE limited_lottery_entries
+                ALTER TABLE halloween_lottery_entries
                 ADD COLUMN claimed_at TEXT
                 """
             )
@@ -1227,11 +1376,33 @@ def init_limited_lottery_database():
 
             pass
 
+    # -------------------------
+    # 🖼️ 圖片提交狀態
+    # -------------------------
+
+    if "image_status" not in existing_columns:
+
+        c.execute(
+            """
+            ALTER TABLE halloween_lottery_entries
+            ADD COLUMN image_status TEXT DEFAULT 'not_required'
+            """
+        )
+
+    if "image_message_id" not in existing_columns:
+
+        c.execute(
+            """
+            ALTER TABLE halloween_lottery_entries
+            ADD COLUMN image_message_id TEXT
+            """
+        )
+
     conn.commit()
 
 
 # ==========================
-# 🌕 中秋限定盲盒面板
+# 🎃 萬聖節限定盲盒面板
 # ==========================
 
 class LimitedLotteryView(
@@ -1251,7 +1422,7 @@ class LimitedLotteryView(
     @discord.ui.button(
         label="🎁 第一次抽獎｜500 努努幣",
         style=discord.ButtonStyle.primary,
-        custom_id="mid_autumn_lottery_first",
+        custom_id="halloween_lottery_first",
         row=0,
     )
     async def first_draw(
@@ -1260,11 +1431,11 @@ class LimitedLotteryView(
         button: discord.ui.Button,
     ):
 
-        if not is_mid_autumn_day():
+        if not is_halloween_day():
 
             await interaction.response.send_message(
-                "🌕 中秋限定盲盒目前沒有開放喔！\n"
-                "本活動僅限 **2026/9/25** 當日參與。",
+                "🎃 萬聖節限定盲盒目前沒有開放喔！\n"
+                "本活動僅限 **2026/10/31** 當日參與。",
                 ephemeral=True,
             )
 
@@ -1277,7 +1448,7 @@ class LimitedLotteryView(
         if count >= LIMITED_LOTTERY_MAX_TIMES:
 
             await interaction.response.send_message(
-                "❌ 你已經完成本次中秋限定盲盒的 **2 次抽獎**。",
+                "❌ 你已經完成本次萬聖節限定盲盒的 **2 次抽獎**。",
                 ephemeral=True,
             )
 
@@ -1304,9 +1475,9 @@ class LimitedLotteryView(
     # ==========================
 
     @discord.ui.button(
-        label="🌕 第二次抽獎｜5,000 努努幣",
+        label="🎃 第二次抽獎｜5,000 努努幣",
         style=discord.ButtonStyle.success,
-        custom_id="mid_autumn_lottery_second",
+        custom_id="halloween_lottery_second",
         row=1,
     )
     async def second_draw(
@@ -1315,11 +1486,11 @@ class LimitedLotteryView(
         button: discord.ui.Button,
     ):
 
-        if not is_mid_autumn_day():
+        if not is_halloween_day():
 
             await interaction.response.send_message(
-                "🌕 中秋限定盲盒目前沒有開放喔！\n"
-                "本活動僅限 **2026/9/25** 當日參與。",
+                "🎃 萬聖節限定盲盒目前沒有開放喔！\n"
+                "本活動僅限 **2026/10/31** 當日參與。",
                 ephemeral=True,
             )
 
@@ -1346,7 +1517,7 @@ class LimitedLotteryView(
         if count >= LIMITED_LOTTERY_MAX_TIMES:
 
             await interaction.response.send_message(
-                "❌ 你已經完成本次中秋限定盲盒的 **2 次抽獎**。",
+                "❌ 你已經完成本次萬聖節限定盲盒的 **2 次抽獎**。",
                 ephemeral=True,
             )
 
@@ -1360,16 +1531,16 @@ class LimitedLotteryView(
 
 
 # ==========================
-# 🌕 中秋限定盲盒 Embed
+# 🎃 萬聖節限定盲盒 Embed
 # ==========================
 
 def create_limited_lottery_embed():
 
     embed = discord.Embed(
-        title="🌕 中秋限定盲盒",
+        title="🎃 萬聖節限定盲盒",
         description=(
-            "🌕 **一年一度的中秋限定活動！**\n\n"
-            "9/25 中秋當日限定開放，\n"
+            "🎃 **一年一度的萬聖節限定活動！**\n\n"
+            "10/31 萬聖節當日限定開放，\n"
             "每位成員最多可以參與 **2 次**。\n\n"
 
             "━━━━━━━━━━━━━━━━━━\n\n"
@@ -1404,20 +1575,20 @@ def create_limited_lottery_embed():
 
             "每人最多 **2 次**，每次皆為獨立抽獎。\n\n"
 
-            "🌕 **中秋限定，只有一天！**"
+            "🎃 **萬聖節限定，只有一天！**"
         ),
         color=0xF5B041,
     )
 
     embed.set_footer(
-        text="🌕 Moon Bot｜中秋限定盲盒｜2026/9/25"
+        text="🎃 Moon Bot｜萬聖節限定盲盒｜2026/10/31"
     )
 
     return embed
 
 
 # ==========================
-# 🌕 發送中秋限定盲盒面板
+# 🎃 發送萬聖節限定盲盒面板
 # ==========================
 
 async def send_limited_lottery_panel(
@@ -1433,12 +1604,12 @@ async def send_limited_lottery_panel(
 
 
 # ==========================
-# 🧪 中秋限定盲盒｜管理員測試指令
+# 🧪 萬聖節限定盲盒｜管理員測試指令
 # ==========================
 
 @app_commands.command(
-    name="mid_autumn_test",
-    description="🌕 發送中秋限定盲盒測試面板",
+    name="halloween_test",
+    description="🎃 發送萬聖節限定盲盒測試面板",
 )
 async def limited_lottery_test(
     interaction: discord.Interaction,
@@ -1458,7 +1629,7 @@ async def limited_lottery_test(
     )
 
     await interaction.response.send_message(
-        "✅ 中秋限定盲盒測試面板已發送！",
+        "✅ 萬聖節限定盲盒測試面板已發送！",
         ephemeral=True,
     )
 
@@ -1509,7 +1680,7 @@ class ClearLimitedLotteryConfirmView(
             c.execute(
                 """
                 SELECT COUNT(*)
-                FROM limited_lottery_entries
+                FROM halloween_lottery_entries
                 WHERE is_test = 0
                 """
             )
@@ -1524,7 +1695,7 @@ class ClearLimitedLotteryConfirmView(
 
             c.execute(
                 """
-                DELETE FROM limited_lottery_entries
+                DELETE FROM halloween_lottery_entries
                 WHERE is_test = 0
                 """
             )
@@ -1621,27 +1792,27 @@ async def clear_limited_lottery_records(
 
 
 # ==========================
-# 🌕 中秋活動｜自動開關頻道
+# 🎃 萬聖節活動｜自動開關頻道
 # ==========================
 
-_mid_autumn_bot = None
+_halloween_bot = None
 
 
-async def update_mid_autumn_channel():
+async def update_halloween_channel():
 
-    global _mid_autumn_bot
+    global _halloween_bot
 
-    bot = _mid_autumn_bot
+    bot = _halloween_bot
 
     if bot is None:
         return
 
     # 🧪 測試模式完全不修改頻道權限
-    if MID_AUTUMN_TEST_MODE:
+    if HALLOWEEN_TEST_MODE:
         return
 
     channel = bot.get_channel(
-        MID_AUTUMN_CHANNEL_ID
+        HALLOWEEN_CHANNEL_ID
     )
 
     if channel is None:
@@ -1649,13 +1820,13 @@ async def update_mid_autumn_channel():
         try:
 
             channel = await bot.fetch_channel(
-                MID_AUTUMN_CHANNEL_ID
+                HALLOWEEN_CHANNEL_ID
             )
 
         except Exception as e:
 
             print(
-                f"⚠️ 無法取得中秋活動頻道：{e}"
+                f"⚠️ 無法取得萬聖節活動頻道：{e}"
             )
 
             return
@@ -1665,28 +1836,28 @@ async def update_mid_autumn_channel():
         discord.TextChannel,
     ):
         print(
-            "⚠️ 中秋活動頻道不是文字頻道，"
+            "⚠️ 萬聖節活動頻道不是文字頻道，"
             "無法自動控制查看權限。"
         )
 
         return
 
     role = channel.guild.get_role(
-        MID_AUTUMN_ROLE_ID
+        HALLOWEEN_ROLE_ID
     )
 
     if role is None:
 
         print(
-            f"⚠️ 找不到中秋活動指定身分組："
-            f"{MID_AUTUMN_ROLE_ID}"
+            f"⚠️ 找不到萬聖節活動指定身分組："
+            f"{HALLOWEEN_ROLE_ID}"
         )
 
         return
 
-    now = get_mid_autumn_now()
-    start = get_mid_autumn_start()
-    end = get_mid_autumn_end()
+    now = get_halloween_now()
+    start = get_halloween_start()
+    end = get_halloween_end()
 
     # ==========================
     # 🔓 活動期間｜開放指定身分組
@@ -1705,13 +1876,13 @@ async def update_mid_autumn_channel():
             await channel.set_permissions(
                 role,
                 overwrite=overwrite,
-                reason="🌕 中秋限定盲盒活動開始",
+                reason="🎃 萬聖節限定盲盒活動開始",
             )
 
         except Exception as e:
 
             print(
-                f"⚠️ 開放中秋活動頻道失敗：{e}"
+                f"⚠️ 開放萬聖節活動頻道失敗：{e}"
             )
 
         return
@@ -1733,13 +1904,13 @@ async def update_mid_autumn_channel():
             await channel.set_permissions(
                 role,
                 overwrite=overwrite,
-                reason="🌕 中秋限定盲盒活動尚未開始",
+                reason="🎃 萬聖節限定盲盒活動尚未開始",
             )
 
         except Exception as e:
 
             print(
-                f"⚠️ 設定中秋活動未開始權限失敗：{e}"
+                f"⚠️ 設定萬聖節活動未開始權限失敗：{e}"
             )
 
         return
@@ -1759,46 +1930,173 @@ async def update_mid_autumn_channel():
         await channel.set_permissions(
             role,
             overwrite=overwrite,
-            reason="🌕 中秋限定盲盒活動結束",
+            reason="🎃 萬聖節限定盲盒活動結束",
         )
 
     except Exception as e:
 
         print(
-            f"⚠️ 關閉中秋活動頻道失敗：{e}"
+            f"⚠️ 關閉萬聖節活動頻道失敗：{e}"
         )
 
 
 @tasks.loop(minutes=1)
-async def mid_autumn_activity_loop():
+async def halloween_activity_loop():
 
-    await update_mid_autumn_channel()
+    await update_halloween_channel()
 
 
-@mid_autumn_activity_loop.before_loop
-async def before_mid_autumn_activity_loop():
+@halloween_activity_loop.before_loop
+async def before_halloween_activity_loop():
 
-    global _mid_autumn_bot
+    global _halloween_bot
 
-    if _mid_autumn_bot is not None:
+    if _halloween_bot is not None:
 
-        await _mid_autumn_bot.wait_until_ready()
+        await _halloween_bot.wait_until_ready()
 
 
 # ==========================
-# 🌕 啟動限定盲盒系統
+# 🖼️ 萬聖節角色獎品｜接收玩家圖片
+# ==========================
+
+async def halloween_image_submission_listener(message: discord.Message):
+
+    # 只接收玩家傳給機器人的私訊圖片
+    if message.author.bot or message.guild is not None:
+        return
+
+    if not message.attachments:
+        return
+
+    user_id = str(message.author.id)
+
+    # 如果玩家的 Moon Club 成就盲盒有待交圖片，讓原本的成就系統處理，避免兩個監聽器重複轉交同一張圖。
+    try:
+        c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='moon_achievement_redemptions'"
+        )
+        if c.fetchone():
+            c.execute(
+                "SELECT redemption_id FROM moon_achievement_redemptions "
+                "WHERE user_id=? AND status='awaiting_image' LIMIT 1",
+                (message.author.id,),
+            )
+            if c.fetchone():
+                return
+    except Exception:
+        pass
+
+    c.execute(
+        """
+        SELECT id, prize_type, mommy_user_id, mommy_name,
+               character_name, prize_value
+        FROM halloween_lottery_entries
+        WHERE user_id = ?
+          AND is_test = ?
+          AND claim_status = 1
+          AND image_status = 'awaiting_image'
+          AND prize_type IN ('sticker', 'couple')
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id, 1 if message.author.id in BOT_ADMINS else 0),
+    )
+    entry = c.fetchone()
+
+    if not entry:
+        return
+
+    if len(message.attachments) != 1:
+        await message.channel.send(
+            "🎃 請一次只傳送 **一張圖片**，目前這筆領獎資料仍在等待圖片。"
+        )
+        return
+
+    attachment = message.attachments[0]
+    content_type = (attachment.content_type or "").lower()
+    filename = (attachment.filename or "").lower()
+    image_extensions = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+    if not content_type.startswith("image/") and not filename.endswith(image_extensions):
+        await message.channel.send(
+            "❌ 這個檔案不是圖片，請重新傳送 PNG、JPG 或其他圖片格式。"
+        )
+        return
+
+    mommy = message.guild.get_member(int(entry["mommy_user_id"])) if message.guild else None
+    if mommy is None:
+        try:
+            mommy = await _halloween_bot.fetch_user(int(entry["mommy_user_id"]))
+        except Exception:
+            mommy = None
+
+    if mommy is None:
+        await message.channel.send(
+            "⚠️ 目前無法找到指定媽咪，圖片尚未轉交。請稍後再試或聯絡管理員。"
+        )
+        return
+
+    prize_display = {
+        "sticker": "🎨 角色 Q 版貼圖 ×1",
+        "couple": "💕 角色合照 ×1",
+    }.get(entry["prize_type"], entry["prize_type"])
+
+    embed = discord.Embed(
+        title="🎃 萬聖節限定盲盒｜角色圖片提交",
+        description=(
+            f"👤 **玩家**：{message.author.mention}\n"
+            f"🎁 **獎品**：{prize_display}\n"
+            f"🎭 **角色名稱**：{entry['character_name']}\n"
+            f"🧡 **指定媽咪**：{entry['mommy_name']}\n\n"
+            "玩家已提交角色圖片，請協助後續獎品安排。"
+        ),
+        color=0xFF7518,
+    )
+    embed.set_footer(text=f"Moon Bot｜萬聖節限定盲盒｜紀錄編號 {entry['id']}")
+
+    try:
+        await mommy.send(embed=embed, file=await attachment.to_file())
+    except Exception as e:
+        print(f"⚠️ 萬聖節角色圖片轉交失敗（紀錄 {entry['id']}）：{e}")
+        await message.channel.send(
+            "⚠️ 圖片目前沒有成功轉交給指定媽咪，這筆資料仍保留等待狀態。請稍後重新傳送圖片。"
+        )
+        return
+
+    c.execute(
+        """
+        UPDATE halloween_lottery_entries
+        SET image_status = 'forwarded', image_message_id = ?
+        WHERE id = ? AND image_status = 'awaiting_image'
+        """,
+        (str(message.id), entry["id"]),
+    )
+    conn.commit()
+
+    await message.channel.send(
+        f"✅ 角色圖片已成功轉交給 **{entry['mommy_name']}**！\n"
+        "請等待媽咪後續安排，謝謝你參與萬聖節限定盲盒。"
+    )
+
+
+# ==========================
+# 🎃 啟動限定盲盒系統
 # ==========================
 
 def setup_limited_lottery(bot):
 
-    global _mid_autumn_bot
+    global _halloween_bot
 
-    _mid_autumn_bot = bot
+    _halloween_bot = bot
 
     init_limited_lottery_database()
 
+    if not getattr(bot, "_halloween_image_listener_ready", False):
+        bot.add_listener(halloween_image_submission_listener, "on_message")
+        bot._halloween_image_listener_ready = True
+
     # -------------------------
-    # 🌕 註冊永久盲盒按鈕
+    # 🎃 註冊永久盲盒按鈕
     # -------------------------
 
     bot.add_view(
@@ -1810,7 +2108,7 @@ def setup_limited_lottery(bot):
     # -------------------------
 
     if bot.tree.get_command(
-        "mid_autumn_test"
+        "halloween_test"
     ) is None:
 
         bot.tree.add_command(
@@ -1830,26 +2128,26 @@ def setup_limited_lottery(bot):
         )
 
     # -------------------------
-    # 🌕 啟動活動自動開關
+    # 🎃 啟動活動自動開關
     # -------------------------
 
-    if not MID_AUTUMN_TEST_MODE:
+    if not HALLOWEEN_TEST_MODE:
 
-        if not mid_autumn_activity_loop.is_running():
+        if not halloween_activity_loop.is_running():
 
-            mid_autumn_activity_loop.start()
+            halloween_activity_loop.start()
 
         print(
-            "🌕 中秋活動頻道自動開關已啟動"
+            "🎃 萬聖節活動頻道自動開關已啟動"
         )
 
     else:
 
         print(
-            "🧪 中秋盲盒目前為測試模式，"
+            "🧪 萬聖節盲盒目前為測試模式，"
             "不執行自動頻道開關"
         )
 
     print(
-        "✅ 中秋限定盲盒系統已載入"
+        "✅ 萬聖節限定盲盒系統已載入"
     )
