@@ -703,8 +703,8 @@ def make_achievement_box_button(db, user_id):
     return AchievementBoxButton()
 
 
-async def setup_achievement_redemption(bot, db):
-    """在主程式啟動時呼叫一次：setup_achievement_redemption(bot, conn)。"""
+async def setup_achievement_redemption(bot, db, *, test_mode=False):
+    """註冊兌換收圖監聽器；正式與測試模式必須分流。"""
     ensure_redemption_table(db)
 
     # 重新啟動後恢復尚待製作者完成的按鈕。
@@ -715,8 +715,18 @@ async def setup_achievement_redemption(bot, db):
     async def on_message(message):
         if message.author.bot or not isinstance(message.channel, discord.DMChannel):
             return
-        # 優先處理管理員的測試圖片；不讀寫正式兌換資料表。
-        if message.author.id == TEST_OWNER_ID and TEST_OWNER_ID in TEST_PENDING:
+
+        # 正式／測試監聽器必須互斥，避免同一張私訊圖片被兩個資料庫同時處理。
+        if test_mode:
+            # 測試監聽器只處理測試待辦；沒有測試待辦時絕不落入正式兌換邏輯。
+            if message.author.id != TEST_OWNER_ID or TEST_OWNER_ID not in TEST_PENDING:
+                return
+        elif message.author.id == TEST_OWNER_ID:
+            # 正式監聽器不處理測試者的私訊，避免碰到正式資料庫。
+            return
+
+        # 測試模式只會走到這裡處理測試圖片；正式模式只處理正式兌換圖片。
+        if test_mode and message.author.id == TEST_OWNER_ID and TEST_OWNER_ID in TEST_PENDING:
             if len(message.attachments) != 1:
                 await message.channel.send("🧪 測試流程：請直接附上一張圖片。")
                 return
