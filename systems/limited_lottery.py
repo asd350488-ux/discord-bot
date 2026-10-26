@@ -454,6 +454,7 @@ class HalloweenMommyView(
 # ==========================
 
 class HalloweenCancelImageView(discord.ui.View):
+    """萬聖節圖片獎品取消入口：第一次點擊只顯示確認，不修改資料。"""
 
     def __init__(self, entry_id, user_id):
         super().__init__(timeout=48 * 60 * 60)
@@ -472,6 +473,50 @@ class HalloweenCancelImageView(discord.ui.View):
             )
             return
 
+        row = c.execute(
+            "SELECT image_status FROM halloween_lottery_entries WHERE id=? AND user_id=?",
+            (self.entry_id, str(self.user_id)),
+        ).fetchone()
+        if not row or row[0] != "awaiting_image":
+            await interaction.response.send_message(
+                "ℹ️ 這筆圖片提交已完成、已取消，或目前不需要提交圖片。",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.edit_message(
+            content=(
+                "⚠️ **請再次確認是否放棄這份萬聖節角色獎品。**\\n\\n"
+                "確認後，這份獎品資格將永久取消，無法恢復或重新領取。\\n"
+                "如果是不小心按到，請選擇「↩️ 返回，保留資格」。"
+            ),
+            view=HalloweenCancelConfirmView(
+                self.entry_id, self.user_id, interaction.message.content
+            ),
+        )
+
+
+class HalloweenCancelConfirmView(discord.ui.View):
+    """只有第二次明確確認才會取消萬聖節獎品資格。"""
+
+    def __init__(self, entry_id, user_id, original_content):
+        super().__init__(timeout=180)
+        self.entry_id = int(entry_id)
+        self.user_id = int(user_id)
+        self.original_content = original_content
+
+    @discord.ui.button(
+        label="⚠️ 確認放棄",
+        style=discord.ButtonStyle.danger,
+        custom_id="halloween_confirm_cancel_image_qualification",
+    )
+    async def confirm_cancel(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ 這不是你的領獎通知，無法替其他玩家取消。", ephemeral=True
+            )
+            return
+
         c.execute(
             "UPDATE halloween_lottery_entries SET image_status='cancelled' "
             "WHERE id=? AND user_id=? AND image_status='awaiting_image'",
@@ -482,18 +527,46 @@ class HalloweenCancelImageView(discord.ui.View):
 
         if not changed:
             await interaction.response.send_message(
-                "ℹ️ 這筆圖片提交已完成、已取消，或目前不需要提交圖片。",
+                "ℹ️ 這筆圖片提交已完成、已取消或已逾期，資格沒有再次變更。",
                 ephemeral=True,
             )
             return
 
         await interaction.response.edit_message(
             content=(
-                "🚫 **已自願取消本次角色獎品領取資格。**\n\n"
-                "這份角色獎品將視為放棄，無法恢復或重新領取。\n"
+                "🚫 **已自願取消本次角色獎品領取資格。**\\n\\n"
+                "這份角色獎品將視為放棄，無法恢復或重新領取。\\n"
                 "你現在可以繼續使用其他抽獎功能。"
             ),
             view=None,
+        )
+
+    @discord.ui.button(
+        label="↩️ 返回，保留資格",
+        style=discord.ButtonStyle.secondary,
+        custom_id="halloween_keep_image_qualification",
+    )
+    async def keep_qualification(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ 這不是你的領獎通知，無法替其他玩家操作。", ephemeral=True
+            )
+            return
+
+        row = c.execute(
+            "SELECT image_status FROM halloween_lottery_entries WHERE id=? AND user_id=?",
+            (self.entry_id, str(self.user_id)),
+        ).fetchone()
+        if not row or row[0] != "awaiting_image":
+            await interaction.response.send_message(
+                "ℹ️ 這筆圖片提交已完成、已取消或已逾期，無法恢復原操作。",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.edit_message(
+            content=self.original_content,
+            view=HalloweenCancelImageView(self.entry_id, self.user_id),
         )
 
 
@@ -1960,6 +2033,91 @@ async def before_halloween_activity_loop():
 # 🖼️ 萬聖節角色獎品｜接收玩家圖片
 # ==========================
 
+
+
+# ==========================
+# 🎃 媽咪處理圖片｜完成並刪除案件訊息
+# ==========================
+
+class HalloweenImageCompleteView(discord.ui.View):
+    """媽咪確認完成後，刪除收到的案件訊息與圖片附件。"""
+
+    def __init__(self, entry_id: int, mommy_user_id: int):
+        super().__init__(timeout=None)
+        self.entry_id = int(entry_id)
+        self.mommy_user_id = int(mommy_user_id)
+
+        button = discord.ui.Button(
+            label="✅ 完成並關閉（刪除圖片）",
+            style=discord.ButtonStyle.success,
+            custom_id=f"halloween_image_complete:{self.entry_id}",
+        )
+        button.callback = self.complete
+        self.add_item(button)
+
+    async def complete(self, interaction: discord.Interaction):
+        if interaction.user.id != self.mommy_user_id and interaction.user.id not in BOT_ADMINS:
+            await interaction.response.send_message(
+                "❌ 只有這筆紀錄指定的媽咪或授權管理員可以完成並關閉。",
+                ephemeral=True,
+            )
+            return
+
+        c.execute(
+            "SELECT image_status, mommy_user_id FROM halloween_lottery_entries WHERE id=?",
+            (self.entry_id,),
+        )
+        row = c.fetchone()
+        if not row or row["image_status"] != "forwarded":
+            await interaction.response.send_message(
+                "ℹ️ 這筆圖片案件已處理，或目前不需要處理。",
+                ephemeral=True,
+            )
+            return
+
+        if int(row["mommy_user_id"]) != interaction.user.id and interaction.user.id not in BOT_ADMINS:
+            await interaction.response.send_message(
+                "❌ 你不是這筆圖片案件指定的媽咪，無法完成。",
+                ephemeral=True,
+            )
+            return
+
+        c.execute(
+            """
+            UPDATE halloween_lottery_entries
+            SET image_status='completed'
+            WHERE id=? AND image_status='forwarded'
+            """,
+            (self.entry_id,),
+        )
+        changed = c.rowcount == 1
+        conn.commit()
+        if not changed:
+            await interaction.response.send_message(
+                "ℹ️ 這筆圖片案件已由其他人處理。",
+                ephemeral=True,
+            )
+            return
+
+        # 刪除媽咪收到的機器人訊息，圖片附件副本會隨訊息一起刪除。
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            await interaction.message.delete()
+            await interaction.followup.send(
+                "✅ 已完成並關閉這筆萬聖節圖片案件，收到的圖片訊息已刪除。",
+                ephemeral=True,
+            )
+        except discord.NotFound:
+            await interaction.followup.send(
+                "✅ 已標記完成；圖片案件訊息已不存在。",
+                ephemeral=True,
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            await interaction.followup.send(
+                "⚠️ 已標記完成，但機器人無法刪除這則訊息。請確認機器人仍有刪除訊息的權限。",
+                ephemeral=True,
+            )
+
 async def halloween_image_submission_listener(message: discord.Message):
 
     # 只接收玩家傳給機器人的私訊圖片
@@ -2055,7 +2213,14 @@ async def halloween_image_submission_listener(message: discord.Message):
     embed.set_footer(text=f"Moon Bot｜萬聖節限定盲盒｜紀錄編號 {entry['id']}")
 
     try:
-        await mommy.send(embed=embed, file=await attachment.to_file())
+        await mommy.send(
+            embed=embed,
+            file=await attachment.to_file(),
+            view=HalloweenImageCompleteView(
+                int(entry["id"]),
+                int(entry["mommy_user_id"]),
+            ),
+        )
     except Exception as e:
         print(f"⚠️ 萬聖節角色圖片轉交失敗（紀錄 {entry['id']}）：{e}")
         await message.channel.send(
@@ -2090,6 +2255,22 @@ def setup_limited_lottery(bot):
     _halloween_bot = bot
 
     init_limited_lottery_database()
+
+    # 重新啟動後，重新註冊尚未完成的圖片案件按鈕。
+    try:
+        c.execute(
+            "SELECT id, mommy_user_id FROM halloween_lottery_entries "
+            "WHERE image_status='forwarded' AND mommy_user_id IS NOT NULL"
+        )
+        for pending_entry in c.fetchall():
+            bot.add_view(
+                HalloweenImageCompleteView(
+                    int(pending_entry["id"]),
+                    int(pending_entry["mommy_user_id"]),
+                )
+            )
+    except Exception as e:
+        print(f"⚠️ 萬聖節圖片完成按鈕重新註冊失敗：{e}")
 
     if not getattr(bot, "_halloween_image_listener_ready", False):
         bot.add_listener(halloween_image_submission_listener, "on_message")
