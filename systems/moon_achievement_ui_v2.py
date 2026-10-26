@@ -363,15 +363,53 @@ class RetryUploadView(discord.ui.View):
 
 
 class CancelAchievementImageView(discord.ui.View):
-    def __init__(self, db, redemption_id, user_id):
+    def __init__(self, db, redemption_id, user_id, original_content=""):
         super().__init__(timeout=48 * 60 * 60)
         self.db, self.redemption_id, self.user_id = db, int(redemption_id), int(user_id)
+        self.original_content = original_content
 
     @discord.ui.button(label="🚫 自願取消資格", style=discord.ButtonStyle.danger, custom_id="moon_achievement_cancel_image")
     async def cancel_qualification(self, interaction, button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ 這不是你的提交通知，無法替其他玩家取消。", ephemeral=True)
             return
+
+        row = self.db.execute(
+            "SELECT status FROM moon_achievement_redemptions "
+            "WHERE redemption_id=? AND user_id=?",
+            (self.redemption_id, self.user_id)
+        ).fetchone()
+        if not row or row[0] != "awaiting_image":
+            await interaction.response.send_message("ℹ️ 這筆人設圖提交已完成、已取消或已逾期。", ephemeral=True)
+            return
+
+        # 第一次點擊只顯示確認畫面，不修改兌換紀錄。
+        await interaction.response.edit_message(
+            content=(
+                "⚠️ **請確認是否真的要放棄這份獎品？**\n\n"
+                "如果確認放棄，這次成就盲盒獎品資格將立即取消，"
+                "而且**無法恢復或重新領取**。\n\n"
+                "若是不小心按到，請選擇「返回，保留資格」。"
+            ),
+            embed=None,
+            view=ConfirmCancelAchievementImageView(
+                self.db, self.redemption_id, self.user_id, self.original_content
+            )
+        )
+
+
+class ConfirmCancelAchievementImageView(discord.ui.View):
+    def __init__(self, db, redemption_id, user_id, original_content=""):
+        super().__init__(timeout=120)
+        self.db, self.redemption_id, self.user_id = db, int(redemption_id), int(user_id)
+        self.original_content = original_content
+
+    @discord.ui.button(label="⚠️ 確認放棄", style=discord.ButtonStyle.danger)
+    async def confirm_cancel(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的提交通知，無法替其他玩家取消。", ephemeral=True)
+            return
+
         self.db.execute(
             "UPDATE moon_achievement_redemptions SET status='cancelled' "
             "WHERE redemption_id=? AND user_id=? AND status='awaiting_image'",
@@ -380,13 +418,48 @@ class CancelAchievementImageView(discord.ui.View):
         changed = self.db.execute("SELECT changes()").fetchone()[0] == 1
         self.db.commit()
         if not changed:
-            await interaction.response.send_message("ℹ️ 這筆人設圖提交已完成、已取消或已逾期。", ephemeral=True)
+            await interaction.response.edit_message(
+                content="ℹ️ 這筆人設圖提交已完成、已取消或已逾期，無法再次操作。",
+                embed=None, view=None
+            )
             return
+
         await interaction.response.edit_message(
-            content=("🚫 **已自願取消本次人設圖獎品資格。**\n\n"
-                     "這份獎品視為放棄，無法恢復或重新領取。\n"
-                     "你現在可以繼續使用其他抽獎功能。"),
+            content=(
+                "🚫 **已自願取消本次人設圖獎品資格。**\n\n"
+                "這份獎品視為放棄，無法恢復或重新領取。\n"
+                "你現在可以繼續使用其他抽獎功能。"
+            ),
             embed=None, view=None
+        )
+
+    @discord.ui.button(label="↩️ 返回，保留資格", style=discord.ButtonStyle.secondary)
+    async def go_back(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的提交通知，無法替其他玩家操作。", ephemeral=True)
+            return
+
+        row = self.db.execute(
+            "SELECT status FROM moon_achievement_redemptions "
+            "WHERE redemption_id=? AND user_id=?",
+            (self.redemption_id, self.user_id)
+        ).fetchone()
+        if not row or row[0] != "awaiting_image":
+            await interaction.response.edit_message(
+                content="ℹ️ 這筆人設圖提交已完成、已取消或已逾期，無法返回提交。",
+                embed=None, view=None
+            )
+            return
+
+        await interaction.response.edit_message(
+            content=self.original_content or (
+                "✅ 已取消放棄操作，你的獎品資格仍然保留。"
+                "請在原本的 48 小時期限內提交人設圖。"
+            ),
+            embed=None,
+            view=CancelAchievementImageView(
+                self.db, self.redemption_id, self.user_id, self.original_content
+            )
         )
 
 
@@ -397,14 +470,17 @@ async def send_upload_request(bot, db, redemption_id, user_id):
         return False
     try:
         user = bot.get_user(int(user_id)) or await bot.fetch_user(int(user_id))
-        msg = await user.send(
+        request_content = (
             f"📩 **Moon Club 成就盲盒｜人設圖提交**\n\n"
             f"🎁 獎品：**{REWARD_NAMES[row[0]]}**\n"
             + (f"👩‍💼 負責媽咪：**{row[1]}**\n🎭 角色名稱：**{row[2]}**\n" if row[1] in MOMMY_LIST else f"🧑‍💼 製作管理員：**{row[1]}**\n")
             + "請直接在這則私訊中附上一張人設圖。每筆兌換限一張，不接受額外製作需求。\n"
             "⏳ 兌換後 24 小時會提醒一次，48 小時內未提交即視同放棄。\n"
-            "📌 請自行截圖備份中獎結果。若不想領取，請按下方「自願取消資格」。",
-            view=CancelAchievementImageView(db, redemption_id, user_id)
+            "📌 請自行截圖備份中獎結果。若不想領取，請按下方「自願取消資格」。"
+        )
+        msg = await user.send(
+            request_content,
+            view=CancelAchievementImageView(db, redemption_id, user_id, request_content)
         )
         db.execute("UPDATE moon_achievement_redemptions SET user_dm_channel_id=? WHERE redemption_id=?",
                    (msg.channel.id, int(redemption_id)))
