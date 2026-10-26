@@ -241,6 +241,8 @@ class CharacterNameModal(discord.ui.Modal, title="📝 填寫角色名稱"):
 
 async def _create_redemption(interaction, db, reward, maker_name, maker_id, character_name=""):
     ensure_redemption_table(db)
+    if has_halloween_pending_image(db, interaction.user.id):
+        return None, False
     now = datetime.datetime.now(UTC)
     expires = now + datetime.timedelta(hours=SUBMISSION_HOURS)
     cur = db.execute("""
@@ -269,6 +271,12 @@ class RedemptionConfirmView(discord.ui.View):
         await interaction.response.defer()
         redemption_id, dm_ok = await _create_redemption(interaction, self.db, self.reward,
                                                           self.mommy_name, self.mommy_id, self.character_name)
+        if redemption_id is None:
+            await interaction.edit_original_response(embed=discord.Embed(
+                title="⏳ 暫時無法兌換",
+                description="你還有一筆萬聖節盲盒的人設圖尚未提交。請先完成圖片提交，或在萬聖節提醒私訊中按下「自願取消資格」，再回來兌換。"
+            ), view=None)
+            return
         await interaction.edit_original_response(embed=discord.Embed(
             title="✅ 已建立兌換紀錄",
             description=(f"🎁 **{REWARD_NAMES[self.reward]}**\n"
@@ -300,6 +308,12 @@ class AdminMakerConfirmView(discord.ui.View):
             return
         await interaction.response.defer()
         redemption_id, dm_ok = await _create_redemption(interaction, self.db, self.reward, self.maker_name, self.maker_id)
+        if redemption_id is None:
+            await interaction.edit_original_response(embed=discord.Embed(
+                title="⏳ 暫時無法兌換",
+                description="你還有一筆萬聖節盲盒的人設圖尚未提交。請先完成圖片提交，或在萬聖節提醒私訊中按下「自願取消資格」，再回來兌換。"
+            ), view=None)
+            return
         await interaction.edit_original_response(embed=discord.Embed(
             title="✅ 已建立兌換紀錄",
             description=(f"🎁 **{REWARD_NAMES[self.reward]}**\n"
@@ -348,6 +362,34 @@ class RetryUploadView(discord.ui.View):
         )
 
 
+class CancelAchievementImageView(discord.ui.View):
+    def __init__(self, db, redemption_id, user_id):
+        super().__init__(timeout=48 * 60 * 60)
+        self.db, self.redemption_id, self.user_id = db, int(redemption_id), int(user_id)
+
+    @discord.ui.button(label="🚫 自願取消資格", style=discord.ButtonStyle.danger, custom_id="moon_achievement_cancel_image")
+    async def cancel_qualification(self, interaction, button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ 這不是你的提交通知，無法替其他玩家取消。", ephemeral=True)
+            return
+        self.db.execute(
+            "UPDATE moon_achievement_redemptions SET status='cancelled' "
+            "WHERE redemption_id=? AND user_id=? AND status='awaiting_image'",
+            (self.redemption_id, self.user_id)
+        )
+        changed = self.db.execute("SELECT changes()").fetchone()[0] == 1
+        self.db.commit()
+        if not changed:
+            await interaction.response.send_message("ℹ️ 這筆人設圖提交已完成、已取消或已逾期。", ephemeral=True)
+            return
+        await interaction.response.edit_message(
+            content=("🚫 **已自願取消本次人設圖獎品資格。**\n\n"
+                     "這份獎品視為放棄，無法恢復或重新領取。\n"
+                     "你現在可以繼續使用其他抽獎功能。"),
+            embed=None, view=None
+        )
+
+
 async def send_upload_request(bot, db, redemption_id, user_id):
     row = db.execute("SELECT reward, mommy_name, character_name, status, expires_at FROM moon_achievement_redemptions WHERE redemption_id=? AND user_id=?",
                      (int(redemption_id), int(user_id))).fetchone()
@@ -361,7 +403,8 @@ async def send_upload_request(bot, db, redemption_id, user_id):
             + (f"👩‍💼 負責媽咪：**{row[1]}**\n🎭 角色名稱：**{row[2]}**\n" if row[1] in MOMMY_LIST else f"🧑‍💼 製作管理員：**{row[1]}**\n")
             + "請直接在這則私訊中附上一張人設圖。每筆兌換限一張，不接受額外製作需求。\n"
             "⏳ 兌換後 24 小時會提醒一次，48 小時內未提交即視同放棄。\n"
-            "📌 請自行截圖備份中獎結果。"
+            "📌 請自行截圖備份中獎結果。若不想領取，請按下方「自願取消資格」。",
+            view=CancelAchievementImageView(db, redemption_id, user_id)
         )
         db.execute("UPDATE moon_achievement_redemptions SET user_dm_channel_id=? WHERE redemption_id=?",
                    (msg.channel.id, int(redemption_id)))
@@ -592,6 +635,24 @@ class TestConfirmView(discord.ui.View):
         await interaction.response.edit_message(content="已取消測試，沒有建立任何紀錄。", embed=None, view=None)
 
 
+def has_halloween_pending_image(db, user_id):
+    """萬聖節盲盒尚有待交圖片時，禁止開始新的成就盲盒流程。"""
+    try:
+        row = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='halloween_lottery_entries'"
+        ).fetchone()
+        if not row:
+            return False
+        pending = db.execute(
+            "SELECT id FROM halloween_lottery_entries "
+            "WHERE user_id=? AND claim_status=1 AND image_status='awaiting_image' LIMIT 1",
+            (str(int(user_id)),)
+        ).fetchone()
+        return pending is not None
+    except Exception:
+        return False
+
+
 class AchievementBoxView(discord.ui.View):
     def __init__(self, db, user_id):
         super().__init__(timeout=300)
@@ -628,6 +689,13 @@ class AchievementBoxView(discord.ui.View):
             await interaction.response.send_message("❌ 這不是你的成就盲盒。", ephemeral=True)
             return
         ensure_redemption_table(self.db)
+        if has_halloween_pending_image(self.db, self.user_id):
+            await interaction.response.send_message(
+                "⏳ 你還有一筆萬聖節盲盒的人設圖尚未提交。"
+                "請先完成圖片提交，或在萬聖節提醒私訊中按下「自願取消資格」，"
+                "才能繼續抽取成就盲盒。", ephemeral=True
+            )
+            return
         # 先處理已逾期的待提交獎項；逾期視同放棄，不再阻擋抽獎。
         expire_overdue_redemptions(self.db, self.user_id)
         pending = self.db.execute(
