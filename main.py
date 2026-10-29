@@ -2166,7 +2166,7 @@ async def wallet(interaction: discord.Interaction):
         )
 
         embed.add_field(
-            name="📦 商會功能", value="背包｜錢包", inline=False
+            name="📦 商會功能", value="錢包", inline=False
         )
 
         embed.set_footer(text="極曜月葵 ✦ 星月商會")
@@ -4184,6 +4184,24 @@ async def work(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
+
+# ==========================================
+# 🛒 商店 View
+# ==========================================
+
+
+
+
+
+
+# ==========================================
+# 🛒 商店
+# ==========================================
+
+
+# 🎁 驚喜箱
+
+
 # 🧭 探險
 @bot.tree.command(name="探險")
 async def adventure(interaction: discord.Interaction):
@@ -4341,51 +4359,11 @@ async def adventure(interaction: discord.Interaction):
     await msg.edit(content=None, embed=embed)
 
 
-# 🎒 背包
-@bot.tree.command(name="背包")
-async def inventory_cmd(interaction: discord.Interaction):
+# 🎒 背包功能已移除
 
-    if interaction.channel.id != SHOP_CHANNEL:
 
-        embed = discord.Embed(
-            title="🛒 星月商會",
-            description=f"請前往 <#{SHOP_CHANNEL}> 使用背包功能",
-            color=discord.Color.gold(),
-        )
+# 🎁 贈送道具功能已移除
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-
-    user_id = str(interaction.user.id)
-
-    c.execute(
-        """
-        SELECT shop.name, inventory.amount
-        FROM inventory
-        JOIN shop ON inventory.item_id = shop.item_id
-        WHERE inventory.user_id=?
-    """,
-        (user_id,),
-    )
-
-    items = c.fetchall()
-
-    if not items:
-        await interaction.response.send_message("🎒 你的背包是空的")
-        return
-
-    text = ""
-
-    for name, amount in items:
-        text += f"🎁 {name} × {amount}\n"
-
-    embed = discord.Embed(
-        title="🎒 星月背包", description=text, color=discord.Color.purple()
-    )
-
-    embed.set_footer(text="極曜月葵 ✦ 星月商會")
-
-    await interaction.response.send_message(embed=embed)
 
 # ⚙️ 增加努努幣
 
@@ -4623,5 +4601,11 @@ setup_slot(
     NUNU_EMOJI=NUNU_EMOJI,
     SLOT_CHANNEL=SLOT_CHANNEL,
 )
+
+
+# ==========================
+# 🌙 Moon Music 音樂系統
+# ==========================
+
 
 bot.run(os.getenv("TOKEN"))
