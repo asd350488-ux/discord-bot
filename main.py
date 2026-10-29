@@ -3082,19 +3082,28 @@ async def birthday_check():
             description = ""
 
             for member in birthday_members:
-
                 description += f"🎉 {member['mention']} {member['age']}\n"
 
-            birthday_blessing = random.choice(BIRTHDAY_BLESSINGS)
+            description += (
+                "\n寶貝，生日快樂<a:heart:1290244622228000831>\n"
+                "專屬妳的生日小禮物來啦！🎁\n"
+                "生日合照兌換機會 ×1，讓喜歡的崽崽陪妳留下生日紀念📸✨\n"
+                "⏰ 僅限今日、明日可兌換，記得把握時間喲！\n\n"
+                "請將「妳的人設圖＋想邀請陪妳過生日的崽崽名字」傳給管理員菜菜和管理員小E💌\n\n"
+                "這兩位其中一個\n"
+                "<a:emoji_36:1508579789219561632>\n"
+                "<@873202145367846942>\n"
+                "<@844778614268100638>\n\n"
+                "祝妳生日快樂，願妳被愛包圍，每個心願都慢慢實現🎂💕"
+            )
 
             embed = discord.Embed(
                 title="🎂 今日壽星",
-                description=(
-                    f"{description}" "\n━━━━━━━━━━━━━━━━━━\n\n" f"{birthday_blessing}"
-                ),
+                description=description,
                 color=discord.Color.from_rgb(255, 105, 180),
             )
 
+            # 保留原本的生日努努幣獎勵統計
             gift_text = ""
 
             if normal_count:
@@ -3109,7 +3118,7 @@ async def birthday_check():
             gift_text += f"\n💰 今日共發放 **{total_reward:,} 努努幣**"
 
             embed.add_field(
-                name="🎁 已發送生日禮物",
+                name="🎁 已發送生日禮物｜努努幣",
                 value=gift_text,
                 inline=False,
             )
@@ -3174,6 +3183,64 @@ async def birthday_check():
                 reminder.set_footer(text=f"Moon Bot v2｜共 {count} 位壽星")
 
                 await admin_channel.send(embed=reminder)
+
+
+# ==========================
+# 🧪 測試生日公告（不發放努努幣）
+# ==========================
+
+
+@bot.tree.command(name="測試生日公告", description="預覽生日當天公告文案，不會發放努努幣")
+async def test_birthday_announcement(interaction: discord.Interaction):
+
+    # 🔒 僅限指定測試人員
+    if interaction.user.id != 770690137310494760:
+        await interaction.response.send_message(
+            "❌ 只有指定測試人員可以使用此指令。",
+            ephemeral=True,
+        )
+        return
+
+    # 📍 僅限指定測試頻道
+    if interaction.channel_id != 1510930723924611163:
+        await interaction.response.send_message(
+            "❌ 請到指定的生日公告測試頻道使用此指令。",
+            ephemeral=True,
+        )
+        return
+
+    # 🧪 使用測試人員作為示範壽星，不查詢或修改生日資料
+    description = (
+        "🎉 <@770690137310494760>\n"
+        "\n寶貝，生日快樂<a:heart:1290244622228000831>\n"
+        "專屬妳的生日小禮物來啦！🎁\n"
+        "生日合照兌換機會 ×1，讓喜歡的崽崽陪妳留下生日紀念📸✨\n"
+        "⏰ 僅限今日、明日可兌換，記得把握時間喲！\n\n"
+        "請將「妳的人設圖＋想邀請陪妳過生日的崽崽名字」傳給管理員菜菜和管理員小E💌\n\n"
+        "這兩位其中一個\n"
+        "<a:emoji_36:1508579789219561632>\n"
+        "<@873202145367846942>\n"
+        "<@844778614268100638>\n\n"
+        "祝妳生日快樂，願妳被愛包圍，每個心願都慢慢實現🎂💕"
+    )
+
+    embed = discord.Embed(
+        title="🎂 今日壽星｜測試預覽",
+        description=description,
+        color=discord.Color.from_rgb(255, 105, 180),
+    )
+
+    embed.add_field(
+        name="🎁 生日努努幣獎勵（測試模式）",
+        value="🧪 這是測試公告，不會發放努努幣，也不會修改生日紀錄。\n正式公告會照常顯示實際發放的努努幣統計。",
+        inline=False,
+    )
+    embed.set_footer(text="Moon Bot v2｜生日公告測試｜未發放努努幣")
+
+    await interaction.response.send_message(
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
 
 
 # ==========================
