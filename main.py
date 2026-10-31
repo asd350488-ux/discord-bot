@@ -2653,6 +2653,9 @@ async def photo_event_check():
             "・每位角色皆會提供 **2 張合照**。\n"
             "・請耐心等待製作完成。\n"
             "・其餘許願規則請至活動置頂文章觀看。\n\n"
+            "📢 **活動異動公告**\n"
+            "自 11 月起，因星弦媽咪個人因素及近期事務繁忙，旗下角色的許願活動將暫時停止開放。\n"
+            "未來若恢復開放，屆時會再另行公告。\n\n"
             "⏰ **本次活動將於隔日 00:00 關閉許願區。**"
         )
         # 開放角色合照許願區
@@ -4184,24 +4187,6 @@ async def work(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-
-# ==========================================
-# 🛒 商店 View
-# ==========================================
-
-
-
-
-
-
-# ==========================================
-# 🛒 商店
-# ==========================================
-
-
-# 🎁 驚喜箱
-
-
 # 🧭 探險
 @bot.tree.command(name="探險")
 async def adventure(interaction: discord.Interaction):
@@ -4601,11 +4586,5 @@ setup_slot(
     NUNU_EMOJI=NUNU_EMOJI,
     SLOT_CHANNEL=SLOT_CHANNEL,
 )
-
-
-# ==========================
-# 🌙 Moon Music 音樂系統
-# ==========================
-
 
 bot.run(os.getenv("TOKEN"))
