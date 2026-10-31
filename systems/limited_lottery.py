@@ -171,11 +171,11 @@ def is_halloween_day():
 
 
 # ==========================
-# 🔒 跨系統人設圖待辦防呆
+# 🔒 萬聖節自身待交圖片檢查
 # ==========================
 
 def has_pending_character_image(user_id, exclude_halloween_entry_id=None):
-    """只要萬聖節或 Moon Club 尚有待交圖片，就暫停新抽獎／新兌換。"""
+    """只檢查萬聖節盲盒自己的待提交圖片，不受 Moon Club 兌換紀錄影響。"""
     user_id = str(user_id)
 
     try:
@@ -194,21 +194,6 @@ def has_pending_character_image(user_id, exclude_halloween_entry_id=None):
             return True
     except Exception:
         # 資料表尚未建立時，不因不存在而阻斷啟動。
-        pass
-
-    try:
-        c.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='moon_achievement_redemptions'"
-        )
-        if c.fetchone():
-            c.execute(
-                "SELECT redemption_id FROM moon_achievement_redemptions "
-                "WHERE user_id = ? AND status = 'awaiting_image' LIMIT 1",
-                (int(user_id),),
-            )
-            if c.fetchone():
-                return True
-    except Exception:
         pass
 
     return False
@@ -869,14 +854,14 @@ async def run_limited_lottery(
     )
 
     # -------------------------
-    # 🔒 跨系統人設圖待辦防呆
+    # 🔒 只檢查萬聖節盲盒自己的待交圖片
     # -------------------------
 
     if has_pending_character_image(interaction.user.id):
         await interaction.response.send_message(
-            "⏳ 你還有一筆人設圖尚未提交成功。\n\n"
-            "請先傳送圖片，或在機器人的提醒私訊中按下「自願取消資格」，"
-            "完成後才能繼續抽獎。",
+            "⏳ 你還有一筆萬聖節角色圖片尚未提交。\n\n"
+            "請先完成這筆萬聖節獎品圖片提交，或在萬聖節提醒私訊中按下「自願取消資格」，"
+            "完成後才能再次參與萬聖節盲盒。",
             ephemeral=True,
         )
         return
@@ -2080,22 +2065,6 @@ async def halloween_image_submission_listener(message: discord.Message):
         return
 
     user_id = str(message.author.id)
-
-    # 如果玩家的 Moon Club 成就盲盒有待交圖片，讓原本的成就系統處理，避免兩個監聽器重複轉交同一張圖。
-    try:
-        c.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='moon_achievement_redemptions'"
-        )
-        if c.fetchone():
-            c.execute(
-                "SELECT redemption_id FROM moon_achievement_redemptions "
-                "WHERE user_id=? AND status='awaiting_image' LIMIT 1",
-                (message.author.id,),
-            )
-            if c.fetchone():
-                return
-    except Exception:
-        pass
 
     c.execute(
         """
