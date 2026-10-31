@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import discord
+from moon_prize_lookup import setup_moon_prize_lookup
 from systems.test_achievement_box_discord_ready_v2 import setup as setup_achievement_box_test
 from systems.moon_achievement_ui_v2 import setup_achievement_redemption
 from systems.moon_life import setup_moon_life
@@ -1822,7 +1823,7 @@ async def on_ready():
 
     # 🌙 七夕限定盲盒
     setup_limited_lottery(bot)
-
+    setup_moon_prize_lookup(bot)
     # 💌 媽咪專屬身分組
     setup_mommy_roles(bot)
 
